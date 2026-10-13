@@ -149,7 +149,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2H | Flash-delivered helper entry points | `deployment/readback/headless verified; JC1060 GUI scan observed`: Fabian confirms AROSP4DEV WiFi and corrected transition labels; generation1.3 and compact ESP32Board are installed; canonical FLASHDISK0P0 naming retained | Synchronized native GUI/open association; no full WiFi/SAE/PMF/IP pass |
-| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `interactive gate blocked pending fresh readiness`: generation1.3 deployed; zero-frequency fix/observer host/native tested, exact deployment/readback and headless owner return verified; synchronized GUI reports no wireless device; access-stage diagnostics tested, deployed/readback and headless return verified; directory-boundary fault/observer-on-off host tests pass | Fabian's fresh startup-test readiness, then arm discovery-only GUI capture before retrying association; peer admission remains0, no IP/data pass |
+| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `interactive gate awaiting board connection/readiness`: generation1.3 deployed; zero-frequency fix/observer host/native tested, exact deployment/readback and headless owner return verified; synchronized GUI reports no wireless device; access-stage diagnostics tested, deployed/readback and headless return verified; directory-boundary fault/observer-on-off host tests pass; host sees no USB modem on2026-10-13 | Reconnect JC1060 and confirm fresh startup-test readiness, then arm discovery-only GUI capture before retrying association; peer admission remains0, no IP/data pass |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
@@ -1947,6 +1947,8 @@ Dedicated directory-boundary fault/observer-on-off fixtures now pass;
 the prior access fixtures covered opening/query/cache, not enumeration.
 The next interactive gate is blocked pending fresh readiness. This is a
 coordination boundary, not proof of a hardware defect or WiFi completion.
+On2026-10-13 the host also has no USB-modem endpoint; connection must be
+restored before port identity/capture can be checked. No new boot was tested.
 
 Current correction (2026-10-11): exact auth7/CCMP transition metadata is
 represented as PSK|SAE and displayed as WPA2/3, not mislabeled pure WPA3.
@@ -42360,3 +42362,19 @@ remain open. No partial stage is a complete A/B update system.
 - Keep all current FLASHDISK0P0 helper/firmware/qualification paths and
   flashdisk.device unchanged. Only this policy documentation changes;
   earlier deployment hashes and pending WiFi startup gate remain valid.
+
+### 2026-10-13 - N2-SAE-REC resumed host availability check
+
+- Current branch remains feature/esp32p4-wifi atab8eadcb9a before this record;
+  no tracked implementation changes, only pre-existing cache directories.
+  No supporting agent or hardware capture is running. Active goal resumed;
+  native association, IP/data and original SAE/PMF gates remain unproved.
+- Read-only /dev inventory finds no cu.usbmodem endpoint. lsof confirms
+  /dev/cu.usbmodem101 does not exist, rather than a busy/live reader. No port
+  opened, no reset/flash/SD/C6 write or connection attempt. This does not
+  diagnose the earlier AROS no-wireless-device observation.
+- Requested JC1060 USB-C connection and fresh display readiness. Next check
+  the newly present endpoint without assuming its old pathname, then arm
+  a new passive capture before asking to open FLASHDISK0P0:WiFi. No Connect
+  until startup/device discovery is observed. Earlier artifact identities
+  and qualification limits remain unchanged; no new hardware pass claimed.
