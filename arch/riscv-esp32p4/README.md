@@ -52,7 +52,9 @@ Open-busy discriminator (2026-10-13): numeric opt-in branches distinguish
 first/second unit-lock acquisition from the existing initialized/attaching/
 opener-cap/exclusive predicate. Native device build and independent source
 review pass; lifetime fixtures do not exercise Open and are not claimed as
-proof of these branches. Helper replacement/readback is in progress.
+proof of these branches. Helper replacement and full readback now pass;
+headless return reaches both CPUs/C6-reset/owner. Fresh GUI readiness for
+the branch-attributed attempt is pending; no functional fix claimed.
 
 ESP32Board interface (2026-10-11): native MUI Overview, Update, Flash & Backup
 and Diagnostics tabs implement Fabian's approved 800x600 design. Requested

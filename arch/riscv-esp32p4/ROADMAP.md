@@ -42561,3 +42561,19 @@ remain open. No partial stage is a complete A/B update system.
   Fresh P4v1.3/MAC80:f1:b2:d3:3b:a6 identity before exact0xc00000 write;
   write session30726 running, completion/readback/return pending. Retained
   previous helpera8245c90... provides recovery. No core/BSP/C6/SD/table write.
+
+### 2026-10-13 - busy discriminator deployment/readback and return complete
+
+- Exact4194304B helper write at0xc00000 exits0/hash verified. Independent
+  full readback exits0, cmp/SHA256 matches helpers-open.img4ae4bef6... .
+  No other flash/media region changed. Warm reset-and-log --once exits0;
+  complete=true/status=ok,45.0050956s/14943B, cleanup_errors empty,
+  boot classification unclassified. open-boot.log SHA256
+  81c054f5c60399522b8175c322013132eb00636de92e62797bd6096f65e60ca7.
+- Both harts/cpus2, watchdog6000ms, graphics/GT911, explicit GPIO54 C6
+  reset prefix and CPU1 owner with expected MAC are received. ROM prefixes/
+  truncated console remain continuity limits; no later received fatal/Alert/
+  Guru/trap. No GUI/association was requested in this headless window.
+- Request fresh readiness for exactly one flash-helper Scan/open Connect
+  with a new pre-armed capture. The discriminator is deployed, not a fix or
+  successful radio/IP test. All original credential/SAE/PMF gates remain.
