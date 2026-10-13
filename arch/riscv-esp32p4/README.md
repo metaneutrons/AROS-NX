@@ -83,8 +83,9 @@ AROSTCP startup fails on generated general.config line9/col33: the absolute
 DHCLIENT path exceeds its24-byte keyword buffer; the path notifier also returns
 failure on success. Generic setter/getter/path-notifier corrections pass14
 source-extracted sanitizer regressions and native build, not yet deployed.
-The1111984-byte stack stays on SYS: and exceeds free helper space; the SD medium
-is now identified for a backed-up single-file replacement. IP/data/SAE gates
+The1111984-byte stack stays on SYS: and exceeds free helper space; its single
+SD-file replacement is backed up, remount/readback verified and ejected.
+Native stack startup and DHCP must still be tested. IP/data/SAE gates
 remain open; earlier transient link removal is not closed by this one attempt.
 Console overflow reporting stays unconditional and unchanged.
 No C6 update or
