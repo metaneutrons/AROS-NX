@@ -9,6 +9,7 @@
 #include "../network/hosted_wifi.h"
 
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -112,6 +113,9 @@ struct wifi_owner_control {
     uint32_t uid;
     int32_t status;
     unsigned init_attempted, start_attempted, startup_ok, cleanup_ok;
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+    int association_reply_valid;
+#endif
 };
 
 static const struct p4_hosted_wifi_config wifi_reference_profile = {0};
@@ -143,6 +147,72 @@ static unsigned int failures;
                 #expression);                                                \
     }                                                                        \
 } while (0)
+
+#define DIAGNOSTIC_LOG_CAPACITY 16384u
+static char diagnostic_log[DIAGNOSTIC_LOG_CAPACITY];
+static size_t diagnostic_log_size;
+static unsigned int diagnostic_bad_formats;
+
+static void diagnostic_reset(void)
+{
+    diagnostic_log_size = 0u;
+    diagnostic_bad_formats = 0u;
+    diagnostic_log[0] = '\0';
+}
+
+/* The extracted production code may emit only these numeric records. Keep
+ * the formats exact so a future accidental SSID/BSSID/credential addition
+ * fails the fixture instead of silently reaching its capture buffer. */
+void bug(const char *format, ...)
+{
+    static const char event_format[] =
+        "[WiFiEvent] id=%u g=%u rev=%u k=%u st=%ld reason=%u\n";
+    static const char hint_format[] = "[WiFiHint] id=%u g=%u st=%ld\n";
+    static const char link_format[] =
+        "[WiFiLink] g=%u u=%u st=%ld rb=%u ra=%u ev=%u lastid=%u k=%u reason=%u\n";
+    va_list arguments;
+    int written;
+
+    if (strcmp(format, event_format) != 0 &&
+        strcmp(format, hint_format) != 0 &&
+        strcmp(format, link_format) != 0) {
+        ++diagnostic_bad_formats;
+        return;
+    }
+    if (diagnostic_log_size >= sizeof diagnostic_log) {
+        ++diagnostic_bad_formats;
+        return;
+    }
+    va_start(arguments, format);
+    written = vsnprintf(diagnostic_log + diagnostic_log_size,
+                        sizeof diagnostic_log - diagnostic_log_size,
+                        format, arguments);
+    va_end(arguments);
+    if (written < 0 || (size_t)written >=
+                       sizeof diagnostic_log - diagnostic_log_size) {
+        ++diagnostic_bad_formats;
+        return;
+    }
+    diagnostic_log_size += (size_t)written;
+}
+
+static void check_diagnostics(const char *expected)
+{
+    CHECK(diagnostic_bad_formats == 0u);
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+    CHECK(strcmp(diagnostic_log, expected) == 0);
+#else
+    (void)expected;
+    CHECK(diagnostic_log[0] == '\0');
+#endif
+}
+
+static void check_no_ap_identity_output(void)
+{
+    CHECK(strstr(diagnostic_log, "S3CR3T_SSID") == NULL);
+    CHECK(strstr(diagnostic_log, "BSSID1") == NULL);
+    CHECK(strstr(diagnostic_log, "PW_SECRET") == NULL);
+}
 
 struct wire_buffer {
     uint8_t bytes[512];
@@ -671,6 +741,20 @@ static int query(void)
         &fixture.owner, &fixture.control, &fixture.fifo, 0u);
 }
 
+static void prepare_secret_hint(void)
+{
+    static const uint8_t secret_ssid[] = "S3CR3T_SSID";
+    uint8_t hint_ssid[P4_HOSTED_ASSOCIATION_SSID_SIZE] = { 0 };
+
+    memset(fixture.ap_ssid, 0, sizeof fixture.ap_ssid);
+    memcpy(fixture.ap_ssid, secret_ssid, sizeof secret_ssid - 1u);
+    fixture.ap_ssid_size = sizeof secret_ssid - 1u;
+    memcpy(fixture.ap_bssid, "BSSID1", P4_HOSTED_SCAN_BSSID_SIZE);
+    memcpy(hint_ssid, fixture.ap_ssid, fixture.ap_ssid_size);
+    prepare_hint(hint_ssid, fixture.ap_ssid_size, fixture.ap_bssid,
+                 fixture.ap_channel, fixture.ap_authmode);
+}
+
 static void expect_match(void)
 {
     CHECK(fixture.context.link_snapshot_matches_hint == TRUE);
@@ -1015,6 +1099,74 @@ static void test_unsubmitted_and_poisoned_timeout(void)
     expect_link_unknown();
 }
 
+static void test_numeric_diagnostics_preserve_query_decisions(void)
+{
+    fixture_init();
+    prepare_secret_hint();
+    diagnostic_reset();
+    CHECK(query());
+    expect_match();
+    check_diagnostics(
+        "[WiFiLink] g=305419888 u=1 st=0 rb=1 ra=1 ev=0 lastid=0 k=1 reason=0\n");
+    check_no_ap_identity_output();
+
+    fixture_init();
+    prepare_secret_hint();
+    fixture.mode = FAKE_INTERLEAVE_DOWN;
+    diagnostic_reset();
+    CHECK(query());
+    CHECK(fixture.event_dispatches == 1u);
+    CHECK(fixture.context.link_observation.revision == 2u);
+    CHECK(fixture.context.link_observation.kind == P4_HOSTED_LINK_DOWN);
+    CHECK(fixture.context.link_observation.reason == 8u);
+    CHECK(fixture.context.link_snapshot_matches_hint == FALSE);
+    CHECK(bytes_are_zero(&fixture.control.ap_info,
+                         sizeof fixture.control.ap_info));
+    expect_link_unknown();
+    CHECK(!fixture.owner.poisoned && !fixture.fifo.poisoned);
+    check_diagnostics(
+        "[WiFiEvent] id=776 g=305419888 rev=2 k=2 st=0 reason=8\n"
+        "[WiFiLink] g=305419888 u=1 st=0 rb=1 ra=2 ev=1 lastid=776 k=2 reason=8\n");
+    check_no_ap_identity_output();
+
+    fixture_init();
+    prepare_secret_hint();
+    fixture.mode = FAKE_REMOTE_300F;
+    diagnostic_reset();
+    CHECK(query());
+    CHECK(test_resource.associated == FALSE);
+    CHECK(test_resource.link_state == P4_WIFI_LINK_DOWN);
+    CHECK(bytes_are_zero(&test_resource.observed_ap,
+                         sizeof test_resource.observed_ap));
+    CHECK(!fixture.owner.poisoned && !fixture.fifo.poisoned);
+    check_diagnostics(
+        "[WiFiLink] g=305419888 u=1 st=12303 rb=1 ra=1 ev=0 lastid=0 k=1 reason=0\n");
+    check_no_ap_identity_output();
+
+    fixture_init();
+    prepare_secret_hint();
+    fixture.mode = FAKE_REMOTE_OTHER;
+    diagnostic_reset();
+    CHECK(!query());
+    check_diagnostics(
+        "[WiFiLink] g=305419888 u=1 st=5 rb=1 ra=1 ev=0 lastid=0 k=1 reason=0\n");
+    CHECK(fixture.owner.poisoned == 1u && fixture.fifo.poisoned == 1u);
+    CHECK(fixture.owner.ids.retired == 1u);
+    expect_link_unknown();
+    check_no_ap_identity_output();
+
+    fixture_init();
+    prepare_secret_hint();
+    fixture.mode = FAKE_WRONG_UID;
+    diagnostic_reset();
+    CHECK(!query());
+    check_diagnostics("");
+    CHECK(fixture.owner.poisoned == 1u && fixture.fifo.poisoned == 1u);
+    CHECK(fixture.owner.ids.retired == 1u);
+    expect_link_unknown();
+    check_no_ap_identity_output();
+}
+
 static void test_malformed_and_wrong_uid_retire(void)
 {
     uint8_t hint_ssid[P4_HOSTED_ASSOCIATION_SSID_SIZE] = {0};
@@ -1250,6 +1402,7 @@ static void test_recheck_during_query_cannot_publish_stale_snapshot(void)
     unsigned i;
     for (i = 0; i < sizeof modes / sizeof modes[0]; ++i) {
         fixture_init();
+        diagnostic_reset();
         fixture.ap_authmode = 7;
         prepare_typed_acceptance(P4_WIFI_FULLMAC_SAE_CCMP_PMF, 6);
         fixture.mode = modes[i];
@@ -1260,6 +1413,15 @@ static void test_recheck_during_query_cannot_publish_stale_snapshot(void)
               fixture.context.link_observation.revision);
         CHECK(fixture.event_dispatches == 1u);
         CHECK(!fixture.owner.poisoned && !fixture.fifo.poisoned);
+        if (modes[i] == FAKE_INTERLEAVE_BEACON)
+            check_diagnostics(
+                "[WiFiHint] id=21 g=305419888 st=0\n"
+                "[WiFiLink] g=305419888 u=1 st=0 rb=1 ra=1 ev=1 lastid=773 k=1 reason=0\n");
+        else
+            check_diagnostics(
+                "[WiFiHint] id=43 g=305419888 st=0\n"
+                "[WiFiLink] g=305419888 u=1 st=0 rb=1 ra=1 ev=1 lastid=773 k=1 reason=0\n");
+        check_no_ap_identity_output();
         fixture.mode = FAKE_AP_SUCCESS;
         CHECK(query());
         CHECK(fixture.exchange_calls == 2u);
@@ -1270,6 +1432,7 @@ static void test_recheck_during_query_cannot_publish_stale_snapshot(void)
 int main(void)
 {
     test_exact_request_response_and_dedup();
+    test_numeric_diagnostics_preserve_query_decisions();
     test_remote_statuses_down_or_quarantine();
     test_unsubmitted_and_poisoned_timeout();
     test_malformed_and_wrong_uid_retire();

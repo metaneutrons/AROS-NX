@@ -105,17 +105,23 @@ if ! awk '
 	exit 1
 fi
 
-for optimization in 0 2; do
-	"${CC:-cc}" -std=c99 -Wall -Wextra -Werror -pedantic -g \
-		-O"$optimization" -fsanitize=address,undefined \
-		-fno-omit-frame-pointer -I "$test_tmp" \
-		"$test_root/network/hosted_rpc.c" \
-		"$test_root/network/hosted_association.c" \
-		"$test_root/network/hosted_events.c" \
-		"$test_root/network/hosted_link.c" \
-		"$test_root/tools/test-wifi-owner-link.c" \
-		-o "$test_tmp/test-o$optimization"
-	ASAN_OPTIONS=halt_on_error=1:detect_stack_use_after_return=1 \
-	UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
-		"$test_tmp/test-o$optimization"
+for diagnostics in 0 1; do
+	for optimization in 0 2; do
+		printf 'wifi-owner-link: diagnostics=%s O%s\n' \
+			"$diagnostics" "$optimization"
+		"${CC:-cc}" -std=c99 -Wall -Wextra -Werror -pedantic -g \
+			-O"$optimization" \
+			-DP4_WIFI_ASSOC_DIAGNOSTICS="$diagnostics" \
+			-fsanitize=address,undefined -fno-omit-frame-pointer \
+			-I "$test_tmp" \
+			"$test_root/network/hosted_rpc.c" \
+			"$test_root/network/hosted_association.c" \
+			"$test_root/network/hosted_events.c" \
+			"$test_root/network/hosted_link.c" \
+			"$test_root/tools/test-wifi-owner-link.c" \
+			-o "$test_tmp/test-o$optimization"
+		ASAN_OPTIONS=halt_on_error=1:detect_stack_use_after_return=1 \
+		UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+			"$test_tmp/test-o$optimization"
+	done
 done

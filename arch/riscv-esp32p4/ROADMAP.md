@@ -153,7 +153,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
-| N2T | Explicit accepted-risk WLAN association test | `transient link; monitor DOWN isolated, cause open`: Connected open WLAN shown; generic parser/notifier correction14 regression PASS. Native1111984Ba31b79e6... SD file replaced/readback verified. Fresh attempt publishes link twice then WiFiRetire k3/s2/d27 without scoped sequence gaps/overflow; FullMAC peer admission0 | Attribute AP-info DOWN before another interactive attempt; corrected-stack startup/DHCP and original SAE/required-PMF/no-fallback, routes/DNS/bidirectional traffic/reconnect/load remain open |
+| N2T | Explicit accepted-risk WLAN association test | `transient link; monitor DOWN isolated, cause open`: Connected open WLAN shown; generic parser/notifier correction14 regression PASS. Native1111984Ba31b79e6... SD file replaced/readback verified. Fresh attempt publishes link twice then WiFiRetire k3/s2/d27 without scoped sequence gaps/overflow. Numeric query/event-reason observer native358556B84afccce... and eight sanitized host runs pass, deployment pending; FullMAC peer admission0 | Attribute AP-info DOWN before another interactive attempt; corrected-stack startup/DHCP and original SAE/required-PMF/no-fallback, routes/DNS/bidirectional traffic/reconnect/load remain open |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1698,6 +1698,12 @@ startup/IP gate remains open: the fresh card-return attempt fails earlier,
 after two successful network-info publications then WiFiRetire k3/s2/d27
 (radio monitor DOWN). No overflow or sequence gap in the189-row scoped capture.
 Audit correlated AP-info status before changing lifecycle/security fences.
+The opt-in resource query/event-reason observer is native-build verified:
+WiFiLink logs the UID-correlated AP-info status/revisions/event delta; WiFiEvent
+logs accepted lifecycle/link hints; WiFiHint logs generic event ID/status before
+existing rejection. No stale-UP adoption, timeout extension or new authority.
+Eight diagnostic-off/on O0/O2 sanitized callback/AP-info runs pass; deployment
+and a fresh synchronized capture remain pending.
 
 Canonical name decision (2026-10-12): retain flashdisk.device and its generic
 MBR-derived FLASHDISK0P0 DOS name; no architecture-specific rename policy.
@@ -43256,3 +43262,42 @@ remain open. No partial stage is a complete A/B update system.
   Bootloader/table/BSP/helper/SD/C6 unchanged. Native overload, physical unplug,
   D1001 and fresh interactive gates stay open. Continue numeric radio-status/
   disconnect-reason diagnosis without altering link/security fences.
+
+### 2026-10-14 - N2T correlated query and event-reason observer candidate
+
+- Read-only source/reference audit finds fresh request UID reservation and
+  generation/UID/response-ID matching, zeroed typed decode scratch and refresh
+  revision rejection. No concrete stale AP-info defect found. Pinned peer
+  request294 calls esp_wifi_sta_get_ap_info;0x300f means not connected. Cached
+  GETNETWORKINFO publication alone does not prove continued peer link liveness.
+  Installed C6 identity/behavior is not proven by pinned-source lineage, and
+  UID0 events have no association attempt identifier.
+- Add opt-in P4_WIFI_ASSOC_DIAGNOSTICS numeric WiFiLink after decoded correlated
+  refresh, before existing revision/budget checks: generation, request UID,
+  status, revisions before/after, accepted-event count delta, last accepted
+  envelope ID, observation kind/reason. lastid/reason may describe an earlier
+  observation when ev0; they are not a newly received disconnect. WiFiEvent
+  records accepted lifecycle/link hints; WiFiHint records decoded generic773
+  event ID/status even before nonzero-status/allowlist rejection. No identity
+  bytes, pointers, credentials, new state or relaxed lifecycle/security fence.
+  Queries remain at the existing one-second cadence/event refresh, not a new
+  poll or retry loop. Diagnostic logging can still perturb scheduling.
+- Independent review identified missing rejected-generic status and ambiguous
+  last event labeling; both corrected. Native resource build exits0 after
+  object invalidation with existing JC1060/ownerCPU1/accepted-risk/scan/assoc
+  flags, IO0 and FullMAC peer admission0. Final358556B SHA256
+  84afcccefe2066c8d3cddd165d04c607140d5295fb969f1e839969c4b0aebede;
+  earlier358404B candidate superseded and never flashed. Source-extracted
+  diagnostic-on/off O0/O2 ASan/UBSan callback/AP-info regressions pass:
+  AP-info1145 and link965 checks in each of four configurations. Strict
+  numeric-format stubs validate UID/status/revisions/reasons/stale/down/error
+  behavior and reject credential/identity sentinels. Primary repeat passes;
+  extraction mocks are not full native scheduler/radio proof. Early fixture
+  failures (missing modeled diagnostic field and normalized error event ID)
+  retained, corrected without production policy changes. No hardware
+  change from this observer yet; current corea68ca519.../BSPcc8f1a3d.../
+  helper97b9a054.../SYS stacka31b79e6.../C6 preserved.
+- Evidence console-prefix-2026-10-14.Cu8SYY/wifi-resource-reviewed-build.log.
+  Next tests/review, preserved-member package audit and exact-range deployment,
+  then fresh readiness for one scan/open attempt with capture already armed.
+  AROSTCP/DHCP/IP/data/SAE/reconnect/load remain open; do not hide monitor DOWN.

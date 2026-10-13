@@ -103,6 +103,12 @@ radio link monitor reports DOWN. The189-row scoped capture has no sequence
 gap or overflow; source attribution of the correlated AP-info query remains
 open. Native stack startup and DHCP must still be tested. IP/data/SAE gates
 remain open; earlier transient link removal is not closed by this one attempt.
+The next resource candidate adds opt-in numeric WiFiLink (correlated query UID,
+decoded status, revision/event delta and last accepted hint/reason), WiFiEvent
+(accepted lifecycle/link hint) and WiFiHint (generic event ID/status before
+rejection). No credential/identity bytes or lifecycle/security policy change.
+Source audit finds no proven stale-reply/correlation defect; the peer-reported
+status and disconnect reason still require a fresh synchronized capture.
 Console overflow reporting stays unconditional and unchanged.
 No C6 update or
 security-policy change is claimed.

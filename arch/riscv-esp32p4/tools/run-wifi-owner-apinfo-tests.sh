@@ -161,42 +161,48 @@ extract_function wifi_owner_refresh_link_snapshot \
 cc=${CC:-cc}
 common_flags="-std=c99 -Wall -Wextra -Werror -pedantic -g -fsanitize=address,undefined -fno-omit-frame-pointer"
 
-for optimization in 0 2; do
-	# The real owner implementation is linked for retirement/cancel checks, but
-	# its exchange symbol is renamed so the test supplies a bounded fake exchange.
-	# Intentional splitting applies the fixed flags as separate compiler args.
-	# shellcheck disable=SC2086
-	"$cc" $common_flags "-O$optimization" -I "$test_root/network" \
-		-Dp4_hosted_owner_exchange=p4_hosted_owner_exchange_unused \
-		-c "$test_root/network/hosted_owner.c" -o "$owner_object"
+for diagnostics in 0 1; do
+	for optimization in 0 2; do
+		printf 'wifi-owner-apinfo: diagnostics=%s O%s\n' \
+			"$diagnostics" "$optimization"
+		# The real owner implementation is linked for retirement/cancel checks,
+		# but its exchange symbol is renamed so the test supplies a bounded fake.
+		# shellcheck disable=SC2086
+		"$cc" $common_flags "-O$optimization" \
+			"-DP4_WIFI_ASSOC_DIAGNOSTICS=$diagnostics" \
+			-I "$test_root/network" \
+			-Dp4_hosted_owner_exchange=p4_hosted_owner_exchange_unused \
+			-c "$test_root/network/hosted_owner.c" -o "$owner_object"
 
-	# shellcheck disable=SC2086
-	"$cc" $common_flags "-O$optimization" -I "$test_tmp" \
-		-I "$test_root/network" \
-		"$test_root/network/hosted_pending.c" \
-		"$test_root/network/hosted_ota.c" \
-		"$test_root/network/hosted_rx.c" \
-		"$test_root/network/hosted_inbox.c" \
-		"$test_root/network/hosted_frames.c" \
-		"$test_root/network/hosted_control.c" \
-		"$test_root/network/hosted_request_ids.c" \
-		"$test_root/network/hosted_tx.c" \
-		"$test_root/network/hosted_fifo.c" \
-		"$test_root/network/sdio_commands.c" \
-		"$test_root/network/hosted_mac.c" \
-		"$test_root/network/hosted_epoch_reassembly.c" \
-		"$test_root/network/hosted_rpc.c" \
-		"$test_root/network/hosted_serial.c" \
-		"$test_root/network/hosted_wire.c" \
-		"$test_root/network/hosted_init.c" \
-		"$test_root/network/hosted_wifi.c" \
-		"$test_root/network/hosted_scan.c" \
-		"$test_root/network/hosted_association.c" \
-		"$test_root/network/hosted_events.c" \
-		"$test_root/network/hosted_link.c" \
-		"$test_root/tools/test-wifi-owner-apinfo.c" \
-		"$owner_object" -o "$test_tmp/test-o$optimization"
-	ASAN_OPTIONS=halt_on_error=1:detect_stack_use_after_return=1 \
-	UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
-		"$test_tmp/test-o$optimization"
+		# shellcheck disable=SC2086
+		"$cc" $common_flags "-O$optimization" \
+			"-DP4_WIFI_ASSOC_DIAGNOSTICS=$diagnostics" \
+			-I "$test_tmp" -I "$test_root/network" \
+			"$test_root/network/hosted_pending.c" \
+			"$test_root/network/hosted_ota.c" \
+			"$test_root/network/hosted_rx.c" \
+			"$test_root/network/hosted_inbox.c" \
+			"$test_root/network/hosted_frames.c" \
+			"$test_root/network/hosted_control.c" \
+			"$test_root/network/hosted_request_ids.c" \
+			"$test_root/network/hosted_tx.c" \
+			"$test_root/network/hosted_fifo.c" \
+			"$test_root/network/sdio_commands.c" \
+			"$test_root/network/hosted_mac.c" \
+			"$test_root/network/hosted_epoch_reassembly.c" \
+			"$test_root/network/hosted_rpc.c" \
+			"$test_root/network/hosted_serial.c" \
+			"$test_root/network/hosted_wire.c" \
+			"$test_root/network/hosted_init.c" \
+			"$test_root/network/hosted_wifi.c" \
+			"$test_root/network/hosted_scan.c" \
+			"$test_root/network/hosted_association.c" \
+			"$test_root/network/hosted_events.c" \
+			"$test_root/network/hosted_link.c" \
+			"$test_root/tools/test-wifi-owner-apinfo.c" \
+			"$owner_object" -o "$test_tmp/test-o$optimization"
+		ASAN_OPTIONS=halt_on_error=1:detect_stack_use_after_return=1 \
+		UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+			"$test_tmp/test-o$optimization"
+	done
 done

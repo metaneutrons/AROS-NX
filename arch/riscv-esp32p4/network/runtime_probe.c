@@ -820,7 +820,14 @@ static int wifi_owner_event(void *opaque,
     if (item->msg_id == 773u || item->msg_id == 775u || item->msg_id == 776u) {
         if (item->msg_id == 773u) {
             struct p4_hosted_wifi_event event;
-            if (!p4_hosted_association_wifi_event(&rpc, &event) || event.status)
+            if (!p4_hosted_association_wifi_event(&rpc, &event))
+                return 0;
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+            bug("[WiFiHint] id=%u g=%u st=%ld\n",
+                (unsigned)event.event_id, (unsigned)context->generation,
+                (long)event.status);
+#endif
+            if (event.status)
                 return 0;
             /* Explicit STA-only policy for the pinned IDF event space.
              * WPS/SoftAP/NAN and dedicated events in a generic wrapper are
@@ -853,6 +860,15 @@ static int wifi_owner_event(void *opaque,
         if (!recheck && !p4_hosted_link_observe(&context->link_observation,
                                     context->generation, &rpc))
             return 0;
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+        if (!recheck)
+            bug("[WiFiEvent] id=%u g=%u rev=%u k=%u st=%ld reason=%u\n",
+                (unsigned)item->msg_id, (unsigned)context->generation,
+                (unsigned)context->link_observation.revision,
+                (unsigned)context->link_observation.kind,
+                (long)context->link_observation.status,
+                (unsigned)context->link_observation.reason);
+#endif
         /* No channel/RSSI detail survives generic773. Suspend traffic and
          * force a current-AP query, without inventing disconnect/connected
          * events or changing the previously negotiated security observation.
@@ -1112,6 +1128,9 @@ static int wifi_owner_refresh_link_snapshot(struct wifi_probe_context *context,
     const ULONG timeout_us = 1000000UL;
     ULONG generation = context->generation;
     ULONG revision = context->link_observation.revision;
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+    ULONG events_before;
+#endif
     ULONG started, wait;
     unsigned index;
     struct P4WifiBase *base = wifi_resource_base;
@@ -1130,11 +1149,27 @@ static int wifi_owner_refresh_link_snapshot(struct wifi_probe_context *context,
     base->link_state = P4_WIFI_LINK_UNKNOWN;
     p4host_zero(&base->observed_ap, sizeof(base->observed_ap));
     ReleaseSemaphore(&base->client_lock);
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+    events_before = context->owner_events;
+#endif
     if (!wifi_owner_request(context, owner, control, fifo, checksum, 294u,
                             timeout_us)) {
         p4host_zero(&control->ap_info, sizeof(control->ap_info));
         return 0;
     }
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+    /* Numeric metadata only, after the UID-correlated response decoder.
+     * This is an observation, not permission to publish a stale snapshot.
+     * Record changed revisions before the existing rejection below. */
+    bug("[WiFiLink] g=%u u=%u st=%ld rb=%u ra=%u ev=%u lastid=%u k=%u reason=%u\n",
+        (unsigned)generation, (unsigned)control->uid,
+        (long)control->ap_info.status, (unsigned)revision,
+        (unsigned)context->link_observation.revision,
+        (unsigned)(context->owner_events - events_before),
+        (unsigned)context->owner_last_event,
+        (unsigned)context->link_observation.kind,
+        (unsigned)context->link_observation.reason);
+#endif
     if (context->generation != generation ||
         context->link_observation.generation != generation ||
         context->link_observation.revision != revision ||
