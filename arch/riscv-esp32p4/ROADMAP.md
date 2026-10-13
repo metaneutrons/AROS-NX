@@ -42577,3 +42577,28 @@ remain open. No partial stage is a complete A/B update system.
 - Request fresh readiness for exactly one flash-helper Scan/open Connect
   with a new pre-armed capture. The discriminator is deployed, not a fix or
   successful radio/IP test. All original credential/SAE/PMF gates remain.
+
+### 2026-10-13 - busy-branch interactive attempt armed
+
+- Fabian confirms fresh readiness. New passive600s open-busy.log and receipt
+  sidecar are armed in the same evidence directory; session43329.
+  open_end verified before requesting FLASHDISK0P0:WiFi, one Scan and
+  exactly one open-network Connect. No reset/flash or power separation in
+  this window. Completion/hash, branch marker and user result remain pending.
+
+### 2026-10-13 - stale busy capture completed; fresh reader requested
+
+- Fabian reports a long absence and explicitly requests a fresh capture.
+  Previous session43329 already completed exit0/status=ok,
+  600.148s/12958B. open-busy.log SHA256
+  3cdc110795a88e2466c214cb438a02466edb61c4c291850f1e98b5df542d4e88.
+  It contains manager run entry and repeated WiFiOpen busy1: the first
+  AttemptSemaphore refuses the unit lock. User timing/selected attempt is
+  not freshly correlated; no association success or permanent-lock cause
+  inferred. Preserve this evidence, do not restart/overwrite the same file.
+- Expected USB serial80:F1:B2:D3:3B:A6 remains onusbmodem2101, no port owner
+  after prior reader exits. Fresh passive600s open-busy-fresh.log/receipt
+  sidecar starts, session41018; open_end verified before any new interaction.
+  No reset/flash/C6/SD mutation. Request initial flash-app status first;
+  do not repeat Connect blindly while an old manager may still hold work.
+  Fresh completion/hash and GUI result remain pending.
