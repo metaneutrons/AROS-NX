@@ -43719,6 +43719,12 @@ remain open. No partial stage is a complete A/B update system.
   injection-order corrections and failed logs are retained in
   disconnect-fence-first-idle-tests*.log, not hardware evidence.
   These are source/build results, not radio/GUI/IP/data acceptance.
+- Final independent test review identified missing owned-password assertions
+  on the fresh path. Added protected fresh success and prequery-error cases
+  using unchanged secret-wipe checks. Full nine-run sanitized matrix exits0,
+  now554754 checks; initial-idle-association-secret-regression.log SHA256
+  c1b158c6b0b1516757c73780c83f3d674e109bc4a8f3f0137b0ea1c5462b7846.
+  Runtime/native/package unchanged; no credential printed or gate relaxed.
 - Next: complete the association matrix, commit, independently read back only
   this BSP and verify headless return, then obtain fresh readiness for one
   open-WLAN Scan/Connect. No C6 update or flash metadata writes. Corrected SYS

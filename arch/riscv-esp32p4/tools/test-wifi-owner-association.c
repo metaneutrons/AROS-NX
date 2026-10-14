@@ -2933,6 +2933,28 @@ static void test_first_idle_join_contradiction_and_config_cleanup(void)
     check_restored(FALSE);
 }
 
+static void test_first_idle_join_owned_secret_cleanup(void)
+{
+    struct p4_wifi_association_target target;
+    unsigned failure;
+    for (failure = 0; failure < 2; ++failure) {
+        fixture_init();
+        target_init(&target, 1u);
+        f.preflight_event = PREFLIGHT_NONE;
+        prepare_first_idle_join_candidate();
+        if (failure) {
+            f.fail_id = 294u;
+            f.fail_occurrence = 1u;
+            f.fail_status = 5;
+        }
+        CHECK(invoke(&target) == (failure ? FALSE : TRUE));
+        CHECK(f.request_count[283u] == 0u);
+        CHECK(f.context.first_join_pending == FALSE);
+        check_secret_wiped();
+        check_restored(FALSE);
+    }
+}
+
 static void test_explicit_disconnect_consumes_first_join_candidate(void)
 {
     fixture_init();
@@ -3000,6 +3022,7 @@ int main(void)
     test_first_idle_join_fallbacks_to_disconnect();
     test_first_idle_join_prequery_failures();
     test_first_idle_join_contradiction_and_config_cleanup();
+    test_first_idle_join_owned_secret_cleanup();
     test_explicit_disconnect_consumes_first_join_candidate();
 #if P4_WIFI_DISCONNECT_EVENT_FENCE
     test_disconnect_event_fence_delayed_down();
