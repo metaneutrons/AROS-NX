@@ -153,7 +153,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; transition-AP SAE-only caller regression corrected and passes473 checks O0/O2; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
-| N2T | Explicit accepted-risk WLAN association test | `first-idle candidate installed; association open`: One-shot reset/startup record and two stable absent queries implemented, including late initial START. Resource23be48ff.../BSPaa776547... exact readback and headless return verified; no new association yet. Idle leave probe refused/withdrawn; BSPde813a9a... retained for recovery. Earlier first DOWN/retry distinction unresolved. Quiet touch preserved. Corrected SYS stacka31b79e6... startup/IP untested; FullMAC peer admission0 | Obtain fresh user readiness and verify first idle join on installed peer; retain teardown for later/ambiguous states. Corrected-stack/DHCP, original SAE/required-PMF/no-fallback, routes/DNS/bidirectional traffic/reconnect/load remain open |
+| N2T | Explicit accepted-risk WLAN association test | `first-idle candidate installed; association open`: One-shot reset/startup record and two stable absent queries implemented, including late initial START. Resource23be48ff.../BSPaa776547... exact readback and headless return verified; no new association yet. Idle leave probe refused/withdrawn; BSPde813a9a... retained for recovery. Earlier first DOWN/retry distinction unresolved. Generic BSSID positive-error defect reproduced offline, separate fix pending. Quiet touch preserved. Corrected SYS stacka31b79e6... startup/IP untested; FullMAC peer admission0 | Obtain fresh user readiness and verify first idle join on installed peer; retain teardown for later/ambiguous states. Corrected-stack/DHCP, original SAE/required-PMF/no-fallback, routes/DNS/bidirectional traffic/reconnect/load remain open |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1737,7 +1737,8 @@ the first admitted attempt consumes eligibility permanently for that reset.
 Candidate installed with independent exact readback and headless return;
 installed-peer association and IP/security qualification remain open.
 Generic SANA-II get_bssid also returns positive1 on missing data contrary to
-its documented negative-failure contract; source audit confirmed, not yet fixed.
+its documented negative-failure contract; source-extracted O0/O2 host audit
+reproduces all three failure classes. Not yet fixed or deployed.
 Do not attribute the pre-CONNECT idle refusal to that separate defect.
 
 Canonical name decision (2026-10-12): retain flashdisk.device and its generic
@@ -43783,3 +43784,29 @@ remain open. No partial stage is a complete A/B update system.
   admission0, required-PMF/no-fallback, installed-peer negotiation and all
   radio/IP/data gates remain unchanged/open. Next requires fresh readiness
   and assigned capture for one open Connect, then diagnose actual result.
+
+### 2026-10-14 - N2T generic BSSID failure contract reproduced offline
+
+- Prior continuation advanced qualification tests/docs commit88fc6f3e44.
+  This turn leaves all installed bytes unchanged. Target devserial port remains
+  connected; passive read through26417 contains idle AP-info0x300f/revision2
+  only, no new request/RPC/join/ROM or matched fatal/Guru/overflow signature.
+  No interaction has been requested before fresh readiness.
+- Evidence-only bssid-contract-audit.py extracts the exact get_bssid callback
+  from production source, compiles strict C99/Wall/Wextra/Werror at O0/O2 and
+  checks the documented0/-1 return contract with host pool/I/O/tag fakes.
+  Success copies both BSSID buffers correctly. Failed pool allocation, DoIO
+  error and absent tag each return+1 rather than-1, at both optimizations.
+  Actual audit exit1; each child exit1 with three contract failures. This is
+  intentional failing defect reproduction, not a passing regression or native
+  scheduler/device proof. Existing code's DeletePool(NULL) behavior is not
+  established by these fakes and is not claimed safe.
+- Log bssid-contract-audit.log SHA256
+  77641c1dc9c8a03d3d30193152edf4ac44af983a31f179f85a300213ac771fd4,
+  console-prefix-2026-10-14.Cu8SYY. Existing RSN callers accept nonnegative
+  results. Correct the generic callback on an upstream-compatible branch and
+  turn the same failure cases green separately; not the cause of the idle
+  pre-CONNECT refusal and not a second variable in the next installed test.
+- Immediate dependency remains fresh display readiness for a single open
+  Scan/Connect against the deployed BSP. First-join radio outcome, corrected
+  AROSTCP startup/IP, SAE/required PMF/no fallback and full data/load remain open.

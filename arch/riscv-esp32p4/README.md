@@ -166,6 +166,9 @@ The source-extracted SAE caller baseline now tests WPA2/WPA3 transition scan
 advertisement as an SAE-only choice, matching the existing policy; mixed client
 SAE/PSK fallback and PSK-only AP remain refused. O0/O2 ASan/UBSan473 checks
 each pass. This updates a stale test expectation, not firmware or acceptance.
+Separately, a source-extracted host audit reproduces the generic SANA-II BSSID
+callback's incorrect positive failure return at O0/O2. That callback correction
+is still pending; installed WirelessManager is unchanged for the first-join test.
 Console overflow reporting stays unconditional and unchanged.
 No C6 update or
 security-policy change is claimed.
