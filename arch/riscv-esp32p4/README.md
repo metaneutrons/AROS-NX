@@ -149,11 +149,16 @@ and headless return. No root fix or WiFi/IP acceptance follows from this run.
 Espressif documents the leave event for an already-connected station, not
 every successful idle Disconnect. Missing-event refusal therefore cannot
 establish a peer defect; do not enable this probe as production policy.
-Next implement the reference's first idle join only with a one-shot,
+The candidate now implements the reference's first idle join only with a one-shot,
 post-hardware-reset/startup eligibility record, no prior association or
 maintenance reuse, successful STA_START observation and two stable correlated
 NOT_CONNECT queries. Every other case retains the existing teardown path;
-FullMAC admission/security gates remain unchanged. This flow is not yet implemented.
+FullMAC admission/security gates remain unchanged. Late initial STA_START can
+arrive while querying, but its arrival query never counts as a stable sample.
+Decoded query errors fail before mutation; connected state uses legacy teardown.
+Native resource362976B23be48ff... builds; BSP4052196Baa776547... preserves all
+41 other members and passes the loader audit. This candidate is not yet deployed
+or hardware-qualified; the restored BSPde813a9a... remains installed.
 Console overflow reporting stays unconditional and unchanged.
 No C6 update or
 security-policy change is claimed.

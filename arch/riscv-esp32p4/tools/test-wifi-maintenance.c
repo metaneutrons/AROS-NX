@@ -144,6 +144,7 @@ struct P4SDMMCHost {
 struct wifi_probe_context {
     struct P4SDMMCHost *host;
     ULONG generation;
+    BOOL first_join_pending;
 };
 
 struct wifi_device_runtime {
@@ -3981,8 +3982,18 @@ static void test_service_drain_fences(void)
 {
     unsigned fence_case;
 
+    prepare_service(P4_WIFI_MAINT_IDLE);
+    context.first_join_pending = TRUE;
+    CHECK(service_step() == 1);
+    CHECK(context.first_join_pending == TRUE);
+    prepare_service(P4_WIFI_MAINT_RELEASED);
+    context.first_join_pending = TRUE;
+    CHECK(service_step() == 1);
+    CHECK(context.first_join_pending == TRUE);
+
     for (fence_case = 0u; fence_case < 4u; ++fence_case) {
         prepare_service(P4_WIFI_MAINT_REQUESTED);
+        context.first_join_pending = TRUE;
         if (fence_case == 0u)
             owner.pending_active = 1u;
         else if (fence_case == 1u)
@@ -3992,6 +4003,7 @@ static void test_service_drain_fences(void)
         else
             fifo.busy = 1u;
         CHECK(service_step() == 2);
+        CHECK(context.first_join_pending == FALSE);
         CHECK(request_calls == 0u);
         CHECK(stopped_calls == 0u);
         CHECK(base.maintenance_state == P4_WIFI_MAINT_REQUESTED);
@@ -4030,6 +4042,7 @@ static void test_release_start_ack_and_offline_state(void)
     ULONG token;
 
     prepare_service(P4_WIFI_MAINT_ACTIVE);
+    context.first_join_pending = TRUE;
     base.associated = FALSE; /* STOP was acknowledged before ACTIVE. */
     base.maintenance_token = TEST_TOKEN + 1u;
     base.maintenance_task = &requester_task;
@@ -4037,12 +4050,15 @@ static void test_release_start_ack_and_offline_state(void)
     CHECK(wifi_maintenance_release(&base, token));
     CHECK(base.maintenance_state == P4_WIFI_MAINT_RELEASING);
     CHECK(service_step() == 1);
+    CHECK(context.first_join_pending == FALSE);
     CHECK(request_calls == 1u);
     CHECK(request_ids[0] == 280u);
     CHECK(request_budgets[0] == 8000000u);
     CHECK(base.maintenance_state == P4_WIFI_MAINT_RELEASED);
     CHECK(base.associated == FALSE);
     CHECK(ready_calls == 1u);
+    CHECK(service_step() == 1);
+    CHECK(context.first_join_pending == FALSE);
 
     prepare_service(P4_WIFI_MAINT_RELEASING);
     request_succeeds = FALSE;

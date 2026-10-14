@@ -75,6 +75,8 @@ static LONG diagnostic_rpc_status, diagnostic_event_status, diagnostic_hint_stat
 static unsigned diagnostic_valid;
 static unsigned diagnostic_rpc_count, diagnostic_event_count;
 static unsigned diagnostic_hint_count;
+static unsigned diagnostic_prelude_count, diagnostic_prelude_first;
+static unsigned diagnostic_prelude_generation, diagnostic_prelude_revision;
 
 /* Consume only the numeric observer's exact formats. No printf of borrowed
  * payloads is allowed through this host boundary. */
@@ -169,6 +171,20 @@ static void bug(const char *format, ...)
         (void)id;
         diagnostic_hint_status = status;
         ++diagnostic_hint_count;
+        return;
+    }
+    if (!strcmp(format, "[WiFiPrelude] first=%u g=%u rev=%u\n")) {
+        unsigned first, generation, revision;
+        va_start(args, format);
+        first = va_arg(args, unsigned);
+        generation = va_arg(args, unsigned);
+        revision = va_arg(args, unsigned);
+        va_end(args);
+        CHECK(first <= 1u && generation != 0u);
+        diagnostic_prelude_first = first;
+        diagnostic_prelude_generation = generation;
+        diagnostic_prelude_revision = revision;
+        ++diagnostic_prelude_count;
         return;
     }
     CHECK(!strcmp(format, "[WiFiJoin] s=%u r=%u st=%ld v=%u ok=%u\n"));
@@ -284,8 +300,8 @@ struct fixture {
     unsigned cancel_called_owned;
     unsigned request_count[600];
     unsigned submitted_count[600];
-    uint32_t request_sequence[512];
-    int32_t request_status_sequence[512];
+    uint32_t request_sequence[1024];
+    int32_t request_status_sequence[1024];
     unsigned request_sequence_count;
     ULONG first_disconnect_timeout;
     ULONG cleanup_disconnect_timeout;
@@ -318,6 +334,7 @@ struct fixture {
     unsigned deadline_during_config;
     unsigned break_after_initial_disconnect;
     unsigned generation_change_final;
+    unsigned generation_change_first_prelude;
     unsigned cancel_final_snapshot;
     unsigned cancel_on_final_release;
     unsigned event_during_config;
@@ -385,6 +402,13 @@ static void check_request_order(const uint32_t *expected, unsigned count)
 {
     unsigned index;
     CHECK(expected != NULL);
+    if (f.request_sequence_count != count) {
+        fprintf(stderr, "request order count got=%u expected=%u:",
+                f.request_sequence_count, count);
+        for (index = 0u; index < f.request_sequence_count; ++index)
+            fprintf(stderr, " %u", f.request_sequence[index]);
+        fputc('\n', stderr);
+    }
     CHECK(f.request_sequence_count == count);
     for (index = 0u; index < count; ++index)
         CHECK(f.request_sequence[index] == expected[index]);
@@ -1023,6 +1047,12 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
                (!state->fail_occurrence || occurrence == state->fail_occurrence)) {
         status = state->fail_status;
     }
+    if (request.msg_id == 294u && state->request_count[282u] == 0u &&
+        state->generation_change_first_prelude &&
+        state->ap_info_calls == 1u) {
+        state->generation_change_first_prelude = 0u;
+        ++context->generation;
+    }
     if (request.msg_id == 283u && occurrence == 1u)
         state->initial_disconnect_status = status;
     if (request.msg_id == 294u) {
@@ -1247,6 +1277,13 @@ static void check_restored(BOOL expected_associated)
 static void check_secret_wiped(void)
 {
     CHECK(watched_secret_wipes != 0u);
+    CHECK(bytes_zero(&f.control.sta_config, sizeof(f.control.sta_config)));
+    CHECK(bytes_zero(f.control.request, sizeof(f.control.request)));
+    CHECK(bytes_zero(&f.control.ap_info, sizeof(f.control.ap_info)));
+}
+
+static void check_open_association_buffers_cleared(void)
+{
     CHECK(bytes_zero(&f.control.sta_config, sizeof(f.control.sta_config)));
     CHECK(bytes_zero(f.control.request, sizeof(f.control.request)));
     CHECK(bytes_zero(&f.control.ap_info, sizeof(f.control.ap_info)));
@@ -2520,6 +2557,89 @@ static void test_unqualified_peer_refuses_typed_without_io(void)
     }
 }
 
+static void seed_initial_join_observation(unsigned kind, ULONG generation,
+                                          ULONG revision, LONG status,
+                                          BOOL owner_started)
+{
+    fixture_init();
+    f.context.owner_started = owner_started;
+    f.context.link_observation.generation = generation;
+    f.context.link_observation.revision = revision;
+    f.context.link_observation.kind = kind;
+    f.context.link_observation.status = status;
+    f.context.first_join_pending = TRUE;
+    f.context.first_join_revision = 99u;
+}
+
+static void check_initial_join_not_armed(unsigned kind, ULONG generation,
+                                         ULONG revision, LONG status,
+                                         BOOL owner_started,
+                                         BOOL fresh_reset)
+{
+    seed_initial_join_observation(kind, generation, revision, status,
+                                  owner_started);
+    wifi_owner_initial_join_start(&f.context, fresh_reset);
+    CHECK(f.context.first_join_pending == FALSE);
+    CHECK(f.context.first_join_revision == 0u);
+}
+
+static void test_initial_join_start_helper_predicate(void)
+{
+    seed_initial_join_observation(P4_HOSTED_LINK_STATION_START,
+        TEST_GENERATION, 11u, 0, TRUE);
+    wifi_owner_initial_join_start(&f.context, TRUE);
+    CHECK(f.context.first_join_pending == TRUE);
+    CHECK(f.context.first_join_revision == 11u);
+
+    seed_initial_join_observation(P4_HOSTED_LINK_NONE,
+        TEST_GENERATION, 0u, 0, TRUE);
+    wifi_owner_initial_join_start(&f.context, TRUE);
+    CHECK(f.context.first_join_pending == TRUE);
+    CHECK(f.context.first_join_revision == 1u);
+
+    seed_initial_join_observation(P4_HOSTED_LINK_STATION_STOP,
+        TEST_GENERATION, 12u, 0, TRUE);
+    wifi_owner_initial_join_start(&f.context, TRUE);
+    CHECK(f.context.first_join_pending == TRUE);
+    CHECK(f.context.first_join_revision == 13u);
+
+    check_initial_join_not_armed(P4_HOSTED_LINK_STATION_START,
+        TEST_GENERATION, 1u, 0, TRUE, FALSE);
+    check_initial_join_not_armed(P4_HOSTED_LINK_STATION_START,
+        TEST_GENERATION, 1u, 0, (BOOL)2, TRUE);
+    check_initial_join_not_armed(P4_HOSTED_LINK_STATION_START,
+        TEST_GENERATION, 1u, 0, FALSE, TRUE);
+    check_initial_join_not_armed(P4_HOSTED_LINK_STATION_START,
+        TEST_GENERATION + 1u, 1u, 0, TRUE, TRUE);
+    check_initial_join_not_armed(P4_HOSTED_LINK_STATION_START,
+        TEST_GENERATION, 1u, -5, TRUE, TRUE);
+    check_initial_join_not_armed(P4_HOSTED_LINK_STATION_START,
+        TEST_GENERATION, 0u, 0, TRUE, TRUE);
+    check_initial_join_not_armed(P4_HOSTED_LINK_STATION_START,
+        TEST_GENERATION, UINT32_MAX, 0, TRUE, TRUE);
+    check_initial_join_not_armed(P4_HOSTED_LINK_STATION_STOP,
+        TEST_GENERATION, 0u, 0, TRUE, TRUE);
+    check_initial_join_not_armed(P4_HOSTED_LINK_STATION_STOP,
+        TEST_GENERATION, UINT32_MAX, 0, TRUE, TRUE);
+    check_initial_join_not_armed(P4_HOSTED_LINK_NONE,
+        TEST_GENERATION, 1u, 0, TRUE, TRUE);
+    check_initial_join_not_armed(P4_HOSTED_LINK_UP_HINT,
+        TEST_GENERATION, 1u, 0, TRUE, TRUE);
+    check_initial_join_not_armed(P4_HOSTED_LINK_DOWN,
+        TEST_GENERATION, 1u, 0, TRUE, TRUE);
+}
+
+static void prepare_first_idle_join_candidate(void)
+{
+    struct p4_hosted_inbox_item item;
+    f.context.owner_started = TRUE;
+    f.control.startup_ok = 1u;
+    CHECK(make_wifi_lifecycle_event(&item, P4_HOSTED_WIFI_EVENT_STA_START));
+    CHECK(wifi_owner_event(&f.context, &item) == 1);
+    wifi_owner_initial_join_start(&f.context, TRUE);
+    CHECK(f.context.first_join_pending == TRUE);
+}
+
 static void test_numeric_observer_parsers(void)
 {
     diagnostic_count = 0u;
@@ -2529,6 +2649,10 @@ static void test_numeric_observer_parsers(void)
     diagnostic_rpc_status = 0;
     diagnostic_event_status = 0;
     diagnostic_hint_status = 0;
+    diagnostic_prelude_count = 0u;
+    diagnostic_prelude_first = 0u;
+    diagnostic_prelude_generation = 0u;
+    diagnostic_prelude_revision = 0u;
     bug("[WiFiJoin] s=0 r=0 st=-1 ok=0\n");
     bug("[WiFiJoin] s=%u r=%u st=%ld v=%u ok=%u\n",
         3u, 283u, (LONG)0, 1u, 0u);
@@ -2542,6 +2666,8 @@ static void test_numeric_observer_parsers(void)
         (LONG)-5, UINT32_C(0x76543210));
     bug("[WiFiHint] id=%u g=%u st=%ld\n",
         P4_HOSTED_WIFI_EVENT_STA_START, TEST_GENERATION, (LONG)-5);
+    bug("[WiFiPrelude] first=%u g=%u rev=%u\n",
+        1u, TEST_GENERATION, 7u);
     CHECK(diagnostic_count == 2u);
     CHECK(diagnostic_rpc_count == 3u);
     CHECK(diagnostic_event_count == 1u);
@@ -2549,6 +2675,273 @@ static void test_numeric_observer_parsers(void)
     CHECK(diagnostic_rpc_status == (LONG)-5);
     CHECK(diagnostic_event_status == (LONG)-5);
     CHECK(diagnostic_hint_status == (LONG)-5);
+    CHECK(diagnostic_prelude_count == 1u);
+    CHECK(diagnostic_prelude_first == 1u);
+    CHECK(diagnostic_prelude_generation == TEST_GENERATION);
+    CHECK(diagnostic_prelude_revision == 7u);
+}
+
+static void test_first_idle_join_success_and_one_shot(void)
+{
+    static const uint32_t first_order[] = {294u, 294u, 284u, 282u, 294u};
+    static const uint32_t late_start_order[] =
+        {294u, 294u, 294u, 284u, 282u, 294u};
+    struct p4_wifi_association_target target;
+    unsigned sequence_start;
+    fixture_init();
+    target_init(&target, 0u);
+    f.preflight_event = PREFLIGHT_NONE;
+    prepare_first_idle_join_candidate();
+    diagnostic_prelude_count = 0u;
+    CHECK(invoke(&target) == TRUE);
+    check_request_order(first_order,
+                        sizeof(first_order) / sizeof(first_order[0]));
+    CHECK(f.request_count[283u] == 0u && f.request_count[294u] == 3u);
+    CHECK(f.request_count[284u] == 1u && f.request_count[282u] == 1u);
+    CHECK(f.context.first_join_pending == FALSE);
+#if P4_WIFI_ASSOC_DIAGNOSTICS
+    CHECK(diagnostic_prelude_count == 1u);
+    CHECK(diagnostic_prelude_first == 1u);
+    CHECK(diagnostic_prelude_generation == TEST_GENERATION);
+    CHECK(diagnostic_prelude_revision == 1u);
+#endif
+    check_open_association_buffers_cleared();
+    check_confirmed_ap_matches(0u);
+    check_restored(FALSE);
+
+    memset(f.request_count, 0, sizeof(f.request_count));
+    f.request_sequence_count = 0u;
+    f.ap_info_calls = 0u;
+    f.final_ap_calls = 0u;
+    f.initial_disconnect_status = 0;
+    f.preflight_event = PREFLIGHT_DOWN_SUCCESS;
+    f.preflight_event_occurrence = 1u;
+    sequence_start = f.request_sequence_count;
+    diagnostic_prelude_count = 0u;
+    CHECK(invoke(&target) == TRUE);
+    CHECK(f.request_sequence[sequence_start] == 283u);
+    CHECK(f.request_count[283u] == 1u);
+    CHECK(f.context.first_join_pending == FALSE);
+#if P4_WIFI_ASSOC_DIAGNOSTICS
+    CHECK(diagnostic_prelude_count == 1u);
+    CHECK(diagnostic_prelude_first == 0u);
+#endif
+    check_open_association_buffers_cleared();
+    check_confirmed_ap_matches(0u);
+    check_restored(FALSE);
+
+    fixture_init();
+    target_init(&target, 0u);
+    f.context.owner_started = TRUE;
+    f.control.startup_ok = 1u;
+    f.preflight_event = PREFLIGHT_STATION_START;
+    f.preflight_event_occurrence = 1u;
+    wifi_owner_initial_join_start(&f.context, TRUE);
+    CHECK(f.context.first_join_pending == TRUE &&
+          f.context.first_join_revision == 1u);
+    CHECK(invoke(&target) == TRUE);
+    check_request_order(late_start_order,
+        sizeof(late_start_order) / sizeof(late_start_order[0]));
+    CHECK(f.preflight_event_injections == 1u && f.request_count[283u] == 0u);
+    CHECK(f.context.link_observation.kind == P4_HOSTED_LINK_STATION_START);
+    CHECK(f.context.first_join_pending == FALSE);
+    check_open_association_buffers_cleared();
+    check_confirmed_ap_matches(0u);
+    check_restored(FALSE);
+
+    fixture_init();
+    target_init(&target, 0u);
+    f.preflight_event = PREFLIGHT_NONE;
+    f.context.owner_started = TRUE;
+    f.control.startup_ok = 1u;
+    wifi_owner_initial_join_start(&f.context, TRUE);
+    CHECK(f.context.first_join_pending == TRUE &&
+          f.context.first_join_revision == 1u);
+    sequence_start = f.request_sequence_count;
+    {
+        ULONG started = fake_now;
+        CHECK(invoke(&target) == FALSE);
+        CHECK(f.request_count[283u] == 0u && f.request_count[284u] == 0u &&
+              f.request_count[282u] == 0u);
+        CHECK(f.request_count[294u] > 1u && f.request_count[294u] < 500u);
+        CHECK(fake_now - started >= 8000000u &&
+              fake_now - started < 8100000u);
+        CHECK(f.context.first_join_pending == FALSE);
+    }
+    CHECK(f.request_sequence[sequence_start] == 294u);
+    check_open_association_buffers_cleared();
+    check_confirmed_ap_cleared();
+    check_restored(FALSE);
+}
+
+static void test_first_idle_join_fallbacks_to_disconnect(void)
+{
+    enum {
+        FALLBACK_NO_FRESH_RESET = 0,
+        FALLBACK_STARTUP_NOT_OK,
+        FALLBACK_OWNER_NOT_STARTED,
+        FALLBACK_WRONG_LINK_KIND,
+        FALLBACK_REVISION_CHANGED,
+        FALLBACK_GENERATION_CHANGED,
+        FALLBACK_CASE_COUNT
+    };
+    struct p4_wifi_association_target target;
+    unsigned scenario;
+    for (scenario = 0u; scenario < FALLBACK_CASE_COUNT; ++scenario) {
+#if P4_WIFI_DISCONNECT_EVENT_FENCE
+        ULONG started;
+#endif
+        BOOL result;
+        fixture_init();
+        target_init(&target, 1u);
+        prepare_first_idle_join_candidate();
+        switch (scenario) {
+        case FALLBACK_NO_FRESH_RESET:
+            wifi_owner_initial_join_start(&f.context, FALSE);
+            break;
+        case FALLBACK_STARTUP_NOT_OK:
+            f.control.startup_ok = 0u;
+            break;
+        case FALLBACK_OWNER_NOT_STARTED:
+            f.context.owner_started = FALSE;
+            break;
+        case FALLBACK_WRONG_LINK_KIND:
+            f.context.link_observation.kind = P4_HOSTED_LINK_UP_HINT;
+            break;
+        case FALLBACK_REVISION_CHANGED:
+            ++f.context.link_observation.revision;
+            break;
+        default:
+            f.context.link_observation.generation = TEST_GENERATION + 1u;
+            f.preflight_event = PREFLIGHT_NONE;
+            break;
+        }
+#if P4_WIFI_DISCONNECT_EVENT_FENCE
+        started = fake_now;
+#endif
+        result = invoke(&target);
+        CHECK(f.request_count[283u] >= 1u);
+        CHECK(f.request_sequence[0] == 283u);
+        CHECK(f.context.first_join_pending == FALSE);
+        if (scenario == FALLBACK_GENERATION_CHANGED) {
+            CHECK(result == FALSE);
+#if P4_WIFI_DISCONNECT_EVENT_FENCE
+            CHECK(f.request_count[284u] == 0u && f.request_count[282u] == 0u);
+            check_preflight_fence_bounded_failure(started);
+#else
+            CHECK(f.request_count[284u] == 1u && f.request_count[282u] == 1u);
+            check_secret_wiped();
+            check_confirmed_ap_cleared();
+            check_restored(FALSE);
+#endif
+        } else {
+            CHECK(result == TRUE);
+            CHECK(f.request_count[283u] == 1u);
+            CHECK(f.request_count[284u] == 1u && f.request_count[282u] == 1u);
+            check_secret_wiped();
+            check_confirmed_ap_matches(3u);
+            check_restored(FALSE);
+        }
+    }
+}
+
+static void test_first_idle_join_prequery_failures(void)
+{
+    enum {
+        PREQUERY_TIMEOUT = 0,
+        PREQUERY_MALFORMED,
+        PREQUERY_CANCEL,
+        PREQUERY_EPOCH_CHANGE,
+        PREQUERY_REMOTE_ERROR,
+        PREQUERY_CASE_COUNT
+    };
+    struct p4_wifi_association_target target;
+    unsigned scenario;
+    for (scenario = 0u; scenario < PREQUERY_CASE_COUNT; ++scenario) {
+        fixture_init();
+        target_init(&target, 0u);
+        f.preflight_event = PREFLIGHT_NONE;
+        prepare_first_idle_join_candidate();
+        if (scenario == PREQUERY_TIMEOUT) {
+            f.timeout_request_id = 294u;
+            f.timeout_occurrence = 1u;
+        } else if (scenario == PREQUERY_MALFORMED) {
+            f.malformed_response_request_id = 294u;
+        } else if (scenario == PREQUERY_CANCEL) {
+            f.cancel_after_response_id = 294u;
+            f.cancel_after_response_occurrence = 1u;
+        } else if (scenario == PREQUERY_REMOTE_ERROR) {
+            f.fail_id = 294u;
+            f.fail_occurrence = 1u;
+            f.fail_status = 5;
+        } else {
+            f.generation_change_first_prelude = 1u;
+        }
+        CHECK(invoke(&target) == FALSE);
+        CHECK(f.request_count[294u] == 1u);
+        CHECK(f.request_count[283u] == 0u);
+        CHECK(f.request_count[284u] == 0u && f.request_count[282u] == 0u);
+        CHECK(f.context.first_join_pending == FALSE);
+        CHECK(f.cancel_called_owned == 0u);
+        if (scenario == PREQUERY_CANCEL)
+            CHECK(f.cancel_requested == TRUE && f.cancel_calls != 0u);
+        if (scenario == PREQUERY_EPOCH_CHANGE)
+            CHECK(f.context.generation == TEST_GENERATION + 1u);
+        check_open_association_buffers_cleared();
+        check_confirmed_ap_cleared();
+        check_restored(FALSE);
+    }
+}
+
+static void test_first_idle_join_contradiction_and_config_cleanup(void)
+{
+    static const uint32_t contradictory_order[] =
+        {294u, 283u, 294u, 294u, 284u, 282u, 294u};
+    static const uint32_t config_failure_order[] = {294u, 294u, 284u, 283u};
+    struct p4_wifi_association_target target;
+
+    fixture_init();
+    target_init(&target, 0u);
+    f.preflight_event = PREFLIGHT_DOWN_SUCCESS;
+    f.preflight_event_occurrence = 2u;
+    f.fail_id = 294u;
+    f.fail_occurrence = 1u;
+    f.fail_status = 0; /* Valid but contradictory attached-AP snapshot. */
+    prepare_first_idle_join_candidate();
+    CHECK(invoke(&target) == TRUE);
+    check_request_order(contradictory_order,
+        sizeof(contradictory_order) / sizeof(contradictory_order[0]));
+    CHECK(f.context.first_join_pending == FALSE);
+    check_open_association_buffers_cleared();
+    check_confirmed_ap_matches(0u);
+    check_restored(FALSE);
+
+    fixture_init();
+    target_init(&target, 0u);
+    f.preflight_event = PREFLIGHT_NONE;
+    prepare_first_idle_join_candidate();
+    f.fail_id = 284u;
+    f.fail_occurrence = 1u;
+    f.fail_status = 5;
+    CHECK(invoke(&target) == FALSE);
+    check_request_order(config_failure_order,
+        sizeof(config_failure_order) / sizeof(config_failure_order[0]));
+    CHECK(f.request_count[282u] == 0u);
+    CHECK(f.context.first_join_pending == FALSE);
+    check_open_association_buffers_cleared();
+    check_confirmed_ap_cleared();
+    check_restored(FALSE);
+}
+
+static void test_explicit_disconnect_consumes_first_join_candidate(void)
+{
+    fixture_init();
+    f.preflight_event = PREFLIGHT_NONE;
+    prepare_first_idle_join_candidate();
+    CHECK(invoke_disconnect() == TRUE);
+    CHECK(f.request_count[283u] == 1u && f.request_count[294u] == 1u);
+    CHECK(f.context.first_join_pending == FALSE);
+    check_disconnected_down();
 }
 
 static void test_numeric_join_diagnostics(void)
@@ -2602,6 +2995,12 @@ int main(void)
 {
     test_numeric_observer_parsers();
     test_numeric_join_diagnostics();
+    test_initial_join_start_helper_predicate();
+    test_first_idle_join_success_and_one_shot();
+    test_first_idle_join_fallbacks_to_disconnect();
+    test_first_idle_join_prequery_failures();
+    test_first_idle_join_contradiction_and_config_cleanup();
+    test_explicit_disconnect_consumes_first_join_candidate();
 #if P4_WIFI_DISCONNECT_EVENT_FENCE
     test_disconnect_event_fence_delayed_down();
     test_disconnect_event_fence_missing_stale_and_invalid_events();

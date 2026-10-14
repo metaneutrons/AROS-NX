@@ -221,6 +221,11 @@ struct wifi_probe_context
     ULONG owner_last_event;
     BOOL owner_started;
     BOOL owner_init_seen;
+    /* Owner-local one-shot history, never peer/UID-zero authentication.
+     * Only the initial successful GPIO reset + startup may arm this path. */
+    BOOL reset_fresh;
+    BOOL first_join_pending;
+    ULONG first_join_revision;
     struct p4_hosted_link_observation link_observation;
     /* A current-AP snapshot is not authorization. Only the active association
      * workflow may combine it with policy/event/lifecycle acceptance. */
@@ -1581,6 +1586,31 @@ static BOOL wifi_association_event_matches(
     return TRUE;
 }
 
+/* A host generation alone does not prove a reset. The owner captures and
+ * consumes its actual reset-pulse record before initial startup. Allow only
+ * that startup's START, including its immediately pending late START; any
+ * intervening link/lifecycle transition defeats the exact revision match. */
+static void wifi_owner_initial_join_start(struct wifi_probe_context *context,
+                                          BOOL fresh_reset)
+{
+    const struct p4_hosted_link_observation *link = &context->link_observation;
+    context->first_join_pending = FALSE;
+    context->first_join_revision = 0;
+    if (fresh_reset != TRUE || context->owner_started != TRUE ||
+        !context->generation || link->generation != context->generation ||
+        link->status || link->revision == UINT32_MAX)
+        return;
+    if (link->kind == P4_HOSTED_LINK_STATION_START && link->revision) {
+        context->first_join_revision = link->revision;
+    } else if ((link->kind == P4_HOSTED_LINK_NONE && !link->revision) ||
+               (link->kind == P4_HOSTED_LINK_STATION_STOP && link->revision)) {
+        context->first_join_revision = link->revision + 1;
+    } else {
+        return;
+    }
+    context->first_join_pending = TRUE;
+}
+
 static BOOL wifi_device_associate(struct P4WifiBase *base,
     const struct p4_wifi_association_target *target,
     const struct p4_wifi_association_cancel *cancel)
@@ -1593,6 +1623,7 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
     ULONG started, generation, remaining, wait, revision, connect_revision;
     unsigned polls, association_stage = 1, association_rpc = 0;
     BOOL succeeded = FALSE, mutated = FALSE;
+    BOOL initial_candidate, first_idle_join = FALSE;
 #if P4_WIFI_DISCONNECT_EVENT_FENCE
     ULONG disconnect_revision;
     BOOL disconnect_event_required;
@@ -1633,6 +1664,10 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
 #endif
         return FALSE;
     }
+    /* An admitted attempt consumes this history even when it later fails or
+     * is cancelled. No retry, explicit leave or maintenance may re-arm it. */
+    initial_candidate = context->first_join_pending;
+    context->first_join_pending = FALSE;
     CopyMem(target, &owned, sizeof(owned));
     CopyMem(cancel, &hooks, sizeof(hooks));
     control = runtime->control;
@@ -1653,8 +1688,60 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
     p4host_zero(&control->sta_config, sizeof(control->sta_config));
     p4host_zero(&base->confirmed_ap, sizeof(base->confirmed_ap));
     p4host_zero(&control->ap_info, sizeof(control->ap_info));
-    mutated = TRUE; /* Even an ambiguous Disconnect must not retain link-up. */
     control->status = -1;
+    if (initial_candidate == TRUE && control->startup_ok == 1 &&
+        context->owner_started == TRUE &&
+        context->link_observation.generation == generation &&
+        context->link_observation.status == 0 &&
+        ((context->link_observation.kind == P4_HOSTED_LINK_STATION_START &&
+          context->link_observation.revision == context->first_join_revision) ||
+         ((context->link_observation.kind == P4_HOSTED_LINK_NONE ||
+           context->link_observation.kind == P4_HOSTED_LINK_STATION_STOP) &&
+          context->link_observation.revision + 1 == context->first_join_revision))) {
+        unsigned absent_samples = 0;
+        /* The reference begins an idle first join with CONFIG/CONNECT.
+         * Two fresh UID-correlated absent snapshots must agree with this
+         * one-shot startup revision. This does not bypass typed admission,
+         * negotiated security checks or the original operation deadline. */
+        association_stage = 2;
+        association_rpc = 294;
+        for (polls = 0; polls < 500; ++polls) {
+            revision = context->link_observation.revision;
+            if (!wifi_owner_request(context, runtime->owner, control,
+                    runtime->fifo, runtime->checksum, 294u,
+                    wifi_owner_remaining(context, started, 8000000UL)))
+                goto finish;
+            if (wifi_owner_stopping(context)) goto finish;
+            if (control->ap_info.status == 0) break;
+            if (control->ap_info.status != 0x300f) goto finish;
+            if (context->link_observation.generation != generation ||
+                context->link_observation.status != 0)
+                break;
+            if (context->link_observation.kind == P4_HOSTED_LINK_STATION_START &&
+                context->link_observation.revision == context->first_join_revision) {
+                if (revision == context->link_observation.revision)
+                    ++absent_samples;
+                else
+                    absent_samples = 0;
+                if (absent_samples == 2) {
+                    first_idle_join = TRUE;
+                    goto configure;
+                }
+            } else if ((context->link_observation.kind == P4_HOSTED_LINK_NONE ||
+                        context->link_observation.kind == P4_HOSTED_LINK_STATION_STOP) &&
+                       context->link_observation.revision == revision &&
+                       revision + 1 == context->first_join_revision) {
+                absent_samples = 0;
+            } else {
+                break;
+            }
+            wifi_yield(context);
+        }
+        if (polls == 500) goto finish;
+        /* Contradictory decoded state loses the optimization, not the
+         * teardown requirement. Failed/ambiguous queries return above. */
+    }
+    mutated = TRUE; /* Even an ambiguous Disconnect must not retain link-up. */
     association_stage = 2;
     association_rpc = 283;
 #if P4_WIFI_DISCONNECT_EVENT_FENCE
@@ -1710,6 +1797,13 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
     }
     if (polls == 500 || wifi_owner_stopping(context)) goto finish;
     /* ESP_ERR_WIFI_NOT_CONNECT is required, not inferred from any error. */
+configure:
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+    bug("[WiFiPrelude] first=%u g=%u rev=%u\n",
+        (unsigned)first_idle_join, (unsigned)generation,
+        (unsigned)context->link_observation.revision);
+#endif
+    (void)first_idle_join;
     control->sta_config.ssid = owned.ssid;
     control->sta_config.ssid_length = owned.ssid_length;
     control->sta_config.password = owned.password;
@@ -1725,6 +1819,7 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
     control->sta_config.sae_pwe_h2e = owned.sae_pwe_h2e;
     association_stage = 4;
     association_rpc = 284;
+    mutated = TRUE; /* CONFIG may have side effects even without a reply. */
     if (!wifi_owner_request(context, runtime->owner, control, runtime->fifo,
             runtime->checksum, 284u,
             wifi_owner_remaining(context, started, 8000000UL))) goto finish;
@@ -1880,6 +1975,7 @@ static BOOL wifi_device_disconnect(struct P4WifiBase *base)
         wifi_owner_stopping(context)) return FALSE;
     control = runtime->control;
     generation = context->generation;
+    context->first_join_pending = FALSE;
     started = wifi_owner_now(context);
     context->association_started = started;
     context->association_cancel = NULL;
@@ -3171,6 +3267,9 @@ static int wifi_maintenance_service(struct P4WifiBase *base,
     struct wifi_probe_context *context = runtime->context;
     ULONG remaining, wait;
     BOOL fenced;
+    if (base->maintenance_state != P4_WIFI_MAINT_IDLE &&
+        base->maintenance_state != P4_WIFI_MAINT_RELEASED)
+        context->first_join_pending = FALSE;
     if (wifi_ota_queue_service(base, runtime)) return 2;
     if (base->maintenance_state == P4_WIFI_MAINT_FENCED)
         return 2; /* Silent until an explicitly coordinated recovery. */
@@ -3270,6 +3369,10 @@ static void wifi_owner_service(struct wifi_probe_context *context,
     int protocol_cleanup = 1;
     struct P4WifiBase *base = wifi_resource_base;
     struct wifi_device_runtime runtime;
+    BOOL fresh_reset = context->reset_fresh;
+    context->reset_fresh = FALSE;
+    context->first_join_pending = FALSE;
+    context->first_join_revision = 0;
     runtime.context = context;
     runtime.owner = owner;
     runtime.control = control;
@@ -3314,6 +3417,7 @@ static void wifi_owner_service(struct wifi_probe_context *context,
         control->startup_ok = index == sizeof(startup_ids) / sizeof(startup_ids[0]);
         if (control->startup_ok) {
             context->owner_started = TRUE;
+            wifi_owner_initial_join_start(context, fresh_reset);
             ObtainSemaphore(&base->client_lock);
             CopyMem(control->mac.mac, base->mac, sizeof(base->mac));
             base->owner_task = FindTask(NULL);
@@ -3561,6 +3665,9 @@ static void wifi_identify(void)
             (LONG)P4_BOARD_WIFI_RESET_ACTIVE_LEVEL, (LONG)reset_ok);
         if (!reset_ok)
             return;
+#if P4_WIFI_HOSTED_OWNER
+        context.reset_fresh = TRUE;
+#endif
     }
 #endif
 #if P4_WIFI_HOSTED_INIT

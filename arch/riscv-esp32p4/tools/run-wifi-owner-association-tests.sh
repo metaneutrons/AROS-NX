@@ -148,6 +148,8 @@ extract_function wifi_association_ap_matches \
 	'static BOOL wifi_association_ap_matches(const struct p4_wifi_association_target *target, const struct p4_hosted_sta_ap_info *ap)'
 extract_function wifi_association_event_matches \
 	'static BOOL wifi_association_event_matches(const struct p4_wifi_association_target *target, const struct p4_hosted_sta_ap_info *ap, const struct p4_hosted_link_observation *event, ULONG generation, ULONG connect_revision)'
+extract_function wifi_owner_initial_join_start \
+	'static void wifi_owner_initial_join_start(struct wifi_probe_context *context, BOOL fresh_reset)'
 extract_function wifi_device_associate \
 	'static BOOL wifi_device_associate(struct P4WifiBase *base, const struct p4_wifi_association_target *target, const struct p4_wifi_association_cancel *cancel)' yes
 extract_function wifi_device_disconnect \
