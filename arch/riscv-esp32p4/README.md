@@ -169,7 +169,13 @@ the P4 repeat-config return prevents AROSTCP setting IFF_DRV_RUNNING; actual
 runtime flags are not logged. Candidate device79100Ba4449966... returns
 IS_CONFIGURED for an already configured immutable-MAC unit without changing
 its state. Helperc94d8394... is now independently readback-verified and returns
-to both harts/C6 reset/owner CPU1. New DHCP outcome is not yet qualified. Original first DOWN remains
+to both harts/C6 reset/owner CPU1. The next fresh attempt passes the previous
+CONFIG error and logs unsupported S2_TRACKTYPE for IP after DHCP PREINIT.
+That warning is nonfatal in the audited stack/driver source. No DHCP send or
+lease is captured afterward; GUI is Connecting and remains bedienbar, without
+a requester. The serial device subsequently disappears from macOS enumeration;
+do not infer an AROS freeze or blame tracking from the stopped capture alone.
+New DHCP outcome is not yet qualified. Original first DOWN remains
 unresolved: the first-idle change is not a root fix. Radio/IP qualification open;
 BSPde813a9a... is retained for recovery.
 The source-extracted SAE caller baseline now tests WPA2/WPA3 transition scan

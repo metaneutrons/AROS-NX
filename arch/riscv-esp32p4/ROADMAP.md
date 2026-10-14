@@ -153,7 +153,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; transition-AP SAE-only caller regression corrected and passes473 checks O0/O2; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
-| N2T | Explicit accepted-risk WLAN association test | `repeat-config fix installed; DHCP outcome pending`: prior first=1 still loses token1/reason8, internalretry token3 radio-UP/GUI waiting for address; DHCP fails errno50 after CONFIGINTERFACE UNIT_ONLINE. Correction79100Ba4449966.../helperc94d8394... tested, exact readback and return verified after retained failed read. Fresh readiness/capture80783 after30793 armed. First DOWN unresolved; first-idle candidate not a root fix. Generic BSSID defect separate/pending. Quiet touch preserved; FullMAC peer admission0 | Perform one assigned Scan/open Connect; confirm CONFIG result, DHCP send/lease and configuration identity. Strict SAE/required-PMF/no-fallback, routes/DNS/bidirectional traffic/reconnect/load and root link-loss fix remain open |
+| N2T | Explicit accepted-risk WLAN association test | `repeat-config installed; fresh capture incomplete`: new first=1 still loses token1/reason8; DHCP PREINIT now reaches unsupported S2_TRACKTYPE rather than CONFIG error. Source warning nonfatal; no subsequent send/lease captured. GUI Connecting/bedienbar/no dialog; USB serial device subsequently absent from macOS. Correction79100Ba4449966.../helperc94d8394... exact readback/return verified; source ABI unchanged. First DOWN unresolved; candidate not a root fix. Generic BSSID/statistics support separate/pending; FullMAC peer admission0 | Restore/identify target USB visibility before further serial actions; obtain readonly interface flags/configuration evidence and a fresh assigned capture. Do not label silence a native freeze or stats warning the blocker. SAE/required-PMF/no-fallback, routes/DNS/bidirectional traffic/reconnect/load and root link-loss fix open |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1740,7 +1740,11 @@ retry token3 remains radio-UP and GUI waits for an address. Thus no root fix.
 DHCP send errno50 follows P4 CONFIGINTERFACE UNIT_ONLINE; source-supported
 AROSTCP RUNNING-flag failure path. Correct only already-configured same-MAC
 status to IS_CONFIGURED; helperc94d8394... exact readback and return verified,
-fresh Scan/Connect capture80783 after30793 armed; DHCP outcome pending.
+Fresh capture80783 after30793 records first DOWN again and DHCP PREINIT followed
+by unsupported S2_TRACKTYPE, but no later send/lease. Source audit finds tracking
+warning nonfatal and unsupported dispatch replied normally. GUI bedienbar/no
+requester; USB later absent in host enumeration. Actual flags and new outcome
+remain unproven; recover diagnostic visibility rather than infer native freeze.
 Runtime flags, configuration aliases, IP/security qualification remain open.
 Generic SANA-II get_bssid also returns positive1 on missing data contrary to
 its documented negative-failure contract; source-extracted O0/O2 host audit
@@ -43908,3 +43912,41 @@ remain open. No partial stage is a complete A/B update system.
   console-prefix-2026-10-14.Cu8SYY. Test only flash WiFi, one Scan and one
   open Connect; assess CONFIG error, DHCP send, lease and visible status.
   IP/security/data/load and first-DOWN root cause remain open.
+
+### 2026-10-14 - N2T TRACKTYPE warning; capture stops and USB becomes absent
+
+- User confirms assigned Scan shows networks, one Connect leaves GUI at
+  Connecting, DHCP/error visible in log. Retained installed helperc94d8394...,
+  BSPaa776547..., corea68ca519..., SYS stacka31b79e6...; no mutation, reset,
+  flash or repeated Connect in this investigation. Source/working tree clean
+  except preexisting untracked caches.
+- Fixed capture30794..30977/184 rows, config-interface-result-30977.jsonl
+  SHA25637b5153be268c4fb49a5204c12d5e8563179b899e0de6a330e640494e154fcce.
+  Token1 starts30955, first=1 at30958,282 UID192 succeeds; joinok1/done1 at
+  30966/30967, Info success30968/30969 then776/reason8 at30970 and retirement
+  k3/s2/d27 at30974. Initial link-loss root cause unchanged. DHCP PREINIT net0
+  at30976 now reaches S2_TRACKTYPE for IP unsupported30977; no previous
+  CONFIGINTERFACE UNIT_ONLINE in this span. This supports progress past that
+  call, not direct measurement of IFF flags. No DHCP send/offer/lease afterward.
+- Independent source audit: P4 does not advertise TRACKTYPE and its default
+  handler returns NOT_SUPPORTED/GENERIC_ERROR, unlocks, then replies normally.
+  AROSTCP sets IFF_DRV_RUNNING before tracking, logs this error and continues
+  ARP/IPv6 tracking and request/event setup. Its __log macro is debug output,
+  not a modal requester here. Source does not establish a stuck DoIO, flags
+  rollback or network-start failure from this warning alone. Packet-type
+  statistics remain unimplemented; do not fabricate counters or claim a root
+  fix by suppressing this warning/using NOTRACKING without separate evidence.
+- User explicitly reports desktop/pointer bedienbar, no error dialog. Several
+  reads initially show connected capture ending at30977, no later bytes;
+  subsequent read reports port not found. devserial list then shows daemon
+  not running and no usbmodem hardware; host serial inventory is also empty,
+  and IOUSBHostDevice inventory has no Espressif target. Capture file remains
+  intact. We did not stop daemon, clear history or manipulate USB in this turn.
+  Physical disconnect, power or enumeration failure is not identified. Do
+  not attribute stopped log to an AROS freeze or claim clean continuity.
+- Proposed readonly Shell ifconfig -a diagnostic requires fresh readiness;
+  explicitly deferred when USB visibility vanished. Ask whether target remains
+  connected to Mac; resolve exact live port before any new serial action. No
+  automatic reflash/restart, no additional interaction yet. Actual runtime
+  flags/configuration aliases, DHCP/IP/data, SAE/no-fallback/PMF qualification
+  and first-DOWN root fix remain open. Evidence root unchanged.
