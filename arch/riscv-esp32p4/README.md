@@ -1,16 +1,23 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
-Remote diagnostic USB investigation (2026-10-14, source only): the vendor
-schematic provides separate USB2 Full-Speed/debug and USB3 High-Speed OTG
-connector blocks. No P4 gadget backend was found in the audited AROS tree.
-TinyUSB's inspected P4 DWC2 source supports a PIO/FIFO candidate, but its
-IDF/FreeRTOS adapter, SMP OSAL, PHY/clock setup and native IRQ dispatch need
-AROS integration. Proceed first to an isolated enumeration/echo spike, then
-screenshots, mouse/click and confined read-only file access. USB target is
-absent from current Mac enumeration; no hardware, transfer or diagnostic-MVP
+Remote diagnostic USB prototype (2026-10-14, host/native-build verified):
+an isolated opt-in DOS USBEcho application uses pinned TinyUSB4c195b7b...,
+HS rhport1/DWC2 PIO, a single-owner polled AROS adapter, bounded queues/waits
+and explicit PHY setup/restoration. No hardware IRQ integration is claimed.
+Nine staging and five probe Python tests plus five C suites at O0/O2 with
+ASan/UBSan pass, including fake-platform main lifecycle/fault quarantine.
+Two fresh native builds are byte-identical:187392B1475fc82.... Nothing was
+installed or flashed. It requires steady desktop clocks: the existing SDMMC
+semaphore is not a universal RCC lock and does not cover display reinit.
+Failed bounded PHY restoration retains a permanent owner/snapshot quarantine
+until reboot; no second takeover is allowed. Schematic USB2/debug and USB3/HS
+share VBUS; actual connector/power/100mA descriptor suitability need review.
+No enumeration, native LoadSeg/startup, transfer, coexistence or diagnostic-MVP
 pass is claimed. Debug console, WiFi and installed firmware are unchanged.
-See [the USB investigation](../../docs/plans/aros-remote-control-usb-investigation.md)
-and ROADMAP RC0. File mutation/TCP/MCP remain later deliveries.
+See [prototype instructions](usb/README.md),
+[the investigation](../../docs/plans/aros-remote-control-usb-investigation.md)
+and ROADMAP RC0. Screenshot/mouse/read-only service follows hardware transport
+qualification; file mutation/TCP/MCP remain later deliveries.
 
 Queued debug console (2026-10-13, JC1060 headless hardware partial): the P4
 USB-Serial/JTAG/UART hardware backend now has a 64-record SMP ring and one
