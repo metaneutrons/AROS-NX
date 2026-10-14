@@ -10,7 +10,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#ifndef P4_WIFI_ASSOC_DIAGNOSTICS
 #define P4_WIFI_ASSOC_DIAGNOSTICS 1
+#endif
+#ifndef P4_WIFI_DISCONNECT_EVENT_FENCE
+#define P4_WIFI_DISCONNECT_EVENT_FENCE 0
+#endif
 
 #define EXEC_TYPES_H
 #define EXEC_LIBRARIES_H
@@ -66,22 +71,108 @@ static unsigned long checks;
 static struct Task owner_task = {1u};
 static unsigned diagnostic_count, diagnostic_stage, diagnostic_rpc, diagnostic_ok;
 static LONG diagnostic_status;
+static LONG diagnostic_rpc_status, diagnostic_event_status, diagnostic_hint_status;
 static unsigned diagnostic_valid;
+static unsigned diagnostic_rpc_count, diagnostic_event_count;
+static unsigned diagnostic_hint_count;
 
 /* Consume only the numeric observer's exact formats. No printf of borrowed
  * payloads is allowed through this host boundary. */
 static void bug(const char *format, ...)
 {
     va_list args;
-    ++diagnostic_count;
     if (!strcmp(format, "[WiFiJoin] s=0 r=0 st=-1 ok=0\n") ||
         !strcmp(format, "[WiFiJoin] s=1 r=0 st=-1 ok=0\n")) {
+        ++diagnostic_count;
         diagnostic_stage = format[13] == '0' ? 0u : 1u;
         diagnostic_rpc = diagnostic_ok = 0;
         diagnostic_status = -1;
         return;
     }
+    if (!strcmp(format, "[WiFiRPC] p=1 id=%u u=%u us=%u\n")) {
+        unsigned id, uid, usec;
+        va_start(args, format);
+        id = va_arg(args, unsigned);
+        uid = va_arg(args, unsigned);
+        usec = va_arg(args, unsigned);
+        va_end(args);
+        CHECK(id == 282u || id == 283u);
+        CHECK(uid != 0u);
+        (void)usec;
+        ++diagnostic_rpc_count;
+        return;
+    }
+    if (!strcmp(format,
+            "[WiFiRPC] p=2 id=%u u=%u us=%u sub=%u v=0 st=-1\n")) {
+        unsigned id, uid, usec, submitted;
+        va_start(args, format);
+        id = va_arg(args, unsigned);
+        uid = va_arg(args, unsigned);
+        usec = va_arg(args, unsigned);
+        submitted = va_arg(args, unsigned);
+        va_end(args);
+        CHECK(id == 282u || id == 283u);
+        CHECK(uid != 0u && submitted <= 1u);
+        (void)usec;
+        ++diagnostic_rpc_count;
+        return;
+    }
+    if (!strcmp(format,
+            "[WiFiRPC] p=2 id=%u u=%u us=%u sub=%u v=1 st=%ld\n")) {
+        unsigned id, uid, usec, submitted;
+        LONG status;
+        va_start(args, format);
+        id = va_arg(args, unsigned);
+        uid = va_arg(args, unsigned);
+        usec = va_arg(args, unsigned);
+        submitted = va_arg(args, unsigned);
+        status = va_arg(args, LONG);
+        va_end(args);
+        CHECK(id == 282u || id == 283u);
+        CHECK(uid != 0u && submitted == 1u);
+        CHECK(status >= INT32_MIN && status <= INT32_MAX);
+        (void)usec;
+        diagnostic_rpc_status = status;
+        ++diagnostic_rpc_count;
+        return;
+    }
+    if (!strcmp(format,
+            "[WiFiEvent] id=%u g=%u rev=%u k=%u st=%ld reason=%u\n")) {
+        unsigned id, generation, revision, kind, reason;
+        LONG status;
+        va_start(args, format);
+        id = va_arg(args, unsigned);
+        generation = va_arg(args, unsigned);
+        revision = va_arg(args, unsigned);
+        kind = va_arg(args, unsigned);
+        status = va_arg(args, LONG);
+        reason = va_arg(args, unsigned);
+        va_end(args);
+        CHECK((id == 773u || id == 775u || id == 776u) && generation != 0u);
+        CHECK(revision != 0u && kind <= P4_HOSTED_LINK_STATION_STOP);
+        CHECK(status >= INT32_MIN && status <= INT32_MAX);
+        (void)reason;
+        diagnostic_event_status = status;
+        ++diagnostic_event_count;
+        return;
+    }
+    if (!strcmp(format, "[WiFiHint] id=%u g=%u st=%ld\n")) {
+        unsigned id, generation;
+        LONG status;
+        va_start(args, format);
+        id = va_arg(args, unsigned);
+        generation = va_arg(args, unsigned);
+        status = va_arg(args, LONG);
+        va_end(args);
+        CHECK(generation != 0u);
+        CHECK(status >= INT32_MIN && status <= INT32_MAX);
+        (void)id;
+        diagnostic_hint_status = status;
+        ++diagnostic_hint_count;
+        return;
+    }
     CHECK(!strcmp(format, "[WiFiJoin] s=%u r=%u st=%ld v=%u ok=%u\n"));
+    ++diagnostic_count;
     va_start(args, format);
     diagnostic_stage = va_arg(args, unsigned);
     diagnostic_rpc = va_arg(args, unsigned);
@@ -263,6 +354,24 @@ struct fixture {
         EVENT_AUTHMODE_3,
         EVENT_AUTHMODE_7
     } event_fault;
+    enum {
+        PREFLIGHT_NONE = 0,
+        PREFLIGHT_DOWN_SUCCESS,
+        PREFLIGHT_DOWN_FAILED_STATUS,
+        PREFLIGHT_DOWN_WRONG_GENERATION,
+        PREFLIGHT_STATION_START,
+        PREFLIGHT_STATION_STOP,
+        PREFLIGHT_UP_HINT,
+        PREFLIGHT_DOWN_THEN_START,
+        PREFLIGHT_DOWN_THEN_STOP,
+        PREFLIGHT_DOWN_THEN_UP
+    } preflight_event;
+    unsigned preflight_event_occurrence;
+    unsigned preflight_event_injections;
+    unsigned config_after_preflight_down;
+    unsigned config_without_required_preflight_down;
+    uint32_t disconnect_baseline_revision;
+    int32_t initial_disconnect_status;
     unsigned ap_info_calls;
     unsigned final_ap_calls;
     BOOL cancel_requested;
@@ -461,7 +570,8 @@ static void wire_bytes_field(struct wire_buffer *buffer, uint32_t field,
     }
 }
 
-static int make_down_event(struct p4_hosted_inbox_item *item)
+static int make_down_event_values(struct p4_hosted_inbox_item *item,
+                                 int32_t status, uint32_t reason)
 {
     struct wire_buffer nested, wrapper;
     uint8_t ssid[P4_HOSTED_ASSOCIATION_SSID_SIZE] = {0};
@@ -473,10 +583,11 @@ static int make_down_event(struct p4_hosted_inbox_item *item)
     wire_bytes_field(&nested, 1u, ssid, sizeof(ssid));
     wire_uint_field(&nested, 2u, (uint32_t)(sizeof(hint) - 1u));
     wire_bytes_field(&nested, 3u, bssid, sizeof(bssid));
-    wire_uint_field(&nested, 4u, 8u);
+    wire_uint_field(&nested, 4u, reason);
     wire_init(&wrapper);
-    wire_uint_field(&wrapper, 1u, 0u);
-    wire_bytes_field(&wrapper, 2u, nested.bytes, nested.size);
+    wire_uint_field(&wrapper, 1u, (uint32_t)status);
+    if (status == 0)
+        wire_bytes_field(&wrapper, 2u, nested.bytes, nested.size);
     if (!nested.ok || !wrapper.ok || wrapper.size > sizeof(item->payload))
         return 0;
     memset(item, 0, sizeof(*item));
@@ -485,6 +596,29 @@ static int make_down_event(struct p4_hosted_inbox_item *item)
     item->uid = 0u;
     item->payload_size = wrapper.size;
     memcpy(item->payload, wrapper.bytes, wrapper.size);
+    return 1;
+}
+
+static int make_down_event(struct p4_hosted_inbox_item *item)
+{
+    return make_down_event_values(item, 0, 0u);
+}
+
+static int make_wifi_lifecycle_event(struct p4_hosted_inbox_item *item,
+                                     int32_t event_id)
+{
+    struct wire_buffer body;
+    wire_init(&body);
+    wire_uint_field(&body, 1u, 0u);
+    wire_uint_field(&body, 2u, (uint32_t)event_id);
+    if (!body.ok || body.size > sizeof(item->payload))
+        return 0;
+    memset(item, 0, sizeof(*item));
+    item->msg_type = P4_HOSTED_RPC_TYPE_EVENT;
+    item->msg_id = 773u;
+    item->uid = 0u;
+    item->payload_size = body.size;
+    memcpy(item->payload, body.bytes, body.size);
     return 1;
 }
 
@@ -560,6 +694,64 @@ static int inject_disconnected_event(struct fixture *state,
     if (!make_down_event(&item) || wifi_owner_event(context, &item) != 1)
         return 0;
     ++state->event_injections;
+    return 1;
+}
+
+static int inject_preflight_event(struct fixture *state,
+                                  struct wifi_probe_context *context)
+{
+    struct p4_hosted_inbox_item item;
+    int ok = 0;
+    int overwrite = state->preflight_event == PREFLIGHT_DOWN_THEN_START ||
+                    state->preflight_event == PREFLIGHT_DOWN_THEN_STOP ||
+                    state->preflight_event == PREFLIGHT_DOWN_THEN_UP;
+
+    if (overwrite) {
+        ok = make_down_event_values(&item, 0, UINT32_C(0x76543210));
+        if (!ok || wifi_owner_event(context, &item) != 1)
+            return 0;
+        ++state->preflight_event_injections;
+        if (state->preflight_event == PREFLIGHT_DOWN_THEN_UP)
+            ok = make_connected_event(&item);
+        else
+            ok = make_wifi_lifecycle_event(&item,
+                state->preflight_event == PREFLIGHT_DOWN_THEN_START ?
+                    P4_HOSTED_WIFI_EVENT_STA_START :
+                    P4_HOSTED_WIFI_EVENT_STA_STOP);
+        if (!ok || wifi_owner_event(context, &item) != 1)
+            return 0;
+        ++state->preflight_event_injections;
+        return 1;
+    }
+
+    switch (state->preflight_event) {
+    case PREFLIGHT_DOWN_SUCCESS:
+    case PREFLIGHT_DOWN_WRONG_GENERATION:
+        ok = make_down_event_values(&item, 0, UINT32_C(0x76543210));
+        break;
+    case PREFLIGHT_DOWN_FAILED_STATUS:
+        ok = make_down_event_values(&item, 7, 0u);
+        break;
+    case PREFLIGHT_STATION_START:
+        ok = make_wifi_lifecycle_event(&item,
+                    P4_HOSTED_WIFI_EVENT_STA_START);
+        break;
+    case PREFLIGHT_STATION_STOP:
+        ok = make_wifi_lifecycle_event(&item,
+                    P4_HOSTED_WIFI_EVENT_STA_STOP);
+        break;
+    case PREFLIGHT_UP_HINT:
+        ok = make_connected_event(&item);
+        break;
+    case PREFLIGHT_NONE:
+    default:
+        return 0;
+    }
+    if (!ok || wifi_owner_event(context, &item) != 1)
+        return 0;
+    ++state->preflight_event_injections;
+    if (state->preflight_event == PREFLIGHT_DOWN_WRONG_GENERATION)
+        context->link_observation.generation = TEST_GENERATION + 1u;
     return 1;
 }
 
@@ -701,6 +893,19 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
                 break;
             }
     }
+    if (request.msg_id == 284u && P4_WIFI_DISCONNECT_EVENT_FENCE &&
+        state->initial_disconnect_status == 0) {
+        const struct p4_hosted_link_observation *observation =
+            &context->link_observation;
+        if (observation->generation == context->generation &&
+            observation->revision > state->disconnect_baseline_revision &&
+            observation->kind == P4_HOSTED_LINK_DOWN &&
+            observation->status == 0) {
+            ++state->config_after_preflight_down;
+        } else {
+            ++state->config_without_required_preflight_down;
+        }
+    }
     if (request.msg_id == 284u && state->inspect_sta_config) {
         const struct p4_hosted_sta_config *config =
             &state->control.sta_config;
@@ -787,6 +992,11 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
             } else if (state->repeat_initial_event) {
                 CHECK(make_down_event(&event_item));
                 CHECK(wifi_owner_event(context, &event_item) == 1);
+            } else if (context->association_cancel &&
+                       state->initial_disconnect_status == 0 &&
+                       state->preflight_event != PREFLIGHT_NONE &&
+                       state->ap_info_calls == state->preflight_event_occurrence) {
+                CHECK(inject_preflight_event(state, context));
             }
             status = 0x300f;
         } else {
@@ -813,6 +1023,8 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
                (!state->fail_occurrence || occurrence == state->fail_occurrence)) {
         status = state->fail_status;
     }
+    if (request.msg_id == 283u && occurrence == 1u)
+        state->initial_disconnect_status = status;
     if (request.msg_id == 294u) {
         state->last_ap_info_status = status;
         if (state->expect_disconnect_final_fence && occurrence == 1u) {
@@ -890,6 +1102,10 @@ static void fixture_init(void)
 {
     memset(&f, 0, sizeof(f));
     fake_now = 100000u;
+#if P4_WIFI_DISCONNECT_EVENT_FENCE
+    f.preflight_event = PREFLIGHT_DOWN_SUCCESS;
+    f.preflight_event_occurrence = 1u;
+#endif
     fake_signals = 0u;
     delay_calls = 0u;
     set_signal_calls = 0u;
@@ -1004,6 +1220,7 @@ static BOOL invoke(struct p4_wifi_association_target *target)
     cancel.cancelled = fake_cancelled;
     f.caller_password = target ? target->password : NULL;
     f.attempt_authmode = target ? (int32_t)target->authmode : -1;
+    f.disconnect_baseline_revision = f.context.link_observation.revision;
     return wifi_device_associate(&f.base, target, &cancel);
 }
 
@@ -1091,7 +1308,7 @@ static void test_success_open_and_protected(void)
     original = target;
     CHECK(invoke(&target) == TRUE);
     CHECK(f.request_count[283u] == 1u);
-    CHECK(f.request_count[294u] == 2u);
+    CHECK(f.request_count[294u] == 2u + P4_WIFI_DISCONNECT_EVENT_FENCE);
     CHECK(f.request_count[284u] == 1u);
     CHECK(f.request_count[282u] == 1u);
     CHECK(f.malformed_request_count == 0u);
@@ -1313,10 +1530,12 @@ static void test_fullmac_event_required_and_config_baseline(void)
         CHECK(f.event_injections == scenario);
         CHECK(fake_now - 100000u >= 8000000u);
         if (scenario) {
-            CHECK(f.context.link_observation.revision == 1u);
+            CHECK(f.context.link_observation.revision ==
+                  1u + P4_WIFI_DISCONNECT_EVENT_FENCE);
             CHECK(f.context.link_observation.kind == P4_HOSTED_LINK_UP_HINT);
         } else {
-            CHECK(f.context.link_observation.revision == 0u);
+            CHECK(f.context.link_observation.revision ==
+                  P4_WIFI_DISCONNECT_EVENT_FENCE);
         }
         check_sae_association_failed();
     }
@@ -1367,7 +1586,8 @@ static void test_fullmac_delayed_duplicate_and_snapshot_races(void)
     CHECK(invoke(&target) == TRUE);
     CHECK(f.final_ap_calls == 2u); /* Retry after the event advances revision. */
     CHECK(f.event_injections == 1u);
-    CHECK(f.context.link_observation.revision == 1u);
+    CHECK(f.context.link_observation.revision ==
+          1u + P4_WIFI_DISCONNECT_EVENT_FENCE);
     CHECK(f.base.associated == FALSE);
     check_confirmed_ap_matches(6u);
     check_secret_wiped();
@@ -1380,7 +1600,8 @@ static void test_fullmac_delayed_duplicate_and_snapshot_races(void)
     CHECK(invoke(&target) == TRUE);
     CHECK(f.final_ap_calls == 1u);
     CHECK(f.event_injections == 2u);
-    CHECK(f.context.link_observation.revision == 2u);
+    CHECK(f.context.link_observation.revision ==
+          2u + P4_WIFI_DISCONNECT_EVENT_FENCE);
     CHECK(f.base.associated == FALSE);
     check_confirmed_ap_matches(6u);
     check_secret_wiped();
@@ -1594,6 +1815,9 @@ static void test_remote_failures_and_absence_requirements(void)
             f.fail_id = 282u; f.fail_occurrence = 1u; f.fail_status = 7;
         } else if (scenario == 3u) {
             f.fail_id = 294u; f.fail_occurrence = 1u; f.fail_status = 5;
+            /* Preserve this negative RPC-status case under the fence matrix;
+             * a synthetic leave event must not mask the failed response. */
+            f.preflight_event = PREFLIGHT_NONE;
         }
         CHECK(invoke(&target) == FALSE);
         CHECK(f.request_count[282u] == (scenario == 2u ? 1u : 0u));
@@ -1774,6 +1998,191 @@ static void check_cancelled_association_cleanup(unsigned expected_ap_queries)
     check_restored(FALSE);
 }
 
+#if P4_WIFI_DISCONNECT_EVENT_FENCE
+static void check_preflight_fence_bounded_failure(ULONG started)
+{
+    ULONG elapsed = fake_now - started;
+    CHECK(f.request_count[283u] == 1u);
+    CHECK(f.request_count[294u] > 1u && f.request_count[294u] <= 500u);
+    CHECK(f.request_count[284u] == 0u && f.request_count[282u] == 0u);
+    CHECK(f.submitted_count[284u] == 0u && f.submitted_count[282u] == 0u);
+    CHECK(f.config_without_required_preflight_down == 0u);
+    CHECK(elapsed >= 8000000u && elapsed < 8100000u);
+    CHECK(f.base.associated == FALSE);
+    CHECK(f.base.link_state == P4_WIFI_LINK_UNKNOWN);
+    check_acceptance_cleared();
+    check_confirmed_ap_cleared();
+    CHECK(bytes_zero(&f.base.observed_ap, sizeof(f.base.observed_ap)));
+    check_secret_wiped();
+    check_restored(FALSE);
+}
+
+static void test_disconnect_event_fence_delayed_down(void)
+{
+    static const uint32_t expected_order[] =
+        {283u, 294u, 294u, 294u, 284u, 282u, 294u};
+    struct p4_wifi_association_target target;
+
+    fixture_init();
+    target_init(&target, 1u);
+    f.preflight_event = PREFLIGHT_DOWN_SUCCESS;
+    f.preflight_event_occurrence = 2u;
+    CHECK(invoke(&target) == TRUE);
+    check_request_order(expected_order,
+                        sizeof(expected_order) / sizeof(expected_order[0]));
+    CHECK(f.initial_disconnect_status == 0);
+    CHECK(f.preflight_event_injections == 1u);
+    CHECK(f.context.link_observation.kind == P4_HOSTED_LINK_DOWN);
+    CHECK(f.context.link_observation.status == 0);
+    CHECK(f.context.link_observation.reason == UINT32_C(0x76543210));
+    CHECK(f.config_after_preflight_down == 1u);
+    CHECK(f.config_without_required_preflight_down == 0u);
+    CHECK(f.request_count[284u] == 1u && f.request_count[282u] == 1u);
+    check_secret_wiped();
+    check_confirmed_ap_matches(3u);
+    check_restored(FALSE);
+}
+
+static void test_disconnect_event_fence_missing_stale_and_invalid_events(void)
+{
+    static const unsigned invalid_events[] = {
+        PREFLIGHT_DOWN_FAILED_STATUS,
+        PREFLIGHT_DOWN_WRONG_GENERATION,
+        PREFLIGHT_STATION_START,
+        PREFLIGHT_STATION_STOP,
+        PREFLIGHT_UP_HINT,
+        PREFLIGHT_DOWN_THEN_START,
+        PREFLIGHT_DOWN_THEN_STOP,
+        PREFLIGHT_DOWN_THEN_UP
+    };
+    struct p4_wifi_association_target target;
+    unsigned index;
+    ULONG started;
+
+    fixture_init();
+    target_init(&target, 1u);
+    f.preflight_event = PREFLIGHT_NONE;
+    started = fake_now;
+    CHECK(invoke(&target) == FALSE);
+    CHECK(f.preflight_event_injections == 0u);
+    check_preflight_fence_bounded_failure(started);
+
+    fixture_init();
+    target_init(&target, 1u);
+    f.preflight_event = PREFLIGHT_NONE;
+    CHECK(inject_disconnected_event(&f, &f.context));
+    CHECK(f.context.link_observation.revision == 1u);
+    started = fake_now;
+    CHECK(invoke(&target) == FALSE);
+    CHECK(f.disconnect_baseline_revision == 1u);
+    CHECK(f.context.link_observation.revision == 1u);
+    CHECK(f.context.link_observation.kind == P4_HOSTED_LINK_DOWN);
+    CHECK(f.event_injections == 1u);
+    check_preflight_fence_bounded_failure(started);
+
+    for (index = 0u;
+         index < sizeof(invalid_events) / sizeof(invalid_events[0]);
+         ++index) {
+        fixture_init();
+        target_init(&target, 1u);
+        f.preflight_event = (int)invalid_events[index];
+        f.preflight_event_occurrence = 1u;
+        started = fake_now;
+        CHECK(invoke(&target) == FALSE);
+        if (invalid_events[index] == PREFLIGHT_DOWN_THEN_START ||
+            invalid_events[index] == PREFLIGHT_DOWN_THEN_STOP ||
+            invalid_events[index] == PREFLIGHT_DOWN_THEN_UP) {
+            CHECK(f.preflight_event_injections == 2u);
+            CHECK(f.context.link_observation.revision == 2u);
+            if (invalid_events[index] == PREFLIGHT_DOWN_THEN_START)
+                CHECK(f.context.link_observation.kind ==
+                      P4_HOSTED_LINK_STATION_START);
+            else if (invalid_events[index] == PREFLIGHT_DOWN_THEN_STOP)
+                CHECK(f.context.link_observation.kind ==
+                      P4_HOSTED_LINK_STATION_STOP);
+            else
+                CHECK(f.context.link_observation.kind ==
+                      P4_HOSTED_LINK_UP_HINT);
+        } else {
+            CHECK(f.preflight_event_injections == 1u);
+        }
+        CHECK(f.config_after_preflight_down == 0u);
+        check_preflight_fence_bounded_failure(started);
+    }
+}
+
+static void test_disconnect_event_fence_not_connected_reply_and_malformed_reply(void)
+{
+    struct p4_wifi_association_target target;
+
+    fixture_init();
+    target_init(&target, 1u);
+    f.preflight_event = PREFLIGHT_NONE;
+    f.fail_id = 283u;
+    f.fail_occurrence = 1u;
+    f.fail_status = 0x300f;
+    CHECK(invoke(&target) == TRUE);
+    CHECK(f.initial_disconnect_status == 0x300f);
+    CHECK(f.preflight_event_injections == 0u);
+    CHECK(f.request_count[284u] == 1u && f.request_count[282u] == 1u);
+    CHECK(f.config_without_required_preflight_down == 0u);
+    check_confirmed_ap_matches(3u);
+    check_secret_wiped();
+    check_restored(FALSE);
+
+    fixture_init();
+    target_init(&target, 1u);
+    f.preflight_event = PREFLIGHT_NONE;
+    f.fail_id = 283u;
+    f.fail_occurrence = 1u;
+    f.fail_status = 0x300f;
+    f.malformed_response_request_id = 283u;
+    CHECK(invoke(&target) == FALSE);
+    CHECK(f.request_count[283u] == 1u && f.request_count[294u] == 0u);
+    CHECK(f.request_count[284u] == 0u && f.request_count[282u] == 0u);
+    CHECK(f.owner.poisoned == 1u && f.fifo.poisoned == 1u);
+    check_confirmed_ap_cleared();
+    check_secret_wiped();
+    check_restored(FALSE);
+}
+
+static void test_disconnect_event_fence_cancel_and_shared_budget_wrap(void)
+{
+    struct p4_wifi_association_target target;
+    ULONG started;
+
+    fixture_init();
+    target_init(&target, 1u);
+    f.preflight_event = PREFLIGHT_NONE;
+    f.cancel_after_response_id = 294u;
+    f.cancel_after_response_occurrence = 1u;
+    CHECK(invoke(&target) == FALSE);
+    CHECK(f.cancel_requested == TRUE && f.cancel_calls != 0u);
+    CHECK(f.request_count[284u] == 0u && f.request_count[282u] == 0u);
+    check_cancelled_association_cleanup(1u);
+
+    fixture_init();
+    target_init(&target, 1u);
+    f.preflight_event = PREFLIGHT_DOWN_SUCCESS;
+    f.preflight_event_occurrence = 381u;
+    fake_now = UINT32_MAX - 100000u;
+    started = fake_now;
+    CHECK(invoke(&target) == FALSE);
+    CHECK(f.preflight_event_injections == 1u);
+    CHECK(f.context.link_observation.kind == P4_HOSTED_LINK_DOWN);
+    CHECK(f.request_count[294u] == 381u);
+    CHECK(f.request_count[284u] == 0u && f.request_count[282u] == 0u);
+    CHECK(fake_now - started >= 8000000u &&
+          fake_now - started < 8100000u);
+    CHECK(f.config_without_required_preflight_down == 0u);
+    CHECK(f.base.link_state == P4_WIFI_LINK_UNKNOWN);
+    CHECK(f.base.associated == FALSE);
+    check_secret_wiped();
+    check_confirmed_ap_cleared();
+    check_restored(FALSE);
+}
+#endif
+
 static void test_cancel_between_initial_rpc_steps(void)
 {
     struct p4_wifi_association_target target;
@@ -1903,7 +2312,8 @@ static void test_transport_timeout_and_malformed_correlation(void)
             CHECK(f.request_count[284u] == 1u && f.request_count[282u] == 0u);
         } else {
             CHECK(f.request_count[284u] == 1u && f.request_count[282u] == 1u);
-            CHECK(f.request_count[294u] == 1u);
+            CHECK(f.request_count[294u] ==
+                  1u + P4_WIFI_DISCONNECT_EVENT_FENCE);
         }
         check_secret_wiped();
         check_confirmed_ap_cleared();
@@ -2110,20 +2520,59 @@ static void test_unqualified_peer_refuses_typed_without_io(void)
     }
 }
 
+static void test_numeric_observer_parsers(void)
+{
+    diagnostic_count = 0u;
+    diagnostic_rpc_count = 0u;
+    diagnostic_event_count = 0u;
+    diagnostic_hint_count = 0u;
+    diagnostic_rpc_status = 0;
+    diagnostic_event_status = 0;
+    diagnostic_hint_status = 0;
+    bug("[WiFiJoin] s=0 r=0 st=-1 ok=0\n");
+    bug("[WiFiJoin] s=%u r=%u st=%ld v=%u ok=%u\n",
+        3u, 283u, (LONG)0, 1u, 0u);
+    bug("[WiFiRPC] p=1 id=%u u=%u us=%u\n", 283u, 9u, 100u);
+    bug("[WiFiRPC] p=2 id=%u u=%u us=%u sub=%u v=0 st=-1\n",
+        283u, 9u, 100u, 1u);
+    bug("[WiFiRPC] p=2 id=%u u=%u us=%u sub=%u v=1 st=%ld\n",
+        283u, 9u, 100u, 1u, (LONG)-5);
+    bug("[WiFiEvent] id=%u g=%u rev=%u k=%u st=%ld reason=%u\n",
+        776u, TEST_GENERATION, 1u, P4_HOSTED_LINK_DOWN,
+        (LONG)-5, UINT32_C(0x76543210));
+    bug("[WiFiHint] id=%u g=%u st=%ld\n",
+        P4_HOSTED_WIFI_EVENT_STA_START, TEST_GENERATION, (LONG)-5);
+    CHECK(diagnostic_count == 2u);
+    CHECK(diagnostic_rpc_count == 3u);
+    CHECK(diagnostic_event_count == 1u);
+    CHECK(diagnostic_hint_count == 1u);
+    CHECK(diagnostic_rpc_status == (LONG)-5);
+    CHECK(diagnostic_event_status == (LONG)-5);
+    CHECK(diagnostic_hint_status == (LONG)-5);
+}
+
 static void test_numeric_join_diagnostics(void)
 {
+#if P4_WIFI_ASSOC_DIAGNOSTICS
     static const unsigned ids[] = {283, 284, 282, 294, 294};
     static const unsigned stages[] = {2, 4, 5, 3, 6};
     struct p4_wifi_association_target target;
+    BOOL result;
     unsigned i;
     for (i = 0; i < sizeof(ids) / sizeof(ids[0]); ++i) {
         fixture_init();
         target_init(&target, 0u);
         f.fail_id = ids[i];
-        f.fail_occurrence = i == 4 ? 2u : 1u;
+        f.fail_occurrence = i == 4 ?
+            (P4_WIFI_DISCONNECT_EVENT_FENCE ? 3u : 2u) : 1u;
         f.fail_status = 7;
+#if P4_WIFI_DISCONNECT_EVENT_FENCE
+        if (ids[i] == 294u && f.fail_occurrence == 1u)
+            f.preflight_event = PREFLIGHT_NONE;
+#endif
         diagnostic_count = 0;
-        CHECK(invoke(&target) == FALSE);
+        result = invoke(&target);
+        CHECK(result == FALSE);
         CHECK(diagnostic_count == 1);
         CHECK(diagnostic_stage == stages[i]);
         CHECK(diagnostic_rpc == ids[i]);
@@ -2146,11 +2595,19 @@ static void test_numeric_join_diagnostics(void)
     CHECK(invoke(&target) == FALSE);
     CHECK(diagnostic_count == 1 && diagnostic_stage == 5);
     CHECK(diagnostic_valid == 0 && diagnostic_status == -1 && diagnostic_ok == 0);
+#endif
 }
 
 int main(void)
 {
+    test_numeric_observer_parsers();
     test_numeric_join_diagnostics();
+#if P4_WIFI_DISCONNECT_EVENT_FENCE
+    test_disconnect_event_fence_delayed_down();
+    test_disconnect_event_fence_missing_stale_and_invalid_events();
+    test_disconnect_event_fence_not_connected_reply_and_malformed_reply();
+    test_disconnect_event_fence_cancel_and_shared_budget_wrap();
+#endif
     if (!P4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED) {
         test_unqualified_peer_refuses_typed_without_io();
         printf("wifi owner unqualified-peer refusal checks: %lu\n", checks);

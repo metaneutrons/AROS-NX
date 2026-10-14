@@ -133,6 +133,17 @@ recorded before Connect282; no second283 precedes the first link's reason8
 disconnect. The internal retry later remains UP after the GUI reports failure.
 Disconnect ACK/absence versus asynchronous event ordering remains under audit;
 no timeout/security relaxation or IP pass.
+The default-off `P4_WIFI_DISCONNECT_EVENT_FENCE=1` ordering probe requires a
+newly observed successful DOWN plus revision-stable correlated absence after
+a successful preflight283 before CONFIG/CONNECT. Decoded NOT_CONNECT still
+requires absence but no leave event. This uses the original deadline; it
+does not authenticate UID-zero event causality or qualify the installed peer.
+Its default-off native build is byte-identical to the installed resource.
+Nine sanitized workflow configurations and the primary repeat pass; native
+builds work with and without diagnostics. Hardware outcome is not yet known.
+Espressif documents the leave event for an already-connected station, not
+every successful idle Disconnect. Missing-event refusal therefore cannot
+establish a peer defect; do not enable this probe as production policy.
 Console overflow reporting stays unconditional and unchanged.
 No C6 update or
 security-policy change is claimed.

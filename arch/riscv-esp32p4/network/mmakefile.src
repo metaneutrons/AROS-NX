@@ -13,6 +13,16 @@ endif
 ifeq ($(P4_WIFI_ASSOC_DIAGNOSTICS),1)
 USER_CPPFLAGS += -DP4_WIFI_ASSOC_DIAGNOSTICS=1
 endif
+# Default-off controlled probe of asynchronous preflight Disconnect ordering.
+# Do not infer C6 attempt identity or lifecycle qualification from this flag.
+ifneq ($(origin P4_WIFI_DISCONNECT_EVENT_FENCE),undefined)
+ifneq ($(P4_WIFI_DISCONNECT_EVENT_FENCE),0)
+ifneq ($(P4_WIFI_DISCONNECT_EVENT_FENCE),1)
+$(error P4_WIFI_DISCONNECT_EVENT_FENCE must be exactly 0 or 1)
+endif
+endif
+USER_CPPFLAGS += -DP4_WIFI_DISCONNECT_EVENT_FENCE=$(P4_WIFI_DISCONNECT_EVENT_FENCE)
+endif
 # Verbose semaphore/dispatch phases are independent of outcome diagnostics.
 # Leave off for normal association diagnosis to avoid flooding the console.
 ifeq ($(P4_WIFI_IO_DIAGNOSTICS),1)

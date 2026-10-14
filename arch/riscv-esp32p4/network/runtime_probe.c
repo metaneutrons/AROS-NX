@@ -32,6 +32,18 @@
 #ifndef P4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED
 #define P4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED 0
 #endif
+/* Controlled disconnect-ordering diagnostic, not peer qualification.
+ * A UID-zero event cannot identify the RPC which generated it. Keep this
+ * candidate opt-in until the installed peer's behavior is measured. */
+#ifndef P4_WIFI_DISCONNECT_EVENT_FENCE
+#define P4_WIFI_DISCONNECT_EVENT_FENCE 0
+#endif
+#if P4_WIFI_DISCONNECT_EVENT_FENCE != 0 && P4_WIFI_DISCONNECT_EVENT_FENCE != 1
+#error "P4_WIFI_DISCONNECT_EVENT_FENCE must be 0 or 1"
+#endif
+#if P4_WIFI_DISCONNECT_EVENT_FENCE && !P4_WIFI_HOSTED_OWNER
+#error "Disconnect ordering probe requires the persistent owner"
+#endif
 #if P4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED && !P4_WIFI_HOSTED_OWNER
 #error "Diagnostic association requires the persistent owner"
 #endif
@@ -629,7 +641,7 @@ struct wifi_owner_control {
     uint8_t request[256];
     uint32_t uid;
     int32_t status;
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if P4_WIFI_ASSOC_DIAGNOSTICS || P4_WIFI_DISCONNECT_EVENT_FENCE
     unsigned association_reply_valid;
 #endif
     unsigned init_attempted, start_attempted, startup_ok, cleanup_ok;
@@ -971,7 +983,7 @@ static int wifi_owner_request(struct wifi_probe_context *context,
     struct p4_hosted_rpc rpc;
     size_t written = 0;
     int encoded, exchanged;
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if P4_WIFI_ASSOC_DIAGNOSTICS || P4_WIFI_DISCONNECT_EVENT_FENCE
     control->association_reply_valid = 0;
 #endif
     if (!remaining || !p4_hosted_request_ids_reserve(&owner->ids,
@@ -1072,8 +1084,10 @@ static int wifi_owner_request(struct wifi_probe_context *context,
             p4_hosted_owner_cancel(owner, fifo, context->generation);
             return 0;
         }
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if P4_WIFI_ASSOC_DIAGNOSTICS || P4_WIFI_DISCONNECT_EVENT_FENCE
         control->association_reply_valid = 1;
+#endif
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
         if (id == 282u || id == 283u)
             bug("[WiFiRPC] p=2 id=%u u=%u us=%u sub=%u v=1 st=%ld\n",
                 (unsigned)id, (unsigned)control->uid,
@@ -1090,7 +1104,7 @@ static int wifi_owner_request(struct wifi_probe_context *context,
         }
         /* A decoded remote error is a completed query, not transport loss
          * or proof of disconnection. The caller must inspect status. */
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if P4_WIFI_ASSOC_DIAGNOSTICS || P4_WIFI_DISCONNECT_EVENT_FENCE
         control->association_reply_valid = 1;
 #endif
         return 1;
@@ -1579,6 +1593,10 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
     ULONG started, generation, remaining, wait, revision, connect_revision;
     unsigned polls, association_stage = 1, association_rpc = 0;
     BOOL succeeded = FALSE, mutated = FALSE;
+#if P4_WIFI_DISCONNECT_EVENT_FENCE
+    ULONG disconnect_revision;
+    BOOL disconnect_event_required;
+#endif
     if (!base || !base->ready || !base->association_enabled || !base->runtime ||
         (base->maintenance_state != P4_WIFI_MAINT_IDLE &&
          base->maintenance_state != P4_WIFI_MAINT_RELEASED) ||
@@ -1639,12 +1657,23 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
     control->status = -1;
     association_stage = 2;
     association_rpc = 283;
+#if P4_WIFI_DISCONNECT_EVENT_FENCE
+    disconnect_revision = context->link_observation.revision;
+#endif
     if (!wifi_owner_request(context, runtime->owner, control, runtime->fifo,
             runtime->checksum, 283u,
             wifi_owner_remaining(context, started, 8000000UL)) &&
         (control->status != 0x300f || runtime->owner->poisoned ||
          runtime->fifo->poisoned)) goto finish;
     if (wifi_owner_stopping(context)) goto finish;
+#if P4_WIFI_DISCONNECT_EVENT_FENCE
+    /* ACK reports API acceptance, not completion of the asynchronous leave.
+     * NOT_CONNECT is a decoded idle refusal and requires no leave event.
+     * This is an ordering observation only, never association authority. */
+    if (!control->association_reply_valid ||
+        (control->status != 0 && control->status != 0x300f)) goto finish;
+    disconnect_event_required = control->status == 0;
+#endif
     association_stage = 3;
     association_rpc = 294;
     for (polls = 0; polls < 500 && !wifi_owner_stopping(context); ++polls) {
@@ -1657,7 +1686,22 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
             wifi_yield(context);
             continue;
         }
-        if (control->ap_info.status == 0x300f) break;
+        if (control->ap_info.status == 0x300f) {
+#if P4_WIFI_DISCONNECT_EVENT_FENCE
+            if (disconnect_event_required &&
+                (context->link_observation.generation != generation ||
+                 context->link_observation.revision <= disconnect_revision ||
+                 context->link_observation.kind != P4_HOSTED_LINK_DOWN ||
+                 context->link_observation.status != 0)) {
+                /* Absence alone does not drain a queued leave event. Query
+                 * while dispatching events, within the original deadline;
+                 * no CONFIG or CONNECT may overtake this observed leave. */
+                wifi_yield(context);
+                continue;
+            }
+#endif
+            break;
+        }
         /* Disconnect ACK may precede actual link loss, just as on the
          * explicit teardown path. Wait for correlated absence within the
          * original deadline; no CONFIG/CONNECT or traffic before that. */

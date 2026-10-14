@@ -153,7 +153,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
-| N2T | Explicit accepted-risk WLAN association test | `transient link; C6 disconnect reason8 observed, origin open`: Fresh attempt commits then event776/reason8 and correlated0x300f trigger retirement; internal retry later stays UP, GUI still reports failure. RPC trace excludes a second283 between Connect and DOWN; preflight completion/event ordering remains open. BSP4049060Bde813a9a... deployed with independent exact readback/headless return; quiet touch preserved. Corrected SYS stacka31b79e6... remains startup/IP untested; FullMAC peer admission0 | Attribute host/peer origin and ordering of disconnect8; no blind timeout extension. Corrected-stack/DHCP, original SAE/required-PMF/no-fallback, routes/DNS/bidirectional traffic/reconnect/load remain open |
+| N2T | Explicit accepted-risk WLAN association test | `transient link; C6 disconnect reason8 observed, origin open`: Fresh attempt commits then event776/reason8 and correlated0x300f trigger retirement; internal retry later stays UP, GUI still reports failure. RPC trace excludes a second283 between Connect and DOWN. Default-off leave-ordering probe360620B659c3464... passes native builds and nine sanitized workflow runs/primary repeat; deployment pending; default0 byte-identical to installed8036006e... . BSPde813a9a... installed; quiet touch preserved. Corrected SYS stacka31b79e6... remains startup/IP untested; FullMAC peer admission0 | Test controlled preflight leave ordering without treating UID0 as causal proof or extending timeout. Corrected-stack/DHCP, original SAE/required-PMF/no-fallback, routes/DNS/bidirectional traffic/reconnect/load remain open |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1714,6 +1714,14 @@ readback and headless return. The fresh interactive trace records only preflight
 before Connect282, no second283 before the initial reason8 DOWN. Record UID, clock and submitted/valid/
 status outcome to identify any host Disconnect after Connect. UID0 event
 provenance cannot be reconstructed from a host timestamp alone.
+Controlled ordering candidate P4_WIFI_DISCONNECT_EVENT_FENCE=1 waits for a
+new successful DOWN plus stable correlated absence before CONFIG/CONNECT
+after successful283; decoded NOT_CONNECT needs only absence. Original8s
+deadline, current ledger (later UP/lifecycle supersedes DOWN), cancellation,
+query correlation and security gates remain. Default0 is byte-identical to
+installed resource8036006e...; this is not a proven root fix or causal event
+barrier. Nine sanitized workflow runs and primary repeat pass; bounded independent
+review passes. Hardware deployment and interactive result remain pending.
 
 Canonical name decision (2026-10-12): retain flashdisk.device and its generic
 MBR-derived FLASHDISK0P0 DOS name; no architecture-specific rename policy.
@@ -43506,3 +43514,80 @@ remain open. No partial stage is a complete A/B update system.
   static audit does not rule out C6/AP behavior or transport defects. A delayed
   preflight776 without attempt ID is a plausible ordering race, not proof that
   this event was stale; stable AP-info absence must still be honored.
+
+### 2026-10-14 - N2T controlled preflight leave-ordering candidate
+
+- Hypothesis from fresh RPC trace7aa8183d88: API ACK plus instantaneous
+  AP-info absence may precede completion/event delivery of a successful
+  Disconnect. Add boolean default-off P4_WIFI_DISCONNECT_EVENT_FENCE. Sample
+  revision before283; decoded successful283 requires current live-generation
+  DOWN/status0/newer revision AND a revision-stable294 status0x300f before
+  CONFIG/CONNECT. Decoded283 NOT_CONNECT bypasses only the event condition.
+  No sticky seen bit, reason-specific override, new delay/deadline, stale-UP
+  adoption or security/peer qualification. Later UP/START/STOP supersedes DOWN.
+  UID0 event provenance remains unproven; this is a controlled ordering probe.
+- Official ESP-IDF5.4.3 C6 guide documents the disconnect event when leaving
+  an already-connected station, not for every successful idle API call:
+  https://docs.espressif.com/projects/esp-idf/en/v5.4.3/esp32c6/api-guides/wifi.html#wifi-event-sta-disconnected
+  Thus missing-event refusal in this probe is not proof of a broken peer or
+  a production-safe requirement. Its sole hardware question is whether a
+  successful preflight283 produces an observable leave before a new Connect
+  in this installed peer/state. No result permits ignoring a genuine DOWN.
+- Independent bounded review caught a fence-only compile dependency on
+  association diagnostics. Keep reply-valid storage/reset/decoded writes when
+  either diagnostics OR ordering probe is enabled; logging itself remains
+  diagnostics-only. No public/private bridge ABI change. Explicit disconnect
+  and post-connect link-loss handling are unchanged.
+- Follow-up review catches invalid make input and owner-less activation.
+  Exact make values0/1 are required; enabled probe requires persistent owner.
+  Native `true` input and owner0/probe1 builds both exit2 with the intended
+  errors. Final valid build exits0 and remains byte-identical659c3464... .
+- Sequential native builds invalidate runtime_probe.o each time. Probe-on
+  with installed diagnostics1 flags and reviewed repeat exit0, no warning/error,
+  resource360620B SHA256
+  659c346414a481b99841fad48696cf14e18f487cebf895158737cbb08ea08129.
+  Default-off build exits0 and compares byte-identical to installed359840B
+  8036006e... . Probe-on/diagnostics0 native build exits0:358456B SHA256
+  4c5ae2fbfc7c35f3e76d15f4a178962412365fcfe7dc39e6b8b204c470dcd486;
+  it is retained, not selected for deployment. This is compile evidence,
+  not ordering or radio proof. Regression completion follows below.
+- Package from exact rpc-readback.bin preserves41 complete records, including
+  quiet touch, shared SD host and sdcard; only WiFi resource changes. Candidate
+  4049840B SHA256
+  c0e9079edabac508192309df46fcbf0a9e39f30c2b327a890111b55123072812,
+  end0xbfcbb0 below0xc00000. Loader audit zero failures. An initial member
+  lookup with the nonexistent Devs/ prefix was rejected before creating an
+  output; retry with exact recorded member name succeeds. No flash yet.
+- Evidence console-prefix-2026-10-14.Cu8SYY/disconnect-fence-{resource,
+  default,no-diagnostics,reviewed}-build.log, retained resources,
+  bsp-disconnect-fence.img, disconnect-fence-package-{audit,delta}.log.
+  Next: source-extracted O0/O2 regression, review correction, exact deployment/
+  readback/headless return, then fresh user readiness for one open attempt.
+  Missing event must fail closed, not silently revert to absence-only behavior.
+  GUI/stack startup/DHCP/SAE/PMF/routes/DNS/data/reconnect/load remain open.
+- Source-extracted association workflow regression: O0/O2 x peer-gate0/1 x
+  probe0/1 with diagnostics1, plus O0/peer1/probe1/diagnostics0, all ASan/UBSan.
+  Corrected nine-run matrix and independent primary repeat exit0,479233 checks
+  per matrix (526/47776/48710/96767 for each optimization; diag0=91675).
+  New cases cover delayed/missing/stale/failed/wrong-generation DOWN, DOWN
+  overwritten by UP/START/STOP, exact NOT_CONNECT versus malformed reply,
+  cancellation, and shared8s deadline across ULONG wrap. No missing-event
+  fixture receives the synthetic default DOWN. Explicit Disconnect behavior
+  retains its original tests; default event injection is association-only.
+  Host fakes are not peer semantics or hardware qualification.
+- Test corrections retained separately: literal phase markers were initially
+  mistaken for varargs; fixture injection initially also affected explicit
+  disconnect; primary review caught LP64 `long` reads of native32-bit LONG
+  status. Final parser reads LONG and exercises negative status-5 for RPC,
+  event and hint formats. Old failing and superseded passing logs are retained.
+  Corrected primary log disconnect-fence-tests-primary-corrected.log SHA256
+  73fb11347a1b98e34c658763e9383fab7e82d675c04baeff2ab42a0d9ace77ec.
+  AP-info regression1284/1293 checks per diag-off/on O0/O2 run and link
+  regression965 checks each also pass; no relaxation of loss handling.
+- Continuing the existing capture only (no new manual attempt): fixed export
+  wifi-rpc-open-through-23840.jsonl has1046 rows22795..23840/968.39480192s,
+  SHA2568d11bc8fca4678e236f3cfef38fb4094131cbb8184a0372904370167c7ac2cb6.
+  After the retry's event775/22941, all subsequent AP-info queries are status0
+  through23840,910.11790592s. No additional link event or matched fault/reset/
+  overflow. This is passive radio-state continuity, not visible GUI/IP/data
+  or a1800-second production qualification. No firmware write at this point.

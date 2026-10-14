@@ -156,8 +156,15 @@ extract_function wifi_device_disconnect \
 cc=${CC:-cc}
 common_flags="-std=c99 -Wall -Wextra -Werror -pedantic -g -fsanitize=address,undefined -fno-omit-frame-pointer"
 
-for optimization in 0 2; do
-	for peer_gate in 0 1; do
+for diagnostics in 1 0; do
+	for optimization in 0 2; do
+		for peer_gate in 0 1; do
+			for disconnect_fence in 0 1; do
+				if [ "$diagnostics" -eq 0 ] &&
+				   { [ "$optimization" -ne 0 ] || [ "$peer_gate" -ne 1 ] ||
+				     [ "$disconnect_fence" -ne 1 ]; }; then
+					continue
+				fi
 	# Rename only the real exchange implementation; retain production owner
 	# cancellation/retirement, RX/FIFO checks, request IDs, and all codecs.
 	# shellcheck disable=SC2086
@@ -168,6 +175,8 @@ for optimization in 0 2; do
 	# shellcheck disable=SC2086
 	"$cc" $common_flags "-O$optimization" \
 		-DP4_BOARD_WIFI_SDIO=1 -DP4_WIFI_HOSTED_OWNER=1 -DP4_WIFI_HOSTED_REPLY=1 \
+		-DP4_WIFI_ASSOC_DIAGNOSTICS="$diagnostics" \
+		-DP4_WIFI_DISCONNECT_EVENT_FENCE="$disconnect_fence" \
 		-DP4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED=0 \
 		-DP4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED="$peer_gate" \
 		-DP4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED=0 \
@@ -197,9 +206,12 @@ for optimization in 0 2; do
 		"$test_root/network/hosted_link.c" \
 		"$test_root/tools/test-wifi-owner-association.c" \
 		"$owner_object" -o "$test_tmp/test-o$optimization"
-	printf 'O%s peer-gate%s: ' "$optimization" "$peer_gate"
+	printf 'O%s peer-gate%s disconnect-fence%s diagnostics%s: ' \
+		"$optimization" "$peer_gate" "$disconnect_fence" "$diagnostics"
 	ASAN_OPTIONS=halt_on_error=1:detect_stack_use_after_return=1 \
 	UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
 		"$test_tmp/test-o$optimization"
+			done
 	done
+		done
 done
