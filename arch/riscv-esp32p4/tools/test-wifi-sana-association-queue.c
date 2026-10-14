@@ -104,10 +104,13 @@ struct IORequest {
 struct IOSana2Req {
     struct IORequest ios2_Req;
     ULONG ios2_WireError;
+    ULONG ios2_PacketType;
+    UBYTE ios2_SrcAddr[16];
+    UBYTE ios2_DstAddr[16];
     ULONG ios2_DataLength;
-    APTR ios2_BufferManagement;
     APTR ios2_Data;
     APTR ios2_StatData;
+    APTR ios2_BufferManagement;
 };
 
 struct p4wlan_opener;
@@ -3884,6 +3887,175 @@ static void test_third_selection_preserves_old_teardown_and_new_attempt(void)
     CHECK(opener_b.refs == 1u && opener_c.refs == 1u);
 }
 
+static unsigned replies_since_for_request(unsigned first,
+                                           const struct IOSana2Req *request)
+{
+    unsigned index;
+    unsigned count = 0u;
+    for (index = first; index < reply_calls; ++index)
+        if (replied[index] == request)
+            ++count;
+    return count;
+}
+
+static void set_configinterface_mac(struct IOSana2Req *request,
+                                    const UBYTE mac[6], BOOL mismatch)
+{
+    memcpy(request->ios2_SrcAddr, mac, 6u);
+    if (mismatch)
+        request->ios2_SrcAddr[5] ^= 1u;
+}
+
+static void check_configinterface_refusal(BOOL hardware_ready,
+    BOOL callback_fault, BOOL configured, BOOL online, BOOL mismatch_mac,
+    BYTE expected_error, ULONG expected_wire_error)
+{
+    static const UBYTE mac[6] = {0x02u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u};
+    struct p4wlan_unit unit;
+    struct p4wlan_opener opener;
+    struct P4WifiBase radio;
+    struct IOSana2Req request;
+    struct p4_wifi_link_info unit_link_before, confirmed_before, observed_before;
+    ULONG pending_before, selection_before, event_count_before;
+    ULONG request_count_before, link_cookie_before, link_state_before;
+    struct p4wlan_opener *link_opener_before;
+    BOOL committed_before, fullmac_before, associated_before;
+    unsigned replies_before;
+
+    init_fixture(&unit, &opener, &radio);
+    memcpy(unit.mac, mac, sizeof(mac));
+    unit.hardware_ready = hardware_ready;
+    unit.callback_fault = callback_fault;
+    unit.configured = configured;
+    unit.online = online;
+    unit.pending_events = S2EVENT_DISCONNECT;
+    unit.selection_token = 0x120034u;
+    radio.link_state = P4_WIFI_LINK_DOWN;
+    unit_link_before = unit.link_info;
+    confirmed_before = radio.confirmed_ap;
+    observed_before = radio.observed_ap;
+    pending_before = unit.pending_events;
+    selection_before = unit.selection_token;
+    event_count_before = unit.event_count;
+    request_count_before = unit.request_count;
+    link_cookie_before = unit.link_cookie;
+    link_opener_before = unit.link_opener;
+    committed_before = unit.link_committed;
+    fullmac_before = unit.link_fullmac;
+    link_state_before = radio.link_state;
+    associated_before = radio.associated;
+
+    init_request(&request, S2_CONFIGINTERFACE, &opener);
+    set_configinterface_mac(&request, mac, mismatch_mac);
+    replies_before = reply_calls;
+    dispatch_case(&unit, &opener, &request);
+
+    CHECK(request.ios2_Req.io_Error == expected_error);
+    CHECK(request.ios2_WireError == expected_wire_error);
+    CHECK(reply_calls == replies_before + 1u);
+    CHECK(replies_since_for_request(replies_before, &request) == 1u);
+    CHECK(unit.hardware_ready == hardware_ready);
+    CHECK(unit.callback_fault == callback_fault);
+    CHECK(unit.configured == configured && unit.online == online);
+    CHECK(unit.pending_events == pending_before);
+    CHECK(unit.selection_token == selection_before);
+    CHECK(unit.event_count == event_count_before);
+    CHECK(unit.request_count == request_count_before);
+    CHECK(unit.link_cookie == link_cookie_before);
+    CHECK(unit.link_opener == link_opener_before);
+    CHECK(unit.link_committed == committed_before);
+    CHECK(unit.link_fullmac == fullmac_before);
+    CHECK(memcmp(&unit.link_info, &unit_link_before,
+                 sizeof(unit.link_info)) == 0);
+    CHECK(radio.link_state == link_state_before);
+    CHECK(radio.associated == associated_before);
+    CHECK(memcmp(&radio.confirmed_ap, &confirmed_before,
+                 sizeof(radio.confirmed_ap)) == 0);
+    CHECK(memcmp(&radio.observed_ap, &observed_before,
+                 sizeof(radio.observed_ap)) == 0);
+    CHECK(unit.lock.depth == 0u);
+}
+
+static void test_configinterface_existing_configuration_semantics(void)
+{
+    static const UBYTE mac[6] = {0x02u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u};
+    struct p4wlan_unit unit;
+    struct p4wlan_opener opener;
+    struct P4WifiBase radio;
+    struct IOSana2Req online_waiter, first_config, repeat_config;
+    struct p4_wifi_link_info unit_link_before, confirmed_before, observed_before;
+    ULONG pending_before, selection_before, link_state_before;
+    unsigned replies_before;
+
+    init_fixture(&unit, &opener, &radio);
+    memcpy(unit.mac, mac, sizeof(mac));
+    unit.online = FALSE;
+    unit.configured = FALSE;
+    radio.link_state = P4_WIFI_LINK_DOWN;
+    init_request(&online_waiter, S2_ONEVENT, &opener);
+    online_waiter.ios2_WireError = S2EVENT_ONLINE;
+    replies_before = reply_calls;
+    dispatch_case(&unit, &opener, &online_waiter);
+    CHECK(reply_calls == replies_before);
+    CHECK(unit.event_count == 1u && opener.event_count == 1u);
+
+    init_request(&first_config, S2_CONFIGINTERFACE, &opener);
+    set_configinterface_mac(&first_config, mac, FALSE);
+    dispatch_case(&unit, &opener, &first_config);
+    CHECK(first_config.ios2_Req.io_Error == 0);
+    CHECK(first_config.ios2_WireError == 0u);
+    CHECK(unit.configured && unit.online);
+    CHECK(radio.link_state == P4_WIFI_LINK_DOWN && !radio.associated);
+    CHECK(online_waiter.ios2_Req.io_Error == 0);
+    CHECK(online_waiter.ios2_WireError == S2EVENT_ONLINE);
+    CHECK(reply_calls == replies_before + 2u);
+    CHECK(replies_since_for_request(replies_before, &online_waiter) == 1u);
+    CHECK(replies_since_for_request(replies_before, &first_config) == 1u);
+    CHECK(unit.event_count == 0u && opener.event_count == 0u);
+    CHECK(unit.request_count == 0u && opener.request_count == 0u);
+
+    /* Keep an edge latch visible so a repeated configuration cannot consume
+     * or replace event state while reporting IS_CONFIGURED. */
+    unit.pending_events = S2EVENT_DISCONNECT;
+    unit_link_before = unit.link_info;
+    confirmed_before = radio.confirmed_ap;
+    observed_before = radio.observed_ap;
+    pending_before = unit.pending_events;
+    selection_before = unit.selection_token;
+    link_state_before = radio.link_state;
+    init_request(&repeat_config, S2_CONFIGINTERFACE, &opener);
+    set_configinterface_mac(&repeat_config, mac, FALSE);
+    replies_before = reply_calls;
+    dispatch_case(&unit, &opener, &repeat_config);
+    CHECK(repeat_config.ios2_Req.io_Error == S2ERR_BAD_STATE);
+    CHECK(repeat_config.ios2_WireError == S2WERR_IS_CONFIGURED);
+    CHECK(unit.configured && unit.online);
+    CHECK(unit.pending_events == pending_before);
+    CHECK(unit.selection_token == selection_before);
+    CHECK(unit.event_count == 0u && unit.request_count == 0u);
+    CHECK(unit.link_committed == FALSE && unit.link_cookie == 0u);
+    CHECK(memcmp(&unit.link_info, &unit_link_before,
+                 sizeof(unit.link_info)) == 0);
+    CHECK(radio.link_state == link_state_before && !radio.associated);
+    CHECK(memcmp(&radio.confirmed_ap, &confirmed_before,
+                 sizeof(radio.confirmed_ap)) == 0);
+    CHECK(memcmp(&radio.observed_ap, &observed_before,
+                 sizeof(radio.observed_ap)) == 0);
+    CHECK(reply_calls == replies_before + 1u);
+    CHECK(replies_since_for_request(replies_before, &repeat_config) == 1u);
+
+    check_configinterface_refusal(TRUE, FALSE, TRUE, FALSE, FALSE,
+                                  S2ERR_BAD_STATE, S2WERR_IS_CONFIGURED);
+    check_configinterface_refusal(TRUE, FALSE, FALSE, TRUE, FALSE,
+                                  S2ERR_BAD_STATE, S2WERR_UNIT_ONLINE);
+    check_configinterface_refusal(TRUE, FALSE, TRUE, TRUE, TRUE,
+                                  S2ERR_BAD_ADDRESS, S2WERR_SRC_ADDRESS);
+    check_configinterface_refusal(FALSE, FALSE, TRUE, TRUE, FALSE,
+                                  S2ERR_OUTOFSERVICE, S2WERR_UNIT_OFFLINE);
+    check_configinterface_refusal(TRUE, TRUE, TRUE, TRUE, FALSE,
+        S2ERR_OUTOFSERVICE, S2WERR_UNIT_OFFLINE);
+}
+
 static void test_suite_cleanup(void)
 {
     unsigned index;
@@ -3939,6 +4111,7 @@ int main(void)
     test_typed_teardown_supersession_resets_legacy_mode();
     test_replacement_opener_cancel_preserves_old_teardown();
     test_third_selection_preserves_old_teardown_and_new_attempt();
+    test_configinterface_existing_configuration_semantics();
     test_resource_valid_requires_abi10_callbacks();
     test_onevent_dispatch_event_rearm_and_abort();
     test_onevent_rejects_invalid_mask_and_full_capacity();

@@ -227,6 +227,9 @@ for macro_name in S2_DEVICEQUERY S2_GETSTATIONADDRESS S2_CONFIGINTERFACE \
                   S2_BROADCAST S2_MULTICAST S2_GETGLOBALSTATS S2_ONLINE; do
     extract_define "$macro_name" "$sana_header"
 done
+for macro_name in SANA2_MAX_ADDR_BITS SANA2_MAX_ADDR_BYTES; do
+    extract_define "$macro_name" "$sana_header"
+done
 extract_define NSCMD_DEVICEQUERY "$repo_root/compiler/include/devices/newstyle.h"
 extract_define S2_OFFLINE "$sana_header"
 extract_define S2_ONEVENT "$sana_header"
@@ -238,10 +241,12 @@ done
 for macro_name in IOERR_ABORTED; do
     extract_define "$macro_name" "$errors_header"
 done
-for macro_name in S2ERR_NO_RESOURCES S2ERR_BAD_ARGUMENT S2ERR_OUTOFSERVICE \
+for macro_name in S2ERR_NO_RESOURCES S2ERR_BAD_ARGUMENT S2ERR_BAD_STATE \
+                  S2ERR_BAD_ADDRESS S2ERR_OUTOFSERVICE \
                   S2ERR_NOT_SUPPORTED S2WERR_GENERIC_ERROR \
                   S2WERR_UNIT_OFFLINE S2WERR_NULL_POINTER S2WERR_BAD_EVENT \
-                  S2WERR_BAD_STATDATA; do
+                  S2WERR_BAD_STATDATA S2WERR_UNIT_ONLINE \
+                  S2WERR_SRC_ADDRESS S2WERR_IS_CONFIGURED; do
     extract_define "$macro_name" "$sana_header"
 done
 
@@ -280,6 +285,8 @@ extract_function p4wlan_fullmac_terminal_locked
 extract_function p4wlan_event_mask_valid
 extract_function p4wlan_event_ready_locked
 extract_function p4wlan_onevent_immediate_locked
+extract_function p4wlan_online_locked
+extract_function p4wlan_configure_interface_locked
 extract_function p4wlan_begin_teardown_locked
 extract_function p4wlan_disassociate_opener_locked
 extract_function p4wlan_link_lost_locked
@@ -297,7 +304,7 @@ extract_function p4wlan_network_info_locked
 
 for case_name in S2_SETOPTIONS S2_GETNETWORKINFO \
                  S2_GETWIRELESSCAPABILITIES S2_GETFULLMACCAPABILITIES \
-                 S2_OFFLINE S2_ONEVENT CMD_FLUSH; do
+                 S2_CONFIGINTERFACE S2_OFFLINE S2_ONEVENT CMD_FLUSH; do
     extract_case "$case_name"
 done
 extract_common_epilogue

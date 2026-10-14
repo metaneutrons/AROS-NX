@@ -153,7 +153,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; transition-AP SAE-only caller regression corrected and passes473 checks O0/O2; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
-| N2T | Explicit accepted-risk WLAN association test | `first-idle candidate installed; association open`: One-shot reset/startup record and two stable absent queries implemented, including late initial START. Resource23be48ff.../BSPaa776547... exact readback and headless return verified; no new association yet. Idle leave probe refused/withdrawn; BSPde813a9a... retained for recovery. Earlier first DOWN/retry distinction unresolved. Generic BSSID positive-error defect reproduced offline, separate fix pending. Quiet touch preserved. Corrected SYS stacka31b79e6... startup/IP untested; FullMAC peer admission0 | Obtain fresh user readiness and verify first idle join on installed peer; retain teardown for later/ambiguous states. Corrected-stack/DHCP, original SAE/required-PMF/no-fallback, routes/DNS/bidirectional traffic/reconnect/load remain open |
+| N2T | Explicit accepted-risk WLAN association test | `open retry radio-UP; DHCP local ENETDOWN`: first=1 skips283 but still loses token1/reason8; internalretry token3 succeeds, corrected GUI Connected/waiting for address. DHCP on net0/wlan0 fails errno50 after CONFIGINTERFACE UNIT_ONLINE. P4 repeat-config correction79100Ba4449966.../helperc94d8394... build verified, not yet deployed. Earlier first DOWN unresolved; first-idle candidate not a root fix. Generic BSSID defect separate/pending. Quiet touch preserved; FullMAC peer admission0 | Verify repeat-config contract and deploy only helper driver, then fresh coordinated DHCP test; confirm runtime flags/configuration identity. Strict SAE/required-PMF/no-fallback, routes/DNS/bidirectional traffic/reconnect/load and root link-loss fix remain open |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1734,8 +1734,13 @@ late initial START is awaited within the original budget, then two unchanged
 revision samples are required. Decoded remote errors fail without mutation;
 connected contradictions return to legacy teardown. Maintenance/disconnect or
 the first admitted attempt consumes eligibility permanently for that reset.
-Candidate installed with independent exact readback and headless return;
-installed-peer association and IP/security qualification remain open.
+Candidate installed with independent exact readback and headless return.
+Fresh first=1 still has immediate DOWN/reason8 after token1 success; internal
+retry token3 remains radio-UP and GUI waits for an address. Thus no root fix.
+DHCP send errno50 follows P4 CONFIGINTERFACE UNIT_ONLINE; source-supported
+AROSTCP RUNNING-flag failure path. Correct only already-configured same-MAC
+status to IS_CONFIGURED; candidate build verified, deployed bytes unchanged.
+Runtime flags, configuration aliases, IP/security qualification remain open.
 Generic SANA-II get_bssid also returns positive1 on missing data contrary to
 its documented negative-failure contract; source-extracted O0/O2 host audit
 reproduces all three failure classes. Not yet fixed or deployed.
@@ -43810,3 +43815,64 @@ remain open. No partial stage is a complete A/B update system.
 - Immediate dependency remains fresh display readiness for a single open
   Scan/Connect against the deployed BSP. First-join radio outcome, corrected
   AROSTCP startup/IP, SAE/required PMF/no fallback and full data/load remain open.
+
+### 2026-10-14 - N2T corrected GUI outcome and local DHCP send failure
+
+- Fabian grants fresh display readiness. Fresh devserial follow76387 after29075
+  starts before Scan and one user Connect; no host reset or flash. Pretest
+  history includes watchdog reset28859 before current SMP29012/GPIO54 reset
+  29047/owner ready29053. Its cause is unassigned, not counted as a commanded
+  reset or clean old-boot continuity. Current attempt has no new matched ROM/
+  reset/fatal/Guru/overflow signature.
+- Token1 starts29325, first=1/revision2 at29328, no283 before282; joinok1 at
+  29336, done1/Info success then776/reason8 at29340. The first-idle candidate
+  executes but does not eliminate first DOWN. Internal retry token3 starts
+  29408,283 UID281, first=0; joinok1/done1 at29421/29422,775/rev4 at29425 and
+  AP-info0 through29843,276.65498s radio-UP receipts. Do not infer a second
+  user Connect from this retry.
+- Initial user report Could not connect plus brief Amiga-like flash is
+  explicitly corrected to Connected/waiting for an address. Exact flash caller
+  remains unproven. No DHCP/static address or IP traffic accepted. Fixed429-row
+  capture29076..29504 SHA256
+  2d7cd22c5898040be435660692c0fe8030c4677869e53f9796df76ec3420f2fc;
+  extended768-row capture29076..29843 SHA256
+  a51809da5d55dc5f6307514ed50ec2db1a5f2db5f9ea6ab781a156c0f035f444.
+- DHCP PREINIT net0/wlan0 logs CONFIGINTERFACE Unit currently online29347/
+  29352, then address/route ioctl OK. Every observed send_discover send_packet
+  fails-1/errno50, AROSTCP ENETDOWN. Independent source audit traces rejected
+  UNIT_ONLINE in sana_run to missing IFF_DRV_RUNNING and skipped request/event
+  setup, then sana_output's ENETDOWN gate. Runtime flags absent: this is a
+  source-supported mechanism, not a direct flags measurement. The two interface
+  names also need configuration identity review: selected flash path versus
+  default DEVS path are not assumed distinct hardware or proven equivalent.
+- P4 S2_CONFIGINTERFACE checks configured after hardware/fault and immutable
+  MAC validation, before online rejection. Repeat returns BAD_STATE/
+  IS_CONFIGURED without reconfiguration or duplicate ONLINE; unconfigured
+  online remains UNIT_ONLINE. Existing Prism2/PCNet/RTL and AROSTCP use this
+  configured status; do not weaken the generic stack's admission instead.
+  Native objects invalidated/build exits0, device79100B SHA256
+  a444996686578451e50340b5e05550f295a9a40e8eb0c80d6ed23b7ec9405c83.
+  CPU1/risk1/scan+association diagnostics1/IO0/FullMAC peer gate0, private ABI12
+  and resource bridge1.3 unchanged. ELF audit clean; no WiFiIO marker.
+- Copy of exact retire-stage changes only device/HELPERS.sha256 among29
+  regular files; other27 exact, manifest hashes verified. FAT16 helper4194304B/
+  33 entries SHA256c94d839400f3eee63cd3c0425ad649e2d64a6f889ea4fdd37cb6ed80db02dcef,
+  seriala5051d10/AROSP4DEV. Recovery97b9a054... retained. No flash yet.
+  Source-extracted CONFIG dispatch tests pass12 sanitized O0/O2 configurations,
+  50500 checks; author log config-interface-tests-corrected-1.log SHA256
+  a9f67a0c53dcf9835d4005ac5cab3c3a2f23464a8b4ca5134f8702a9ee3bf7cc.
+  First configure/ONLINE waiter, repeated configured state, configured offline,
+  unconfigured online, bad MAC and hardware-error precedence tested. First
+  extraction failure retained. Primary repeat exits0 with the same log hash;
+  event regression144 checks at O0/O2 exits0. Independent review finds no
+  actionable runtime/test defect or weakened old assertion. Added the noted
+  configured+online callback_fault precedence case; final12-run sanitized
+  matrix exits0,50836 checks, config-interface-tests-fault-regression.log SHA256
+  234bfc0fcb5f04fe6aa2424e7e26201a90227825066c17a730582d5d9ccaf489.
+  Read-only raw-image attach/fsck/detach validates FAT16; no live-medium write.
+- Evidence console-prefix-2026-10-14.Cu8SYY/initial-idle-pretest-29075.jsonl,
+  initial-idle-open-after-29075.jsonl, initial-idle-result-29504.jsonl,
+  initial-idle-through-29843.jsonl and config-interface-{device-build.log,
+  stage,helpers.img,helpers.layout,tests*.log}. Next pass checks/review,
+  helper-only verified deployment/headless return, then fresh DHCP test.
+  No BSP/core/SYS/SD/C6/metadata writes or security relaxation in this change.

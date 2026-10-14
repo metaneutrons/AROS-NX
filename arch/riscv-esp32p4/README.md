@@ -159,8 +159,17 @@ Decoded query errors fail before mutation; connected state uses legacy teardown.
 Native resource362976B23be48ff... builds; BSP4052196Baa776547... preserves all
 41 other members and passes the loader audit. The candidate is now installed
 with independent exact readback and a26.753525s headless return showing both
-harts, watchdog armed, GPIO54 C6 reset and WLAN owner CPU1 ready. No association
-was attempted. Fresh interactive and radio/IP qualification remain open;
+harts, watchdog armed, GPIO54 C6 reset and WLAN owner CPU1 ready. The fresh
+interactive run exercises first=1 without idle283, but token1 still loses the
+link with reason8. Internal retry token3 succeeds and remains radio-UP;
+Fabian corrects the initial failure report to Connected/waiting for an address.
+DHCP sends fail locally with errno50/ENETDOWN on net0 and wlan0. AROSTCP logs
+CONFIGINTERFACE UNIT_ONLINE before those sends. Source audit identifies that
+the P4 repeat-config return prevents AROSTCP setting IFF_DRV_RUNNING; actual
+runtime flags are not logged. Candidate device79100Ba4449966... returns
+IS_CONFIGURED for an already configured immutable-MAC unit without changing
+its state. Built, not deployed or DHCP-qualified. Original first DOWN remains
+unresolved: the first-idle change is not a root fix. Radio/IP qualification open;
 BSPde813a9a... is retained for recovery.
 The source-extracted SAE caller baseline now tests WPA2/WPA3 transition scan
 advertisement as an SAE-only choice, matching the existing policy; mixed client

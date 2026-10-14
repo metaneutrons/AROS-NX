@@ -1991,6 +1991,14 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
         } else if (!p4wlan_mac_equal(request->ios2_SrcAddr, unit->mac)) {
             p4wlan_immediate_error(request, S2ERR_BAD_ADDRESS,
                                    S2WERR_SRC_ADDRESS);
+        } else if (unit->configured) {
+            /* A second SANA-II opener may attach after WirelessManager has
+             * configured and brought this unit online. Report the existing
+             * configuration, not an online-state failure: network stacks
+             * use IS_CONFIGURED to attach without reconfiguring the unit.
+             * Keep hardware and immutable-MAC validation above this path. */
+            p4wlan_immediate_error(request, S2ERR_BAD_STATE,
+                                   S2WERR_IS_CONFIGURED);
         } else if (unit->online) {
             p4wlan_immediate_error(request, S2ERR_BAD_STATE,
                                    S2WERR_UNIT_ONLINE);
