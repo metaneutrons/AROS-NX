@@ -153,7 +153,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
-| N2T | Explicit accepted-risk WLAN association test | `transient link; C6 disconnect reason8 observed, origin open`: One fresh open attempt commits then event776/reason8 and correlated0x300f trigger retirement; internal retry later stays UP, GUI still reports failure. RPC attribution359840B8036006e.../four sanitized request runs pass; BSP4049060Bde813a9a... deployed with independent exact readback and headless return; quiet touch preserved. Fresh interactive readiness required. Corrected SYS stacka31b79e6... remains startup/IP untested; FullMAC peer admission0 | Attribute host/peer origin and ordering of disconnect8; no blind timeout extension. Corrected-stack/DHCP, original SAE/required-PMF/no-fallback, routes/DNS/bidirectional traffic/reconnect/load remain open |
+| N2T | Explicit accepted-risk WLAN association test | `transient link; C6 disconnect reason8 observed, origin open`: Fresh attempt commits then event776/reason8 and correlated0x300f trigger retirement; internal retry later stays UP, GUI still reports failure. RPC trace excludes a second283 between Connect and DOWN; preflight completion/event ordering remains open. BSP4049060Bde813a9a... deployed with independent exact readback/headless return; quiet touch preserved. Corrected SYS stacka31b79e6... remains startup/IP untested; FullMAC peer admission0 | Attribute host/peer origin and ordering of disconnect8; no blind timeout extension. Corrected-stack/DHCP, original SAE/required-PMF/no-fallback, routes/DNS/bidirectional traffic/reconnect/load remain open |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1710,7 +1710,8 @@ Internal token3 later stays UP, after the GUI timeout; this is not IP success.
 Attribute disconnect origin/order before changing timeout or policy.
 Native RPC282/283 start/outcome observer359840B8036006e... and four sanitized
 request configurations pass; BSP4049060Bde813a9a... is deployed with exact independent
-readback and headless return. Fresh interactive readiness remains required. Record UID, clock and submitted/valid/
+readback and headless return. The fresh interactive trace records only preflight283
+before Connect282, no second283 before the initial reason8 DOWN. Record UID, clock and submitted/valid/
 status outcome to identify any host Disconnect after Connect. UID0 event
 provenance cannot be reconstructed from a host timestamp alone.
 
@@ -43466,3 +43467,42 @@ remain open. No partial stage is a complete A/B update system.
   still unproven. Fresh readiness and capture are required before one new
   Scan/open Connect. Disconnect provenance, stack startup, DHCP, SAE/PMF,
   routes/DNS/data/reconnect/load remain open; no additional test started here.
+
+### 2026-10-14 - N2T fresh RPC trace excludes a second host Disconnect
+
+- Fabian explicitly reports ready. Already-connected devserial capture armed
+  after22794 (follow25706); no port close/open, reset, flash or SD mutation.
+  Requested only FLASHDISK0P0:WiFi, one Scan and one open Connect. Fabian
+  reports the same Amiga flash and Could not connect. Installed identities and
+  diagnostic flags remain those of the preceding deployment.
+- Fixed export wifi-rpc-open-snapshot.jsonl under
+  console-prefix-2026-10-14.Cu8SYY has200 rows22795..22994,110.874034944s;
+  SHA256 2d27563a5fe966286380aaa5827fea0b70ff61bfc1caefaa2162684a3c33b938.
+  Preflight283 UID324 submits and decodes status0; Connect282 UID327 likewise.
+  Join stage8 and token1 done1 are followed by two successful WiFiInfo replies,
+  event776/revision3/reason8, revision-crossing query369 and stable query370
+  status0x300f; retirement k3/s2/d27 follows. No further observed283 occurs
+  between Connect and this DOWN. Normal prefix/overflow/fatal/ROM reset
+  signatures are absent in the scoped export; no sequence-gap proof in plain
+  mode. Frame updates report faults0/rejects0, not proof of visible frames.
+- Internal manager retry token3 later issues preflight283 UID379/Connect282
+  UID382, both submitted/valid/status0, then event775/revision4 and stable
+  AP-info0 through the export. This was not another manual Connect and is not
+  GUI, DHCP or IP success; the first link still genuinely disappears.
+- Local reference hosted-reproduce.6qcg7E/slave/main/slave_control.c forwards
+  Disconnect RPC to esp_wifi_disconnect and relays its event separately from
+  the RPC reply. Its host iperf cmd_wifi.c join path waits on DISCONNECTED_BIT
+  when leaving a connected network. Those sources are references, not proven
+  identity of the installed vendor C6. ACK plus AP-info absence must not be
+  assumed an event-completion barrier. Audit that ordering before changing
+  preflight/fences; do not suppress DOWN, blindly skip Disconnect, or extend
+  GUI timeout. Exact beep origin remains unproven. No code/policy or firmware
+  changed during this measurement; full WLAN acceptance remains open.
+- Independent bounded source audit: ordinary owner link refresh sends only
+  read-only294; device GETNETWORKINFO replies use the committed memory snapshot.
+  Stop281/deinit279 belong to maintenance/shutdown, not successful join's
+  ordinary service continuation. No post-connect set-mode/config/power-save
+  call was found there. Scans remain radio-active operations when requested;
+  static audit does not rule out C6/AP behavior or transport defects. A delayed
+  preflight776 without attempt ID is a plausible ordering race, not proof that
+  this event was stale; stable AP-info absence must still be honored.

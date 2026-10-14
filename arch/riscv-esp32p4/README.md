@@ -127,8 +127,12 @@ reports failure. Host sends a preflight Disconnect before every join, but its
 relation to that event is unproven. A numeric RPC282/283 start/outcome observer
 is now installed in BSP4049060Bde813a9a... with independent byte-exact readback
 and a 51.23-second headless return. The request regression passes all four
-diagnostic/off-on and O0/O2 configurations. No new interactive attempt has
-yet exercised this attribution; no timeout/security relaxation or IP pass.
+diagnostic/off-on and O0/O2 configurations. A subsequent fresh interactive
+attempt exercises attribution: only preflight283 is
+recorded before Connect282; no second283 precedes the first link's reason8
+disconnect. The internal retry later remains UP after the GUI reports failure.
+Disconnect ACK/absence versus asynchronous event ordering remains under audit;
+no timeout/security relaxation or IP pass.
 Console overflow reporting stays unconditional and unchanged.
 No C6 update or
 security-policy change is claimed.
