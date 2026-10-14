@@ -23,6 +23,10 @@
 #include "descriptors.h"
 #include "hs_phy.h"
 #include "p4_usb_platform.h"
+#ifdef P4_USB_DIAG
+#include "bridge.h"
+static struct rd_bridge *diagnostic;
+#endif
 
 static uint32_t echo_mmio_read(uintptr_t address)
 {
@@ -108,15 +112,43 @@ static void begin_call(void) { call_start=p4_usb_millis(); call_polls=0; }
 void tud_event_hook_cb(uint8_t port, uint32_t event, bool in_isr)
 {
     (void)port; (void)in_isr; p4_usb_owner_check();
-    if (event == DCD_EVENT_BUS_RESET_START || event == DCD_EVENT_UNPLUGGED)
+    if (event == DCD_EVENT_BUS_RESET_START || event == DCD_EVENT_UNPLUGGED) {
         p4_echo_reset(&echo);
+#ifdef P4_USB_DIAG
+        if(diagnostic)rd_bridge_reset(diagnostic);
+#endif
+    }
 }
-void tud_mount_cb(void) { p4_echo_reset(&echo); }
-void tud_umount_cb(void) { p4_echo_reset(&echo); }
+void tud_mount_cb(void) {
+    p4_echo_reset(&echo);
+#ifdef P4_USB_DIAG
+    if(diagnostic)rd_bridge_reset(diagnostic);
+#endif
+}
+void tud_umount_cb(void) { tud_mount_cb(); }
 
 static void echo_step(void)
 {
     uint8_t buf[512]; const uint8_t *data; size_t n, room;
+#ifdef P4_USB_DIAG
+    rd_bridge_poll(diagnostic);
+    if(!tud_mounted())return;
+    room=rd_bridge_room(diagnostic);n=tud_vendor_available();
+    if(n>room)n=room;
+    if(n>sizeof(buf))n=sizeof(buf);
+    if(n) {
+        n=tud_vendor_read(buf,n);
+        if(rd_bridge_feed(diagnostic,buf,n)!=n)p4_usb_fault("diagnostic receive state mismatch");
+    }
+    n=rd_bridge_peek(diagnostic,&data);room=tud_vendor_write_available();
+    if(n>room)n=room;
+    if(n>512)n=512;
+    if(n) {
+        n=tud_vendor_write(data,n);
+        if(!rd_bridge_consume(diagnostic,n))p4_usb_fault("diagnostic partial write mismatch");
+        tud_vendor_write_flush();
+    }
+#else
     if (!tud_mounted()) return;
     room = p4_echo_space(&echo);
     n = tud_vendor_available();
@@ -135,11 +167,12 @@ static void echo_step(void)
         if (!p4_echo_consume(&echo,n)) p4_usb_fault("invalid partial write");
         tud_vendor_write_flush();
     }
+#endif
 }
 
 int main(void)
 {
-    SIPTR args[5]={0}; struct RDArgs *rd;
+    SIPTR args[10]={0}; struct RDArgs *rd;
     uint32_t started;
     volatile uint32_t seconds=120;
     volatile int result=RETURN_FAIL;
@@ -147,7 +180,12 @@ int main(void)
     owner_claimed=quarantine=phy_active=controller_touched=polling_enabled=false;
     owner_record=NULL; owner_port=NULL; owner=NULL; clock_host=NULL;
     fault_reason=NULL;
+#ifdef P4_USB_DIAG
+    diagnostic=NULL;
+    rd=ReadArgs((CONST_STRPTR)"ENABLE/S,VID/N/A,PID/N/A,SECONDS/N,STEADYCLOCKS/S,SCREEN/K/A,ROOT/K,ALLOWMOUSE/S,NONEAUTH/S,UNATTENDED/S",args,NULL);
+#else
     rd=ReadArgs((CONST_STRPTR)"ENABLE/S,VID/N/A,PID/N/A,SECONDS/N,STEADYCLOCKS/S",args,NULL);
+#endif
     if (!rd) { PrintFault(IoErr(),(CONST_STRPTR)"USBEcho"); return RETURN_FAIL; }
     if (!args[0] || *(LONG *)args[1] <= 0 || *(LONG *)args[1]>65534 ||
         *(LONG *)args[2]<=0 || *(LONG *)args[2]>65534 ||
@@ -163,6 +201,19 @@ int main(void)
         puts("USBEcho: STEADYCLOCKS required: normal desktop, no concurrent display/stress reinitialization");
         goto out;
     }
+#ifdef P4_USB_DIAG
+    if(!args[8]) {
+        puts("USBDiag: explicit NONEAUTH required; local USB has no authentication or encryption");goto out;
+    }
+    if(args[7]&&!args[9]) {
+        puts("USBDiag: mouse requires UNATTENDED; concurrent local touch/mouse arbitration is not implemented");goto out;
+    }
+    /* Start the DOS worker before controller ownership. Native handler calls
+       can wait; no such call runs in the USB owner or interrupt callback. */
+    diagnostic=rd_bridge_open((const char *)args[5],(const char *)args[6],args[7]!=0);
+    if(!diagnostic){puts("USBDiag: worker startup failed");goto out;}
+    puts("USBDiag: unauthenticated USB diagnosis explicitly enabled; no file writes, drag or keyboard");
+#endif
     clock_host=OpenResource((CONST_STRPTR)P4_SDMMC_HOST_NAME);
     if(!clock_host || clock_host->abi!=P4_SDMMC_HOST_ABI ||
         clock_host->size<sizeof(*clock_host) || !clock_host->acquire || !clock_host->release) {
@@ -255,6 +306,9 @@ stop:
         } else phy_active=false;
     }
 out:
+#ifdef P4_USB_DIAG
+    rd_bridge_close(diagnostic);diagnostic=NULL;
+#endif
     if(owner_claimed && !quarantine) { RemPort(owner_port); owner_claimed=false; }
     if(owner_record && !quarantine) FreeVec(owner_record);
     owner_port=NULL; owner_record=NULL;

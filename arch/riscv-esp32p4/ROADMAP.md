@@ -192,7 +192,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C1P | Graphical boot/update performance | `hardware partial; runtime hang gate open` | Rotation/mirror: 140 sanitizer cases; actual producer: 400 submissions/1,677 guarded IRQs. CPU90 synchronous full update 2.776 s; CPU360 synchronous 0.617 s; v2 coalesced submission 0.296 s. Paired v2 core/HIDD initially passes headless Wanderer and flash checks. Fabian observes speedup then slowdown/hang. Console-only nonblocking runtime fix now sanitizer-tested, flashed and verified; explanation of the observed hang remains unconfirmed. On 2026-10-01 Fabian reports drawing is fine so far after requester-free RAM Disk opening; duration unspecified. Sustained no-reader/stress and complete interactive regression gates remain open. |
 | CQ1 | Bounded queued SMP debug console | `hardware partial (JC1060); default-plain deployed/readback/headless; D1001 open` | 2026-10-13 framed core showed both harts/108 consecutive records and reader recovery. 2026-10-14: P4_CONSOLE_RECORD_PREFIX defaults0, optional1 keeps framing; overflow warnings always active. Clean native193024Ba68ca519.../independent readback and111.929s fresh218-row headless export show no normal prefix,22 touch heartbeats and CPU1 WLAN owner. Twelve sanitized USB/UART default/0/1 host runs pass; old-header mutation rejected. Plain logs cannot prove sequence continuity. Native overload/physical disconnect and fresh interactive gates remain open. Early/fatal direct output and timer-failure backlog loss remain explicit limits. |
-| RC0 | Independent USB remote diagnostic MVP | `build verified (isolated echo); hardware/service open` | 2026-10-14: opt-in DOS HS/PIO polled TinyUSB4c195b7b... echo with AROS owner/PHY adapter. Nine staging/five probe Python tests and five sanitized C suites at O0/O2 pass; main/MMIO fixtures are fakes. Two fresh187392B1475fc82... native builds match exactly; no installation/flash/native enumeration. Requires steady clocks, no display reinit; non-universal RCC lock and fault quarantine explicit. VBUS/power and real transfer/debug coexistence remain unqualified. Screenshot/mouse/confined reads follow hardware gate; RC-v5 issues77/81/87 remain authority. |
+| RC0 | Independent USB remote diagnostic MVP | `build verified (echo + diagnostic candidate); hardware open` | 2026-10-14: separate USBDiag candidate238156B2b183aa7... adds generic RGB capture/crop, opt-in unattended mouse/click, confined read-only DOS stat/list/download and raw metadata. Fourteen client tests, four O0/O2 sanitized C suites and fragmented Python/C pipe tests pass, with fake native APIs; echo regression passes. Two fresh native builds match; nothing installed/activated. Physical input arbitration, atomic source version and backend cancellation remain open; trusted local handler can block worker shutdown. HS power/transport/coexistence still unqualified, no console fallback. RC-v5 issues77/81/87 remain authority. |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware verified` | Complete GB0 evidence: correctly oriented persistent Wanderer with title/icons/four edges, bounded graphical recovery without SD, 20/20 controlled EN-reset boots, a 30-minute desktop soak explicitly composed with B5's active concurrent SD/scanout stress, and an exact raw-card gate.  The latter used hardware-locked first host insertions around one normal D1001 boot; prepared image, pre-run readback and post-run readback are byte-identical at SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Two earlier comparisons remain documented as macOS `.fseventsd` contamination, not hidden as passes |
 | C4 | Touch as an absolute mouse HIDD | `hardware partial` | Since 2026-10-04 the touch path is the portable stack of D3 (`touchscreen.hidd`, `gsl3670.hidd`, `esp32p4board.resource`); the D1001 has not run it yet, so everything below describes the former kernel GSL driver and `p4touch.hidd`. D1001 identification, bounded firmware load/status and contact transport are hardware verified. The absolute mouse HIDD and nearest-contact continuity pass synchronized one-/two-contact tests; hardware IDs are not stable. A stationary pointer recovered after USB reset; its prior cause remains unknown. The tap policy defaults to button-free motion, tap-to-click and 400-ms hold-drag, preserving selectable direct mode and the right-button latch. Fabian confirms movement, tap and hold-drag with zero errors and clean release. A consented perimeter trace measures X=16..1638/Y=15..874; board-specific calibration now maps that range to the full surface. Its 3,863 host checks, build and package audit pass. A fresh synchronized run confirms four-edge reachability and menu-dropdown opening, with zero I2C errors and clean release at Y=5. Rapid double-tap reliability is reported poor; first-empty short-tap release (50-ms idle gap restored after renewed graphics slowdown) now pass 3,892 sanitizer checks and are a flashed candidate, not interactive acceptance; a volume requester precedes successful RAM Disk opening (name reported as TENEME, possibly THEME; unconfirmed). Theme assignments, Ice assets and PNG registration now pass a 167-entry host image verification; SD image now written/readback-verified/ejected; visible gate fails with missing png.library>=52; 171-entry runtime-library closure correction is now SD written/readback-verified/ejected (2026-10-01); synchronized 55-second boot reaches Wanderer and attempts the new runtime libraries; Fabian confirms requester-free RAM Disk opening and one visible toolbar symbol; complete toolbar and sustained performance are not yet accepted. Menu-item execution, bounded recovery, intermittent startup reliability and the 1,000-cycle gates remain open |
@@ -4483,6 +4483,30 @@ continuity must pass before integrating the generic after-DOS service.
 Physical cable/visual actions await fresh user readiness. Current USB target
 is absent; no hardware pass, reset, flash or WLAN policy change in this work.
 Read grants remain confined; no upload/delete/move/patch/protection override.
+
+Fabian subsequently requests preparing screenshot, mouse and file access
+before testing the board. The separate `diag` build now links
+[generic RemoteDiag](../../workbench/tools/RemoteDiag/README.md), with portable
+RDG1 framing/dispatch and existing AROS APIs. This changes implementation
+order, not acceptance: no installation/activation and no native screenshot,
+input, DOS or USB transfer pass. The DOS worker owns native handles/snapshots;
+the USB owner copies jobs and polls while those calls run. Shutdown waits
+for actual process death; a stuck backend can delay it, so no hard generic
+DOS timeout is claimed. Reset discards delayed replies but cannot undo an
+already executing click. Unique operation tickets reject stale completions.
+
+Default input/file access remains off. Explicit SCREEN/NONEAUTH, optional
+pinned ROOT and separate ALLOWMOUSE/UNATTENDED are required; host input also
+requires --allow-input. Physical-button guards are not atomic arbitration.
+Full/cropped RGB snapshots and file ranges are bounded4MiB; immutable bytes
+are transferred by4096-byte chunks and checked end-to-end, without log content.
+File ancestry/protection/metadata checks detect observable changes, not an
+atomic source copy or every same-metadata rewrite. One cached snapshot can
+temporarily coexist with its replacement (8MiB). DOS metadata remains raw
+protection32/comment/DateStamp, no H/Hidden or timezone reinterpretation.
+Tests and two identical native builds qualify source/build only. Actual
+transport/power, desktop effects, local input coexistence and read-only media
+remain open before using this candidate for WLAN diagnosis.
 
 ## Risks and decisions that must remain visible
 
@@ -44102,3 +44126,89 @@ remain open. No partial stage is a complete A/B update system.
   are not implemented; integrate only after transport qualification. README,
   RC0 table/phase and usb/README document this build-only state. Issue81 stays
   open; RC-v5 acceptance and outstanding WLAN N2T remain unchanged.
+
+### 2026-10-14 - RC0 screenshot, mouse and read-only-file candidate prepared
+
+- Starting source2553301eeb on feature/esp32p4-wifi. Fabian explicitly asks
+  implementation before later board tests. Primary integrates protocol,
+  generic service/DOS worker and opt-in USB wiring; bounded Luna tasks own
+  screen/input, files and client/fixtures, plus independent source review.
+  No hardware attached/opened, USB claim, serial/devserial, flash, reset, GUI,
+  SD/C6 write or WLAN test. Existing boot/image/tools caches are preserved.
+- New generic workbench/tools/RemoteDiag: portable RDG1 parser/dispatch,
+  AROS libraries/input.device and DOS adapters, independent DOS worker,
+  shared Python/libusb client/CLI. P4-specific main compiles as separate
+  USBDiag only with script fourth argument diag; ordinary echo build remains.
+  No mmake/autostart/resident/package or kernel ABI change. Root and public
+  screen are explicit; no default filesystem widening/screen fallback.
+- Screenshot: RGB888 full or crop, max4MiB, checked returned pixel count,
+  disposal pin released before transfer. No atomic redraw/cursor promise.
+  Mouse: absolute screen-bound move and completed left/right/middle clicks,
+  individual owned events await DoIO. ALLOWMOUSE/UNATTENDED on server and
+  --allow-input on host; no held drag/keyboard/touch. Failed optional input
+  setup retains screenshot availability with input capability false. Best-
+  effort release returns IO when native state is uncertain; guards do not
+  solve physical-touch/button races. Unattended means no concurrent local
+  interaction; full arbitration remains RC work, not accepted from fixtures.
+- Files: pinned trusted local root, relative native paths, no colon/device/
+  parent/link access or mutation. Canonical FIB/parent comparisons, bounded
+  ancestry64 and searches/listing128; ASCII case variants still use original
+  native Lock lookup, ambiguous case collisions fail closed. Enforce owner
+  no-read bit; stat/list retain protection32/comment/raw signed DateStamp.
+  Exact-range copies<=4MiB, signedLONG offsets; same-handle metadata before/
+  after and ancestry recheck detect observable change, not all same-metadata
+  writes/atomic namespace races. Copy becomes immutable, one cached snapshot,
+  transient replacement peak8MiB plus overhead; no implicit host sidecar.
+- Wire:32-byte versioned little-endian header, CRC32 over header/body,
+  <=1024 request/4096 response, one pending operation, explicit NONEAUTH
+  local USB with no network export/authentication/encryption. CRC is not
+  security or strong source identity. Fresh host cookie can replace an idle
+  session; duplicate sequence/stale cookie fail, unique monotonically counted
+  completion tickets survive resets without reuse. No ambiguous input replay.
+  Worker handles snapshots/native calls outside USB owner; jobs/messages are
+  copied/owned. A native operation already executing may finish after reset;
+  only its reply is discarded. ChildWait/ChildFree waits for actual death;
+  hung DOS/graphics/input call can block shutdown. No forced handler kill,
+  generic hard deadline or hardware SMP/message qualification claimed.
+- Independent review found physical-button guard gap, byte-exact DOS-case
+  rejection and mouse-open failure removing capture. Added guard immediately
+  before injection plus UNATTENDED policy/documented residual race, safe ASCII
+  candidate matching with native lookup/collision test, and capture-only input
+  failure degradation/capability test. Generation-only completion ticket was
+  replaced by unique operation tickets; stale same-session/reset completions
+  and new CLI invocation without USB reset are regression-tested. Native-first
+  failed Werror misleading indentation; corrected. Host-first failed duplicate
+  files implementation linkage because fixture includes source; corrected.
+  Failed attempts remain in evidence, not counted as passes.
+- Evidence root:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/remote-diag-2026-10-14.QuxPo7.
+  host-final.log actual exit0:14 Python client cases, actual protocol and
+  dispatch/path suites plus fake-native screen/files suites at O0/O2 with
+  ASan/UBSan/Werror;122 file assertions each including escapes, links, moved
+  ancestors, denied bits, metadata, exact ranges, cleanup and case variants.
+  Python client also speaks to real C parser/dispatch over fragmented pipes
+  at both optimizations with fake native backends; no USB or scheduler proof.
+  Host log SHA256
+  14d6866f089c17f53b970ba7b1329bf2147b9bc188bd4cf9e327887ff55f6171.
+  usb-final.log actual exit0: all original nine staging/five probe Python
+  and five C O0/O2 sanitized suites pass; echo-mode main lifecycle uses fakes,
+  not a host test of the native diagnostic worker/message scheduler. SHA256
+  c2d6bffffcaf51e8c54625111709d8658ea0c3425fb4991fee791a57cfa1baaf.
+- Native-final/repeat: both actual exit0, fresh16-object O2/Werror RV32IMAFC
+  Zicsr/Zifencei/Zaamo/Zalrsc ILP32F/medany builds, explicit current SDK and
+  generated headers, pinned unchanged TinyUSB archive4c195b7b.../f42c184c....
+  USBDiag238156B SHA256
+  2b183aa73c6a74e316136e740cf162e12246a525b42bcca72d5c8cf075cc9a5b;
+  cmp exit0, nm-u reports no unresolved symbol. Logs SHA256
+  9e89ceeb5fc7a903fe5a3b11b78173b6a1aa5afdd6681ac9dd2b3eed8e985803
+  and675ebdb97900e3295169b505852f4d63109cfc233c15b8de4d90f1498e61ac56.
+  Echo-final actual exit0:186968B
+  de3c0b2e0d4236f7e9f0cba3a9d505bb17df6c8135cb0987033921ebf00a5a64.
+  Standalone ELF DOS candidates only; nothing written to target or SYS.
+- README, RC0 table/phase and generic wire/operator instructions updated.
+  Generic service remains experimentally prepared, not native accepted or
+  final RC-v5. Next physical connector/power review and echo qualification,
+  then compare actual full/crop screenshot pixels, pointer/click effects and
+  confined DOS metadata/download against independent data. Capture/input/DOS
+  responsiveness, cancellation/physical coexistence, worker shutdown, watchdog,
+  debug/no-reader/boot and WLAN baseline remain open. No acceptance closure.

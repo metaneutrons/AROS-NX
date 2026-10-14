@@ -16,8 +16,18 @@ No enumeration, native LoadSeg/startup, transfer, coexistence or diagnostic-MVP
 pass is claimed. Debug console, WiFi and installed firmware are unchanged.
 See [prototype instructions](usb/README.md),
 [the investigation](../../docs/plans/aros-remote-control-usb-investigation.md)
-and ROADMAP RC0. Screenshot/mouse/read-only service follows hardware transport
-qualification; file mutation/TCP/MCP remain later deliveries.
+and ROADMAP RC0. The isolated candidate is now extended with generic
+screenshot, mouse/click and read-only-file backends at Fabian's request, still
+ahead of hardware qualification:
+[RemoteDiag](../../workbench/tools/RemoteDiag/README.md).
+Fourteen host-client tests, four O0/O2 sanitized C suites and fragmented
+Python/C pipe tests pass; native238156B2b183aa7... builds twice identically.
+No installation/activation or native USB/capture/input/file pass. Optional
+input requires ALLOWMOUSE/UNATTENDED; physical-input arbitration remains open.
+Files retain raw protection/comment/DateStamp and a pinned explicit root;
+metadata rechecks are not a fully atomic source-version guarantee. A separate
+DOS worker preserves USB polling, but a stuck native handler can delay worker
+shutdown. File mutation/TCP/MCP remain later deliveries.
 
 Queued debug console (2026-10-13, JC1060 headless hardware partial): the P4
 USB-Serial/JTAG/UART hardware backend now has a 64-record SMP ring and one

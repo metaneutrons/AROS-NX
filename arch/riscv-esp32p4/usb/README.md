@@ -3,7 +3,10 @@
 Status: host-tested and native-build verified; **not hardware qualified**.
 This is a standalone AROS DOS application, not a resident, BSP member or
 remote-control service. It is never automatically installed or started.
-Screenshots, input injection, file access and the RC protocol are not implemented.
+The default build remains echo-only. The separately selected `diag` build now
+prepares screenshot, mouse/click and read-only file backends, ahead of hardware
+qualification at Fabian's request; this is not a tested remote service.
+See [RemoteDiag](../../../workbench/tools/RemoteDiag/README.md).
 
 ## Dependencies and offline verification
 
@@ -24,6 +27,12 @@ output directories:
 sh arch/riscv-esp32p4/usb/run-tests.sh PINNED_ARCHIVE NEW_HOST_OUTPUT
 sh arch/riscv-esp32p4/usb/build-prototype.sh AROS_BUILD PINNED_ARCHIVE NEW_NATIVE_OUTPUT
 ```
+
+Pass a fourth argument `diag` to the build script for standalone `USBDiag`.
+It requires explicit NONEAUTH and a named SCREEN, optional ROOT and separately
+ALLOWMOUSE/UNATTENDED. No current image, normal startup or package changes.
+Diagnostic worker limits and its RDG1 host CLI are documented in RemoteDiag;
+native backend calls are not hard-time-bounded, unlike the controller polls.
 
 The tests open no USB or serial device. Nine Python staging tests, five host
 probe tests and five C suites at O0/O2 with ASan/UBSan cover ring bounds,
