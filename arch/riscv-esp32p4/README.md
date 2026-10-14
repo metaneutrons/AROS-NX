@@ -162,6 +162,10 @@ with independent exact readback and a26.753525s headless return showing both
 harts, watchdog armed, GPIO54 C6 reset and WLAN owner CPU1 ready. No association
 was attempted. Fresh interactive and radio/IP qualification remain open;
 BSPde813a9a... is retained for recovery.
+The source-extracted SAE caller baseline now tests WPA2/WPA3 transition scan
+advertisement as an SAE-only choice, matching the existing policy; mixed client
+SAE/PSK fallback and PSK-only AP remain refused. O0/O2 ASan/UBSan473 checks
+each pass. This updates a stale test expectation, not firmware or acceptance.
 Console overflow reporting stays unconditional and unchanged.
 No C6 update or
 security-policy change is claimed.

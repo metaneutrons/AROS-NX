@@ -551,7 +551,14 @@ static void test_match_and_policy(void)
 	expect_match("SAE summary rejects mixed protocol", 0, 0, 0);
 	init_fixture();
 	bss.security_summary.key_mgmt |= WPA_KEY_MGMT_PSK;
-	expect_match("SAE summary rejects mixed AKM", 0, 0, 0);
+	expect_match("transition AP selects SAE-only profile", 1,
+		     WPA_FULLMAC_PROFILE_SAE_CCMP_PMF,
+		     WPA_FULLMAC_SAE_PWE_H2E);
+	ssid.key_mgmt |= WPA_KEY_MGMT_PSK;
+	expect_match("transition AP cannot enable SAE/PSK fallback", 0, 0, 0);
+	init_fixture();
+	bss.security_summary.key_mgmt = WPA_KEY_MGMT_PSK;
+	expect_match("SAE config cannot select PSK-only AP", 0, 0, 0);
 	init_fixture();
 	bss.security_summary.pairwise_cipher |= WPA_CIPHER_TKIP;
 	expect_match("SAE summary rejects mixed pairwise cipher", 0, 0, 0);

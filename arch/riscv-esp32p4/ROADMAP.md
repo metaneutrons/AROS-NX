@@ -152,7 +152,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `manager diagnosis resumed`: generation1.3 deployed; discovery and GUI Scan now recur successfully; manager lifecycle diagnostics deployed/readback/headless verified; explicit GPIO54 C6 reset and CPU1 owner captured; fresh-readiness600s manager capture running | Attribute manager initialization/stop and then open association; peer admission remains0, no IP/data pass |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
-| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
+| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; transition-AP SAE-only caller regression corrected and passes473 checks O0/O2; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | `first-idle candidate installed; association open`: One-shot reset/startup record and two stable absent queries implemented, including late initial START. Resource23be48ff.../BSPaa776547... exact readback and headless return verified; no new association yet. Idle leave probe refused/withdrawn; BSPde813a9a... retained for recovery. Earlier first DOWN/retry distinction unresolved. Quiet touch preserved. Corrected SYS stacka31b79e6... startup/IP untested; FullMAC peer admission0 | Obtain fresh user readiness and verify first idle join on installed peer; retain teardown for later/ambiguous states. Corrected-stack/DHCP, original SAE/required-PMF/no-fallback, routes/DNS/bidirectional traffic/reconnect/load remain open |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
@@ -1736,6 +1736,9 @@ connected contradictions return to legacy teardown. Maintenance/disconnect or
 the first admitted attempt consumes eligibility permanently for that reset.
 Candidate installed with independent exact readback and headless return;
 installed-peer association and IP/security qualification remain open.
+Generic SANA-II get_bssid also returns positive1 on missing data contrary to
+its documented negative-failure contract; source audit confirmed, not yet fixed.
+Do not attribute the pre-CONNECT idle refusal to that separate defect.
 
 Canonical name decision (2026-10-12): retain flashdisk.device and its generic
 MBR-derived FLASHDISK0P0 DOS name; no architecture-specific rename policy.
@@ -43754,3 +43757,29 @@ remain open. No partial stage is a complete A/B update system.
   startup does not prove displayed frames, input, first join or IP/security.
   Fresh user readiness is required next for flash WiFi, one Scan and one open
   Connect with a newly assigned capture. No rail-off or C6 update required.
+
+### 2026-10-14 - N2T passive continuation and SAE baseline reconciliation
+
+- Previous turn advanced source, tests, commit and exact BSP deployment.
+  No new user readiness has arrived; this continuation issues only devserial
+  reads/export, no reset, write, Scan or Connect. Port remains connected.
+  Fixed rows26127..26169/43 rows continue revision2/AP-info0x300f without new
+  link transition; export initial-idle-passive-continuation.jsonl SHA256
+  84987a444f739d15d5b18ceca15850fe34dd3f577c11e4487142149360658ba4.
+  This is idle continuity, not association/IP/load qualification.
+- Generic source audit: driver_sana2.c get_bssid returns1 for missing BSSID,
+  while driver.h documents-1 and rsn_supp/wpa.c callers check<0. Independent
+  defect retained for a separate fix/regression; not proven responsible for
+  this pre-CONNECT failure. Keep installed manager unchanged for attribution.
+- Baseline FullMAC driver passes77 scenarios/468 checks at O0/O2 ASan/UBSan.
+  Caller baseline fails three assertions because its old mixed-AP-AKM refusal
+  contradicts existing commit67dd1b5388, which accepts the exact SAE side of
+  transition advertisement. Corrected only the test: SAE_CCMP_PMF/H2E selected,
+  mixed client SAE/PSK fallback and PSK-only AP refused. Runtime unchanged.
+  Corrected caller O0/O2 ASan/UBSan exits0,473 checks each; failure log retained.
+  Evidence initial-idle-fullmac-{driver-baseline,caller-baseline,
+  caller-corrected}.log in console-prefix-2026-10-14.Cu8SYY.
+- No native rebuild or deployment from this test-only correction. FullMAC
+  admission0, required-PMF/no-fallback, installed-peer negotiation and all
+  radio/IP/data gates remain unchanged/open. Next requires fresh readiness
+  and assigned capture for one open Connect, then diagnose actual result.
