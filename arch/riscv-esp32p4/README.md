@@ -168,7 +168,8 @@ CONFIGINTERFACE UNIT_ONLINE before those sends. Source audit identifies that
 the P4 repeat-config return prevents AROSTCP setting IFF_DRV_RUNNING; actual
 runtime flags are not logged. Candidate device79100Ba4449966... returns
 IS_CONFIGURED for an already configured immutable-MAC unit without changing
-its state. Built, not deployed or DHCP-qualified. Original first DOWN remains
+its state. Helperc94d8394... is now independently readback-verified and returns
+to both harts/C6 reset/owner CPU1. New DHCP outcome is not yet qualified. Original first DOWN remains
 unresolved: the first-idle change is not a root fix. Radio/IP qualification open;
 BSPde813a9a... is retained for recovery.
 The source-extracted SAE caller baseline now tests WPA2/WPA3 transition scan
