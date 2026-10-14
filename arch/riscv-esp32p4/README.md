@@ -140,7 +140,9 @@ requires absence but no leave event. This uses the original deadline; it
 does not authenticate UID-zero event causality or qualify the installed peer.
 Its default-off native build is byte-identical to the installed resource.
 Nine sanitized workflow configurations and the primary repeat pass; native
-builds work with and without diagnostics. Hardware outcome is not yet known.
+builds work with and without diagnostics. The probe is installed in
+BSP4049840Bc0e9079e... with byte-exact independent readback and headless return;
+the association result is not yet known.
 Espressif documents the leave event for an already-connected station, not
 every successful idle Disconnect. Missing-event refusal therefore cannot
 establish a peer defect; do not enable this probe as production policy.

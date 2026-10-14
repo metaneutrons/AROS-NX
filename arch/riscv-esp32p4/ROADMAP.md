@@ -153,7 +153,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
-| N2T | Explicit accepted-risk WLAN association test | `transient link; C6 disconnect reason8 observed, origin open`: Fresh attempt commits then event776/reason8 and correlated0x300f trigger retirement; internal retry later stays UP, GUI still reports failure. RPC trace excludes a second283 between Connect and DOWN. Default-off leave-ordering probe360620B659c3464... passes native builds and nine sanitized workflow runs/primary repeat; deployment pending; default0 byte-identical to installed8036006e... . BSPde813a9a... installed; quiet touch preserved. Corrected SYS stacka31b79e6... remains startup/IP untested; FullMAC peer admission0 | Test controlled preflight leave ordering without treating UID0 as causal proof or extending timeout. Corrected-stack/DHCP, original SAE/required-PMF/no-fallback, routes/DNS/bidirectional traffic/reconnect/load remain open |
+| N2T | Explicit accepted-risk WLAN association test | `transient link; C6 disconnect reason8 observed, origin open`: Fresh RPC trace excludes a second283 between Connect and initial DOWN; internal retry later stays UP, GUI fails. Default-off leave-ordering probe360620B659c3464... passes native builds and nine sanitized workflow runs/primary repeat; installed BSP4049840Bc0e9079e... has exact independent readback/headless return. Fresh readiness and capture armed; association outcome pending. Quiet touch preserved. Corrected SYS stacka31b79e6... remains startup/IP untested; FullMAC peer admission0 | Test controlled preflight leave ordering without treating UID0 as causal proof or extending timeout. Corrected-stack/DHCP, original SAE/required-PMF/no-fallback, routes/DNS/bidirectional traffic/reconnect/load remain open |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1721,7 +1721,8 @@ deadline, current ledger (later UP/lifecycle supersedes DOWN), cancellation,
 query correlation and security gates remain. Default0 is byte-identical to
 installed resource8036006e...; this is not a proven root fix or causal event
 barrier. Nine sanitized workflow runs and primary repeat pass; bounded independent
-review passes. Hardware deployment and interactive result remain pending.
+review passes. Candidate BSPc0e9079e... is deployed/readback/headless-return
+verified; interactive association result remains pending.
 
 Canonical name decision (2026-10-12): retain flashdisk.device and its generic
 MBR-derived FLASHDISK0P0 DOS name; no architecture-specific rename policy.
@@ -43591,3 +43592,33 @@ remain open. No partial stage is a complete A/B update system.
   through23840,910.11790592s. No additional link event or matched fault/reset/
   overflow. This is passive radio-state continuity, not visible GUI/IP/data
   or a1800-second production qualification. No firmware write at this point.
+
+### 2026-10-14 - N2T leave-ordering probe deployed and fresh attempt armed
+
+- Source9b5c4d9459, native probe1/association+scan diagnostics1/IO0 on
+  JC1060v2, CPU1, accepted-risk1 and FullMAC peer gate0. Exact resource659c3464...
+  and BSP4049840Bc0e9079e... retained. Bootloader/table/otadata/NVS, core,
+  helpers, SYS and C6 firmware are unchanged. Previous BSPde813a9a... exact
+  readback remains recovery; no unnecessary full flash backup.
+- Target-only devserial enter_bootloader/close, esptool explicit-offset fallback
+  (devserial flash CLI lacks the offset operation). Identity confirms P4v1.3
+  MAC80:f1:b2:d3:3b:a6/16MiB. Write0x820000..0xbfcbb0 session90593 exits0,
+  hash verified. Independent read session89152 exits0; bytes/hash compare
+  exactlyc0e9079edabac508192309df46fcbf0a9e39f30c2b327a890111b55123072812.
+  Daemon/history/other ports untouched; capture resumed before explicit boot
+  release. Opening can itself reset; no exactly-one-electrical-reset claim.
+- Fixed headless export24176..24424/249 rows/38.943065088s SHA256
+  fd80beb26d33e074a952487b795b26a55a1476dac27f0ee850930428d353a435.
+  Expected ROM banner24176 follows commanded reset; SMP hart1/cpus2 at24330,
+  console sender24331, quiet GT911 startup24348, GPIO54 C6 resetok1 at24365,
+  CPU1 WLAN owner24371. Periodic AP-info0x300f is expected without association.
+  No additional ROM banner or matched fatal/Guru/watchdog fault, normal log
+  prefix, routine touch heartbeat, overflow or WiFiRPC. No radio association,
+  graphical observation, input/IP/SAE/data/load acceptance inferred.
+- Evidence console-prefix-2026-10-14.Cu8SYY/disconnect-fence-{identity,write,
+  readback}.log, readback.bin, boot-first.jsonl and headless.jsonl. Fabian now
+  explicitly reports fresh readiness; new follow after24448 is armed in
+  wifi-disconnect-fence-open-after-24448.jsonl. Ask only flash WiFi, one Scan,
+  one open Connect. The diagnostic may refuse if idle283 has no leave event;
+  such refusal is not a peer defect or a production fix. Interactive outcome
+  and full WiFi acceptance remain pending. No rail-off or C6 update requested.
