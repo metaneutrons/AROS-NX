@@ -1,5 +1,17 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Remote diagnostic USB investigation (2026-10-14, source only): the vendor
+schematic provides separate USB2 Full-Speed/debug and USB3 High-Speed OTG
+connector blocks. No P4 gadget backend was found in the audited AROS tree.
+TinyUSB's inspected P4 DWC2 source supports a PIO/FIFO candidate, but its
+IDF/FreeRTOS adapter, SMP OSAL, PHY/clock setup and native IRQ dispatch need
+AROS integration. Proceed first to an isolated enumeration/echo spike, then
+screenshots, mouse/click and confined read-only file access. USB target is
+absent from current Mac enumeration; no hardware, transfer or diagnostic-MVP
+pass is claimed. Debug console, WiFi and installed firmware are unchanged.
+See [the USB investigation](../../docs/plans/aros-remote-control-usb-investigation.md)
+and ROADMAP RC0. File mutation/TCP/MCP remain later deliveries.
+
 Queued debug console (2026-10-13, JC1060 headless hardware partial): the P4
 USB-Serial/JTAG/UART hardware backend now has a 64-record SMP ring and one
 timer-backed TX task. The generic AROS debug API is unchanged. Once the task

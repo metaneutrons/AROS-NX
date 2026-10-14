@@ -192,6 +192,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C1P | Graphical boot/update performance | `hardware partial; runtime hang gate open` | Rotation/mirror: 140 sanitizer cases; actual producer: 400 submissions/1,677 guarded IRQs. CPU90 synchronous full update 2.776 s; CPU360 synchronous 0.617 s; v2 coalesced submission 0.296 s. Paired v2 core/HIDD initially passes headless Wanderer and flash checks. Fabian observes speedup then slowdown/hang. Console-only nonblocking runtime fix now sanitizer-tested, flashed and verified; explanation of the observed hang remains unconfirmed. On 2026-10-01 Fabian reports drawing is fine so far after requester-free RAM Disk opening; duration unspecified. Sustained no-reader/stress and complete interactive regression gates remain open. |
 | CQ1 | Bounded queued SMP debug console | `hardware partial (JC1060); default-plain deployed/readback/headless; D1001 open` | 2026-10-13 framed core showed both harts/108 consecutive records and reader recovery. 2026-10-14: P4_CONSOLE_RECORD_PREFIX defaults0, optional1 keeps framing; overflow warnings always active. Clean native193024Ba68ca519.../independent readback and111.929s fresh218-row headless export show no normal prefix,22 touch heartbeats and CPU1 WLAN owner. Twelve sanitized USB/UART default/0/1 host runs pass; old-header mutation rejected. Plain logs cannot prove sequence continuity. Native overload/physical disconnect and fresh interactive gates remain open. Early/fatal direct output and timer-failure backlog loss remain explicit limits. |
+| RC0 | Independent USB remote diagnostic MVP | `not started (source investigation complete)` | RC-v5 issues77/81/87 remain authority; separate HS OTG candidate from schematic USB3, no existing P4 gadget backend. Inspected MIT TinyUSB4c195b7b... has P4/PIO support but IDF/FreeRTOS/SMP/IRQ/PHY integration is outstanding. No target in host USB inventory, no reset/write/transfer/visual gate. Next isolated enumeration/echo spike before screenshot, mouse/click and confined read-only file access; no console-sharing or file mutation fallback. |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware verified` | Complete GB0 evidence: correctly oriented persistent Wanderer with title/icons/four edges, bounded graphical recovery without SD, 20/20 controlled EN-reset boots, a 30-minute desktop soak explicitly composed with B5's active concurrent SD/scanout stress, and an exact raw-card gate.  The latter used hardware-locked first host insertions around one normal D1001 boot; prepared image, pre-run readback and post-run readback are byte-identical at SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Two earlier comparisons remain documented as macOS `.fseventsd` contamination, not hidden as passes |
 | C4 | Touch as an absolute mouse HIDD | `hardware partial` | Since 2026-10-04 the touch path is the portable stack of D3 (`touchscreen.hidd`, `gsl3670.hidd`, `esp32p4board.resource`); the D1001 has not run it yet, so everything below describes the former kernel GSL driver and `p4touch.hidd`. D1001 identification, bounded firmware load/status and contact transport are hardware verified. The absolute mouse HIDD and nearest-contact continuity pass synchronized one-/two-contact tests; hardware IDs are not stable. A stationary pointer recovered after USB reset; its prior cause remains unknown. The tap policy defaults to button-free motion, tap-to-click and 400-ms hold-drag, preserving selectable direct mode and the right-button latch. Fabian confirms movement, tap and hold-drag with zero errors and clean release. A consented perimeter trace measures X=16..1638/Y=15..874; board-specific calibration now maps that range to the full surface. Its 3,863 host checks, build and package audit pass. A fresh synchronized run confirms four-edge reachability and menu-dropdown opening, with zero I2C errors and clean release at Y=5. Rapid double-tap reliability is reported poor; first-empty short-tap release (50-ms idle gap restored after renewed graphics slowdown) now pass 3,892 sanitizer checks and are a flashed candidate, not interactive acceptance; a volume requester precedes successful RAM Disk opening (name reported as TENEME, possibly THEME; unconfirmed). Theme assignments, Ice assets and PNG registration now pass a 167-entry host image verification; SD image now written/readback-verified/ejected; visible gate fails with missing png.library>=52; 171-entry runtime-library closure correction is now SD written/readback-verified/ejected (2026-10-01); synchronized 55-second boot reaches Wanderer and attempts the new runtime libraries; Fabian confirms requester-free RAM Disk opening and one visible toolbar symbol; complete toolbar and sustained performance are not yet accepted. Menu-item execution, bounded recovery, intermittent startup reliability and the 1,000-cycle gates remain open |
@@ -4443,6 +4444,36 @@ Acceptance gate:
 - I2C errors and finger lift recover cleanly;
 - absent touch hardware does not prevent C3;
 - README M7 and this roadmap change to `hardware verified` with evidence.
+
+## Track RC: independent remote diagnostic access
+
+### RC0 - USB investigation and diagnostic-MVP slice
+
+2026-10-14: Fabian authorizes USB pre-investigation for screenshots,
+mouse/click and read-only file access to support the unresolved N2T WLAN
+diagnosis. The original RC-M6/full-feature scope remains separate; there is
+no touch/keyboard/MCP/TCP/file-write acceptance from this smaller slice.
+Requirements remain in [RC-v5 epic77](https://github.com/metaneutrons/AROS-NX/issues/77)
+until the reviewed design snapshot. Findings, source identities, proposed
+adapter and the next enumeration/echo gate are in
+[the investigation](../../docs/plans/aros-remote-control-usb-investigation.md).
+
+Source audit complete, implementation not started. Use the separate native HS
+OTG as candidate; keep Serial/JTAG/debug/flasher ownership unchanged. AROS
+has host USB classes but no identified P4 gadget backend. TinyUSB's P4 DWC2
+PIO path is a reuse candidate, not a turnkey IDF application: real AROS task/
+OSAL, PHY/clock and IRQ dispatch are needed. OS-none is not a proved SMP
+adapter; generic IRQ registration alone is not dispatched by current P4 traps.
+Do not assume generic CacheClearE qualifies receive DMA. Prefer FIFO for
+the first spike; measure before enabling DMA or promising capture throughput.
+
+Next: review/pin a minimal device-stack subset and compile bounded native
+enumeration/echo plus host fixtures. Native USB3 connection/enumeration,
+exact echo, no/slow-reader and disconnect/reconnect, watchdog and debug
+continuity must pass before integrating the generic after-DOS service.
+Physical cable/visual actions await fresh user readiness. Current USB target
+is absent; no hardware pass, reset, flash or WLAN policy change in this audit.
+Read grants remain confined; no upload/delete/move/patch/protection override.
 
 ## Risks and decisions that must remain visible
 
@@ -43950,3 +43981,40 @@ remain open. No partial stage is a complete A/B update system.
   automatic reflash/restart, no additional interaction yet. Actual runtime
   flags/configuration aliases, DHCP/IP/data, SAE/no-fallback/PMF qualification
   and first-DOWN root fix remain open. Evidence root unchanged.
+
+### 2026-10-14 - RC0 USB diagnostic source investigation
+
+- Starting AROS source d548a8ac9598f1cb71d946a23f085851947d06bf,
+  branch feature/esp32p4-wifi; read-only primary plus two bounded Luna audits.
+  Schematic PDF ae3f41fe9a66b201358ef8cf1f531fdced68c63f84c8bde36e23cde5132a23ee
+  visually reviewed: separate USB2 Full-Speed and USB3 High-Speed blocks,
+  common USB5V_IN/Type-C Rd. Assembly/socket/cable routing not qualified.
+- Local IDF6.0.1 revision8c19b156084a0753687347cca1f5355782893533,
+  preexisting bootloader/support edits preserved. FS OTG GPIO26/27 and HS
+  UTMI controller identified; tested USJ console contract GPIO24/25 retained.
+  Local device example requests esp_tinyusb range, not a resolved source.
+  Primary inspected upstream MIT TinyUSB at immutable
+  4c195b7b94f813a37b77b184bcae7b2b6ef2835e: P4 DWC2/PIO support,
+  IDF interrupt/FreeRTOS adapter, OS-none SMP limitation and custom-OS hook.
+  TinyUSB rhport1 is HS, unlike IDF controller-array index0; translate
+  explicitly. No dependency installed/vendored or runtime compiled.
+- AROS scoped inventories find host stacks/CDC/Broadcom host-mode OTG,
+  not a P4 gadget. P4 trap dispatch currently only timer/IPI/DSI DMA;
+  native USB IRQ needs actual routing. Generic receive-DMA cache maintenance
+  is not established. Screen capture, input and DOS read APIs are reuse
+  candidates; existing library artifacts are not a remote-operation pass.
+- IOUSBHostDevice inventory has no Espressif target. No devserial open,
+  serial write/reset/flash, driver claim, GUI, SD/C6 mutation or WLAN retry.
+  Installed core/BSP/helper/SYS and unconditional console overflow unchanged.
+  No native build, transfer/throughput, screenshot or input evidence.
+- Report docs/plans/aros-remote-control-usb-investigation.md records exact
+  source links, limits and next safe gate. Proceed to opt-in isolated HS
+  bulk enumeration/echo candidate with real AROS synchronization before
+  snapshot/mouse/read-only service. Preserve debug transport; no automatic
+  console fallback. File mutation/TCP/MCP remain later deliveries. The current
+  user is remote without the display; physical/visual tests need fresh readiness.
+- Independent source/document review reports no actionable finding; input
+  event lifetime, host-vs-gadget and actual P4 IRQ prerequisites are checked
+  against source. git diff --check passes. RC-M4 issue81 execution state is
+  updated and independently read back exactly; it remains open. This is
+  reviewed investigation evidence, not a native build or hardware gate.
