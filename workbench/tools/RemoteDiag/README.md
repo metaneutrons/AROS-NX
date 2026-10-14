@@ -160,6 +160,13 @@ UNAVAILABLE,IO,CHANGED,LIMIT,SESSION,BUSY,END. No path/content in error replies.
 
 ## Evidence limits
 
+The ESP32-P4 adapter now provides vendor-bulk plus a separate CDC log function.
+The client validates that composite descriptor tree and claims vendor interface0
+only; it never claims CDC or changes USB configuration. See the port's
+[USB instructions](../../../arch/riscv-esp32p4/usb/README.md) for the matched
+kernel tap, explicit NOLOGS fallback and runtime-only log/overflow limits.
+Native enumeration, CDC coexistence and ROM recovery remain hardware gates.
+
 Host tests use actual parser/dispatch/backend source with fake AROS API layers;
 a fragmented Python-to-C pipe also tests wire compatibility. They do not
 prove real DOS handlers, Intuition effects, SMP scheduling, USB traffic or

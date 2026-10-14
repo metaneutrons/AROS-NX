@@ -11,6 +11,7 @@
 #include <proto/exec.h>
 #include <utility/tagitem.h>
 #include "kernel_intern.h"
+#include "console_tap.h"
 
 #if !defined(P4_CONSOLE_WAIT)
 static void console_task(struct ExecBase *SysBase)
@@ -55,6 +56,9 @@ AROS_UFH3(static APTR, console_init,
           AROS_UFPA(struct ExecBase *, SysBase, A6))
 {
     AROS_USERFUNC_INIT
+    /* Permanent pull-only tap; USB consumers never install callbacks into
+       the kernel or steal the ordinary USJ/UART sender's queue. */
+    krnP4ConsoleTapRegister(SysBase);
     if (!NewCreateTask(TASKTAG_NAME, (IPTR)"P4 console TX",
                        TASKTAG_PRI, 0,
                        TASKTAG_STACKSIZE, 8192,

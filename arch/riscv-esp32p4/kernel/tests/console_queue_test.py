@@ -44,11 +44,14 @@ CONSOLE_SOURCE = extract_console_source()
 PREAMBLE = r'''
 #include <assert.h>
 #include <stdint.h>
+#include <pthread.h>
+#include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "console_ring.h"
+#include "console_tap.h"
 
 #define P4_TLS_HARTS 2u
 #define P4_USJ_BASE 0x1000u
@@ -69,6 +72,14 @@ PREAMBLE = r'''
 
 static unsigned int p4_test_hart;
 static unsigned int p4_tls_mask_calls, p4_tls_unmask_calls;
+static struct P4ConsoleTapResource *registered_tap_resource;
+static unsigned int add_resource_calls;
+
+static void AddResource(void *resource)
+{
+    registered_tap_resource = (struct P4ConsoleTapResource *)resource;
+    ++add_resource_calls;
+}
 
 static unsigned long p4_tls_mask(void);
 static void p4_tls_unmask(unsigned long state);
@@ -189,12 +200,19 @@ static void reset_console(void)
     memset(console_line, 0, sizeof(console_line));
     memset(console_len, 0, sizeof(console_len));
     memset(&console_queue, 0, sizeof(console_queue));
+    memset(&console_tap_queue, 0, sizeof(console_tap_queue));
     memset(console_frame, 0, sizeof(console_frame));
     console_frame_len = 0;
     console_frame_pos = 0;
     console_reported_drops = 0;
     console_last_overflow = 0;
     console_holder = 0;
+    __atomic_store_n(&console_tap_control, 0u, __ATOMIC_RELAXED);
+    __atomic_store_n(&console_tap_owner, NULL, __ATOMIC_RELAXED);
+    __atomic_store_n(&console_tap_session, 0u, __ATOMIC_RELAXED);
+    __atomic_store_n(&console_tap_active_session, 0u, __ATOMIC_RELAXED);
+    __atomic_store_n(&console_tap_epoch, 0u, __ATOMIC_RELAXED);
+    __atomic_store_n(&console_tap_lifetime_drops, 0u, __ATOMIC_RELAXED);
     console_runtime = 0;
     console_dropped = 0;
     __atomic_store_n(&console_sender_ready, 0u, __ATOMIC_RELAXED);
@@ -848,8 +866,535 @@ static void test_caller_budget_is_capped_at_256(void)
     assert_tls_balanced();
 }
 
+static void test_tap_resource_registration(void)
+{
+    krnP4ConsoleTapRegister((struct ExecBase *)(uintptr_t)1u);
+    assert(add_resource_calls == 1u);
+    assert(registered_tap_resource == &console_tap_resource);
+    assert(registered_tap_resource->node.ln_Type == NT_RESOURCE);
+    assert(strcmp(registered_tap_resource->node.ln_Name,
+                  P4_CONSOLE_TAP_NAME) == 0);
+    assert(registered_tap_resource->abi == P4_CONSOLE_TAP_ABI);
+    assert(registered_tap_resource->size == sizeof(*registered_tap_resource));
+    assert(registered_tap_resource->claim != NULL);
+    assert(registered_tap_resource->release != NULL);
+    assert(registered_tap_resource->pop != NULL);
+    assert(registered_tap_resource->dropped != NULL);
+
+    krnP4ConsoleTapRegister((struct ExecBase *)(uintptr_t)1u);
+    assert(add_resource_calls == 1u);
+}
+
+static void check_tap_record(const struct p4_console_record *record,
+                             const char *data, size_t length,
+                             uint32_t sequence)
+{
+    assert(record->sequence == sequence);
+    assert(record->length == length);
+    assert(record->hart == 0u);
+    assert(memcmp(record->data, data, length) == 0);
+    for (size_t i = length; i < P4_CONSOLE_RECORD_BYTES; ++i)
+        assert(record->data[i] == '\0');
+}
+
+static void test_tap_claim_and_both_console_emit_paths(void)
+{
+    static int owner;
+    struct p4_console_record record;
+    uint32_t session;
+    size_t writes_before;
+
+    /* Unclaimed output is never replayed into a later session. */
+    reset_console();
+    reset_mmio();
+    sender_ready_runtime();
+    krnP4PutStr("unclaimed\n");
+    assert(console_queue.count == 1u);
+    session = console_tap_resource.claim(&owner);
+    assert(session != 0u);
+    assert(console_tap_resource.pop(&owner, session, &record) == 0);
+    console_tap_resource.release(&owner, session);
+
+    /* The queued path is mirrored without consuming the primary queue. */
+    reset_console();
+    reset_mmio();
+    session = console_tap_resource.claim(&owner);
+    assert(session != 0u);
+    sender_ready_runtime();
+    krnP4PutStr("queued\n");
+    assert(console_queue.count == 1u);
+    assert(mmio_write_count == 0u);
+    writes_before = mmio_write_count;
+    assert(console_tap_resource.pop(&owner, session, &record) == 1);
+    check_tap_record(&record, "queued\n", 7u, 0u);
+    assert(mmio_write_count == writes_before);
+    assert(console_queue.count == 1u);
+    console_tap_resource.release(&owner, session);
+
+    /* Early direct output is mirrored before the hardware backend writes it. */
+    reset_console();
+    reset_mmio();
+    session = console_tap_resource.claim(&owner);
+    assert(session != 0u);
+#if P4_CONSOLE_USB
+    usb_conf = P4_USJ_IN_EP_DATA_FREE;
+#else
+    uart_used = 0u;
+#endif
+    krnP4PutStr("direct\n");
+    assert(console_queue.count == 0u);
+    assert(mmio_write_count != 0u);
+    writes_before = mmio_write_count;
+    assert(console_tap_resource.pop(&owner, session, &record) == 1);
+    check_tap_record(&record, "direct\n", 7u, 0u);
+    assert(mmio_write_count == writes_before);
+    console_tap_resource.release(&owner, session);
+}
+
+static void test_tap_overflow_is_independent_and_bounded(void)
+{
+    static int owner;
+    struct p4_console_record record;
+    char line[8];
+    uint32_t session;
+    unsigned int i;
+
+    reset_console();
+    reset_mmio();
+    sender_ready_runtime();
+    session = console_tap_resource.claim(&owner);
+    assert(session != 0u);
+    for (i = 0; i < P4_CONSOLE_RING_SLOTS + 1u; ++i)
+    {
+        (void)snprintf(line, sizeof(line), "T%02u\n", i);
+        krnP4PutStr(line);
+    }
+
+    assert(console_queue.count == P4_CONSOLE_RING_SLOTS);
+    assert(p4_console_ring_dropped(&console_queue) == 1u);
+    assert(console_tap_queue.count == P4_CONSOLE_RING_SLOTS);
+    assert(console_tap_resource.dropped(&owner, session) == 1u);
+    assert(mmio_write_count == 0u);
+    for (i = 0; i < P4_CONSOLE_RING_SLOTS; ++i)
+    {
+        (void)snprintf(line, sizeof(line), "T%02u\n", i);
+        assert(console_tap_resource.pop(&owner, session, &record) == 1);
+        check_tap_record(&record, line, 4u, i);
+    }
+    assert(console_tap_resource.pop(&owner, session, &record) == 0);
+    assert(console_tap_resource.dropped(&owner, session) == 1u);
+    console_tap_resource.release(&owner, session);
+
+    /* Ring counters reset with each claim, but the ABI reports lifetime
+     * losses and therefore must not move backwards across sessions.
+     */
+    session = console_tap_resource.claim(&owner);
+    assert(session != 0u);
+    assert(console_tap_queue.count == 0u);
+    assert(p4_console_ring_dropped(&console_tap_queue) == 0u);
+    assert(console_tap_resource.dropped(&owner, session) == 1u);
+    console_tap_resource.release(&owner, session);
+}
+
+static void test_tap_control_drops_are_lifetime_cumulative(void)
+{
+    static int owner;
+    uint32_t session;
+
+    reset_console();
+    reset_mmio();
+    session = console_tap_resource.claim(&owner);
+    assert(session != 0u);
+
+    /* Force the producer's single control-lock attempt to fail. The loss is
+     * independent of the tap ring and remains visible to the next lease.
+     */
+    assert(console_tap_trylock());
+    console_tap_capture("lost\n", 5u, 0u);
+    assert(__atomic_load_n(&console_tap_lifetime_drops, __ATOMIC_RELAXED) == 1u);
+    console_tap_unlock();
+    assert(console_tap_resource.dropped(&owner, session) == 1u);
+    console_tap_resource.release(&owner, session);
+
+    session = console_tap_resource.claim(&owner);
+    assert(session != 0u);
+    assert(p4_console_ring_dropped(&console_tap_queue) == 0u);
+    assert(console_tap_resource.dropped(&owner, session) == 1u);
+    console_tap_resource.release(&owner, session);
+}
+
+static void test_tap_release_reclaim_interleaving(void)
+{
+    static int old_owner, new_owner;
+    struct p4_console_record record;
+    uint32_t old_session, new_session;
+
+    reset_console();
+    reset_mmio();
+    old_session = console_tap_resource.claim(&old_owner);
+    assert(old_session != 0u);
+    krnP4PutStr("pending release\n");
+    assert(console_tap_queue.count == 1u);
+
+    /* Deterministically model release after it has revoked the active token
+     * but before it can mark the control lock pending (the control word is
+     * free, so the release CAS 1->3 will miss). A new claim must not reuse
+     * the slot while the old identity still awaits its cleanup.
+     */
+    __atomic_store_n(&console_tap_active_session, 0u, __ATOMIC_RELEASE);
+    assert(__atomic_load_n(&console_tap_control, __ATOMIC_ACQUIRE) == 0u);
+    assert(__atomic_load_n(&console_tap_owner, __ATOMIC_ACQUIRE) == &old_owner);
+    assert(__atomic_load_n(&console_tap_session, __ATOMIC_ACQUIRE) == old_session);
+    assert(console_tap_resource.claim(&new_owner) == 0u);
+    assert(__atomic_load_n(&console_tap_owner, __ATOMIC_ACQUIRE) == &old_owner);
+
+    /* Resume the old release after its failed 1->3 handoff: it takes the
+     * now-free lock and clears only its own lease. A subsequent claim
+     * succeeds, while another stale release is harmless.
+     */
+    assert(console_tap_trylock());
+    console_tap_finish_release_locked(&old_owner, old_session);
+    console_tap_unlock();
+    assert(console_tap_queue.count == 0u);
+    assert(__atomic_load_n(&console_tap_owner, __ATOMIC_ACQUIRE) == NULL);
+    new_session = console_tap_resource.claim(&new_owner);
+    assert(new_session != 0u && new_session != old_session);
+    console_tap_resource.release(&old_owner, old_session);
+    krnP4PutStr("fresh\n");
+    assert(console_tap_resource.pop(&new_owner, new_session, &record) == 1);
+    check_tap_record(&record, "fresh\n", 6u, 0u);
+    console_tap_resource.release(&new_owner, new_session);
+}
+
+static void test_tap_overlapping_release_calls(void)
+{
+    static int owner, replacement_owner;
+    uint32_t old_session, replacement_session, expected_session;
+
+    reset_console();
+    reset_mmio();
+    old_session = console_tap_resource.claim(&owner);
+    assert(old_session != 0u);
+
+    /* Model release A after it has won active-session revocation but before
+     * it has finished the control-lock handoff. Release B must not mistake
+     * active==0 for ownership of A's cleanup and free the slot itself.
+     */
+    expected_session = old_session;
+    assert(__atomic_compare_exchange_n(&console_tap_active_session,
+                                      &expected_session, 0u, 0,
+                                      __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE));
+    console_tap_resource.release(&owner, old_session);
+    assert(__atomic_load_n(&console_tap_active_session, __ATOMIC_ACQUIRE) == 0u);
+    assert(__atomic_load_n(&console_tap_owner, __ATOMIC_ACQUIRE) == &owner);
+    assert(__atomic_load_n(&console_tap_session, __ATOMIC_ACQUIRE) == old_session);
+    assert(console_tap_resource.claim(&replacement_owner) == 0u);
+
+    /* Resume release A's fallback cleanup after it finds the control lock
+     * free. The replacement claim may proceed only after that cleanup.
+     */
+    assert(console_tap_trylock());
+    console_tap_finish_release_locked(&owner, old_session);
+    console_tap_unlock();
+    assert(__atomic_load_n(&console_tap_owner, __ATOMIC_ACQUIRE) == NULL);
+
+    replacement_session = console_tap_resource.claim(&replacement_owner);
+    assert(replacement_session != 0u && replacement_session != old_session);
+    console_tap_resource.release(&owner, old_session);
+    assert(__atomic_load_n(&console_tap_active_session, __ATOMIC_ACQUIRE)
+           == replacement_session);
+    assert(__atomic_load_n(&console_tap_owner, __ATOMIC_ACQUIRE)
+           == &replacement_owner);
+    console_tap_resource.release(&replacement_owner, replacement_session);
+}
+
+static void test_tap_stale_leases_and_deferred_release(void)
+{
+    static int first_owner, second_owner;
+    struct p4_console_record record;
+    uint32_t first_session, second_session;
+
+    reset_console();
+    reset_mmio();
+    sender_ready_runtime();
+    first_session = console_tap_resource.claim(&first_owner);
+    assert(first_session != 0u);
+    krnP4PutStr("old\n");
+    console_tap_resource.release(&first_owner, first_session);
+    assert(console_tap_resource.pop(&first_owner, first_session, &record) == 0);
+    assert(console_tap_resource.dropped(&first_owner, first_session) == 0u);
+
+    second_session = console_tap_resource.claim(&second_owner);
+    assert(second_session != 0u && second_session != first_session);
+    console_tap_resource.release(&first_owner, first_session);
+    assert(console_tap_resource.pop(&second_owner, second_session, &record) == 0);
+    krnP4PutStr("new\n");
+    assert(console_tap_resource.pop(&second_owner, second_session, &record) == 1);
+    check_tap_record(&record, "new\n", 4u, 0u);
+
+    /* Force release while a consumer owns the control lock. Release revokes
+     * immediately and that owner clears unread data before unlocking.
+     */
+    krnP4PutStr("pending\n");
+    assert(console_tap_queue.count == 1u);
+    assert(console_tap_trylock());
+    console_tap_resource.release(&second_owner, second_session);
+    assert(__atomic_load_n(&console_tap_active_session, __ATOMIC_ACQUIRE) == 0u);
+    assert(__atomic_load_n(&console_tap_control, __ATOMIC_ACQUIRE) == 3u);
+    console_tap_unlock();
+    assert(console_tap_queue.count == 0u);
+
+    first_session = console_tap_resource.claim(&first_owner);
+    assert(first_session != 0u);
+    assert(console_tap_resource.pop(&first_owner, first_session, &record) == 0);
+    console_tap_resource.release(&first_owner, first_session);
+}
+
+struct tap_claim_race
+{
+    void *owner;
+    uint32_t *start;
+    uint32_t session;
+};
+
+static void *tap_claim_worker(void *opaque)
+{
+    struct tap_claim_race *race = (struct tap_claim_race *)opaque;
+
+    while (!__atomic_load_n(race->start, __ATOMIC_ACQUIRE))
+        sched_yield();
+    race->session = console_tap_resource.claim(race->owner);
+    return NULL;
+}
+
+#define TAP_STRESS_PRODUCERS 3u
+#define TAP_STRESS_ATTEMPTS  3000u
+
+struct tap_stress
+{
+    void *owner;
+    uint32_t session;
+    uint32_t *done;
+    unsigned char (*seen)[TAP_STRESS_ATTEMPTS];
+    uint32_t popped;
+};
+
+struct tap_producer
+{
+    uint32_t producer;
+    uint32_t session;
+    uint32_t *done;
+};
+
+static void *tap_producer_worker(void *opaque)
+{
+    struct tap_producer *producer = (struct tap_producer *)opaque;
+    char data[8];
+    uint32_t attempt;
+
+    for (attempt = 0; attempt < TAP_STRESS_ATTEMPTS; ++attempt)
+    {
+        data[0] = (char)producer->producer;
+        data[1] = (char)(attempt & 0xffu);
+        data[2] = (char)((attempt >> 8) & 0xffu);
+        data[3] = (char)((attempt >> 16) & 0xffu);
+        data[4] = (char)((attempt >> 24) & 0xffu);
+        data[5] = (char)(attempt ^ (producer->producer + 11u));
+        data[6] = (char)((attempt >> 8) ^ 0x5au);
+        data[7] = (char)((producer->producer << 7) ^ 0xa5u);
+        console_tap_capture(data, sizeof(data), (uint8_t)producer->producer);
+    }
+    (void)__atomic_fetch_add(producer->done, 1u, __ATOMIC_RELEASE);
+    return NULL;
+}
+
+static void *tap_consumer_worker(void *opaque)
+{
+    struct tap_stress *stress = (struct tap_stress *)opaque;
+    struct p4_console_record record;
+    uint32_t previous_sequence = 0u;
+    int have_previous = 0;
+
+    for (;;)
+    {
+        if (console_tap_resource.pop(stress->owner, stress->session, &record))
+        {
+            uint32_t producer = (uint8_t)record.data[0];
+            uint32_t attempt = (uint8_t)record.data[1]
+                             | ((uint32_t)(uint8_t)record.data[2] << 8)
+                             | ((uint32_t)(uint8_t)record.data[3] << 16)
+                             | ((uint32_t)(uint8_t)record.data[4] << 24);
+            assert(record.length == 8u);
+            assert(producer < TAP_STRESS_PRODUCERS);
+            assert(attempt < TAP_STRESS_ATTEMPTS);
+            assert((uint8_t)record.data[5]
+                   == (uint8_t)(attempt ^ (producer + 11u)));
+            assert((uint8_t)record.data[6]
+                   == (uint8_t)((attempt >> 8) ^ 0x5au));
+            assert((uint8_t)record.data[7]
+                   == (uint8_t)((producer << 7) ^ 0xa5u));
+            assert(!stress->seen[producer][attempt]);
+            stress->seen[producer][attempt] = 1u;
+            if (have_previous)
+                assert(record.sequence > previous_sequence);
+            previous_sequence = record.sequence;
+            have_previous = 1;
+            ++stress->popped;
+        }
+        else if (__atomic_load_n(stress->done, __ATOMIC_ACQUIRE) ==
+                 TAP_STRESS_PRODUCERS)
+            break;
+        else
+            sched_yield();
+    }
+    return NULL;
+}
+
+static void test_tap_smp_producers_and_claim_race(void)
+{
+    static int owners[2];
+    struct tap_claim_race claims[2];
+    struct tap_stress stress;
+    struct tap_producer producers[TAP_STRESS_PRODUCERS];
+    pthread_t claim_threads[2], producer_threads[TAP_STRESS_PRODUCERS];
+    pthread_t consumer_thread;
+    unsigned char seen[TAP_STRESS_PRODUCERS][TAP_STRESS_ATTEMPTS] = { { 0 } };
+    uint32_t claim_start = 0u, done = 0u;
+    uint32_t winner_session = 0u;
+    void *winner_owner = NULL;
+    uint32_t session;
+    unsigned int i, winners = 0u;
+
+    reset_console();
+    reset_mmio();
+    for (i = 0; i < 2u; ++i)
+    {
+        claims[i].owner = &owners[i];
+        claims[i].start = &claim_start;
+        claims[i].session = 0u;
+        assert(pthread_create(&claim_threads[i], NULL, tap_claim_worker,
+                              &claims[i]) == 0);
+    }
+    __atomic_store_n(&claim_start, 1u, __ATOMIC_RELEASE);
+    for (i = 0; i < 2u; ++i)
+    {
+        assert(pthread_join(claim_threads[i], NULL) == 0);
+        if (claims[i].session)
+        {
+            ++winners;
+            winner_session = claims[i].session;
+            winner_owner = claims[i].owner;
+        }
+    }
+    assert(winners == 1u);
+    assert(console_tap_resource.claim(&owners[0]) == 0u);
+    console_tap_resource.release(winner_owner, winner_session);
+
+    /* Three concurrent emitters and one consumer exercise the same actual
+     * tap producer path under sanitizer builds. Every successful record must
+     * remain whole and unique; bounded CAS misses count as drops.
+     */
+    session = console_tap_resource.claim(&owners[0]);
+    assert(session != 0u);
+    stress.owner = &owners[0];
+    stress.session = session;
+    stress.done = &done;
+    stress.seen = seen;
+    stress.popped = 0u;
+    assert(pthread_create(&consumer_thread, NULL, tap_consumer_worker,
+                          &stress) == 0);
+    for (i = 0; i < TAP_STRESS_PRODUCERS; ++i)
+    {
+        producers[i].producer = i;
+        producers[i].session = session;
+        producers[i].done = &done;
+        assert(pthread_create(&producer_threads[i], NULL, tap_producer_worker,
+                              &producers[i]) == 0);
+    }
+    for (i = 0; i < TAP_STRESS_PRODUCERS; ++i)
+        assert(pthread_join(producer_threads[i], NULL) == 0);
+    assert(pthread_join(consumer_thread, NULL) == 0);
+    assert(stress.popped + console_tap_resource.dropped(&owners[0], session)
+           == TAP_STRESS_PRODUCERS * TAP_STRESS_ATTEMPTS);
+    console_tap_resource.release(&owners[0], session);
+}
+
+struct tap_release_race
+{
+    void *owner;
+    uint32_t session;
+    uint32_t *start;
+};
+
+static void *tap_release_worker(void *opaque)
+{
+    struct tap_release_race *race = (struct tap_release_race *)opaque;
+
+    while (!__atomic_load_n(race->start, __ATOMIC_ACQUIRE))
+        sched_yield();
+    console_tap_resource.release(race->owner, race->session);
+    return NULL;
+}
+
+static void *tap_release_producer_worker(void *opaque)
+{
+    struct tap_release_race *race = (struct tap_release_race *)opaque;
+    static const char record[] = "release race\n";
+    unsigned int i;
+
+    while (!__atomic_load_n(race->start, __ATOMIC_ACQUIRE))
+        sched_yield();
+    for (i = 0; i < 10000u; ++i)
+        console_tap_capture(record, sizeof(record) - 1u, 1u);
+    return NULL;
+}
+
+static void test_tap_release_races_with_producer(void)
+{
+    static int owner;
+    struct tap_release_race race;
+    pthread_t producer_thread, release_thread;
+    struct p4_console_record record;
+    uint32_t start = 0u;
+    uint32_t old_session, new_session;
+
+    reset_console();
+    reset_mmio();
+    old_session = console_tap_resource.claim(&owner);
+    assert(old_session != 0u);
+    race.owner = &owner;
+    race.session = old_session;
+    race.start = &start;
+    assert(pthread_create(&producer_thread, NULL,
+                          tap_release_producer_worker, &race) == 0);
+    assert(pthread_create(&release_thread, NULL, tap_release_worker, &race) == 0);
+    __atomic_store_n(&start, 1u, __ATOMIC_RELEASE);
+    assert(pthread_join(producer_thread, NULL) == 0);
+    assert(pthread_join(release_thread, NULL) == 0);
+    assert(__atomic_load_n(&console_tap_active_session, __ATOMIC_ACQUIRE) == 0u);
+
+    new_session = console_tap_resource.claim(&owner);
+    assert(new_session != 0u && new_session != old_session);
+    console_tap_resource.release(&owner, old_session);
+    console_tap_capture("fresh\n", 6u, 0u);
+    assert(console_tap_resource.pop(&owner, new_session, &record) == 1);
+    check_tap_record(&record, "fresh\n", 6u, 0u);
+    assert(console_tap_resource.pop(&owner, new_session, &record) == 0);
+    console_tap_resource.release(&owner, new_session);
+}
+
 int main(void)
 {
+    test_tap_resource_registration();
+    test_tap_claim_and_both_console_emit_paths();
+    test_tap_overflow_is_independent_and_bounded();
+    test_tap_control_drops_are_lifetime_cumulative();
+    test_tap_stale_leases_and_deferred_release();
+    test_tap_release_reclaim_interleaving();
+    test_tap_overlapping_release_calls();
+    test_tap_smp_producers_and_claim_race();
+    test_tap_release_races_with_producer();
+
     if (P4_CONSOLE_RECORD_PREFIX)
     {
 #if P4_CONSOLE_USB
@@ -894,10 +1439,13 @@ def compile_and_run(tmpdir, backend, optimization, prefix_mode):
         "-Wextra",
         "-Werror",
         "-Wpedantic",
+        "-pthread",
         "-O" + str(optimization),
         "-fno-omit-frame-pointer",
         "-fsanitize=address,undefined",
         "-DP4_CONSOLE_USB=" + ("1" if backend == "usb" else "0"),
+        "-I",
+        str(KERNEL / "tests" / "stubs"),
         "-I",
         str(KERNEL),
         str(source),

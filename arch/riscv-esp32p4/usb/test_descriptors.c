@@ -6,7 +6,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum { EXPECTED_CONFIG_LENGTH = 32 };
+enum {
+    EXPECTED_CONFIG_LENGTH = TUD_CONFIG_DESC_LEN + TUD_VENDOR_DESC_LEN + TUD_CDC_DESC_LEN,
+    EXPECTED_INTERFACE_COUNT = 3
+};
 
 static tusb_speed_t selected_speed;
 
@@ -34,43 +37,133 @@ static uint16_t little_u16(const uint8_t *bytes)
     return (uint16_t)bytes[0] | (uint16_t)((uint16_t)bytes[1] << 8);
 }
 
-static void check_vendor_configuration(const uint8_t *descriptor,
-                                       uint16_t expected_packet_size,
-                                       uint8_t expected_configuration_type)
+static void check_descriptor(const uint8_t *bytes, size_t offset,
+                             uint8_t length, uint8_t type)
 {
-    CHECK(descriptor != NULL);
-    CHECK(descriptor[0] == 9);
-    CHECK(descriptor[1] == expected_configuration_type);
-    CHECK(little_u16(&descriptor[2]) == EXPECTED_CONFIG_LENGTH);
-    CHECK(descriptor[4] == 1);
+    CHECK(offset + length <= EXPECTED_CONFIG_LENGTH);
+    CHECK(bytes[offset] == length);
+    CHECK(bytes[offset + 1] == type);
+}
 
-    CHECK(descriptor[9] == 9);
-    CHECK(descriptor[10] == TUSB_DESC_INTERFACE);
-    CHECK(descriptor[13] == 2);
-    CHECK(descriptor[14] == TUSB_CLASS_VENDOR_SPECIFIC);
+static void check_endpoint(const uint8_t *bytes, size_t offset,
+                           uint8_t address, uint8_t transfer_type,
+                           uint16_t packet_size, uint8_t interval)
+{
+    check_descriptor(bytes, offset, 7, TUSB_DESC_ENDPOINT);
+    CHECK(bytes[offset + 2] == address);
+    CHECK((bytes[offset + 3] & 0x03) == transfer_type);
+    CHECK(little_u16(&bytes[offset + 4]) == packet_size);
+    CHECK(bytes[offset + 6] == interval);
+}
 
-    CHECK(descriptor[18] == 7);
-    CHECK(descriptor[19] == TUSB_DESC_ENDPOINT);
-    CHECK(descriptor[20] == 0x01);
-    CHECK(descriptor[21] == TUSB_XFER_BULK);
-    CHECK(little_u16(&descriptor[22]) == expected_packet_size);
+static void check_composite_configuration(const uint8_t *bytes,
+                                          uint16_t packet_size,
+                                          uint8_t configuration_type)
+{
+    size_t offset = 0;
 
-    CHECK(descriptor[25] == 7);
-    CHECK(descriptor[26] == TUSB_DESC_ENDPOINT);
-    CHECK(descriptor[27] == 0x81);
-    CHECK(descriptor[28] == TUSB_XFER_BULK);
-    CHECK(little_u16(&descriptor[29]) == expected_packet_size);
+    CHECK(bytes != NULL);
+    check_descriptor(bytes, offset, 9, configuration_type);
+    CHECK(little_u16(&bytes[2]) == EXPECTED_CONFIG_LENGTH);
+    CHECK(bytes[4] == EXPECTED_INTERFACE_COUNT);
+    CHECK(bytes[5] == 1);
+    CHECK(bytes[6] == 0);
+    CHECK(bytes[7] == 0x80);
+    CHECK(bytes[8] == 50); /* 100 mA, in 2 mA units */
+    offset += 9;
+
+    /* Existing vendor-bulk ABI remains interface 0, OUT 01 / IN 81. */
+    check_descriptor(bytes, offset, 9, TUSB_DESC_INTERFACE);
+    CHECK(bytes[offset + 2] == P4_USB_VENDOR_INTERFACE);
+    CHECK(bytes[offset + 3] == 0);
+    CHECK(bytes[offset + 4] == 2);
+    CHECK(bytes[offset + 5] == TUSB_CLASS_VENDOR_SPECIFIC);
+    CHECK(bytes[offset + 6] == 0);
+    CHECK(bytes[offset + 7] == 0);
+    CHECK(bytes[offset + 8] == 0);
+    offset += 9;
+    check_endpoint(bytes, offset, P4_USB_VENDOR_EP_OUT, TUSB_XFER_BULK,
+                   packet_size, 0);
+    offset += 7;
+    check_endpoint(bytes, offset, P4_USB_VENDOR_EP_IN, TUSB_XFER_BULK,
+                   packet_size, 0);
+    offset += 7;
+
+    /* CDC IAD owns the following control/data pair, interfaces 1 and 2. */
+    check_descriptor(bytes, offset, 8, TUSB_DESC_INTERFACE_ASSOCIATION);
+    CHECK(bytes[offset + 2] == P4_USB_CDC_CONTROL_INTERFACE);
+    CHECK(bytes[offset + 3] == 2);
+    CHECK(bytes[offset + 4] == TUSB_CLASS_CDC);
+    CHECK(bytes[offset + 5] == CDC_COMM_SUBCLASS_ABSTRACT_CONTROL_MODEL);
+    CHECK(bytes[offset + 6] == CDC_COMM_PROTOCOL_NONE);
+    CHECK(bytes[offset + 7] == 0);
+    offset += 8;
+
+    check_descriptor(bytes, offset, 9, TUSB_DESC_INTERFACE);
+    CHECK(bytes[offset + 2] == P4_USB_CDC_CONTROL_INTERFACE);
+    CHECK(bytes[offset + 3] == 0);
+    CHECK(bytes[offset + 4] == 1);
+    CHECK(bytes[offset + 5] == TUSB_CLASS_CDC);
+    CHECK(bytes[offset + 6] == CDC_COMM_SUBCLASS_ABSTRACT_CONTROL_MODEL);
+    CHECK(bytes[offset + 7] == CDC_COMM_PROTOCOL_NONE);
+    CHECK(bytes[offset + 8] == 0);
+    offset += 9;
+
+    check_descriptor(bytes, offset, 5, TUSB_DESC_CS_INTERFACE);
+    CHECK(bytes[offset + 2] == CDC_FUNC_DESC_HEADER);
+    CHECK(little_u16(&bytes[offset + 3]) == 0x0120);
+    offset += 5;
+
+    check_descriptor(bytes, offset, 5, TUSB_DESC_CS_INTERFACE);
+    CHECK(bytes[offset + 2] == CDC_FUNC_DESC_CALL_MANAGEMENT);
+    CHECK(bytes[offset + 3] == 0);
+    CHECK(bytes[offset + 4] == P4_USB_CDC_DATA_INTERFACE);
+    offset += 5;
+
+    check_descriptor(bytes, offset, 4, TUSB_DESC_CS_INTERFACE);
+    CHECK(bytes[offset + 2] == CDC_FUNC_DESC_ABSTRACT_CONTROL_MANAGEMENT);
+    CHECK(bytes[offset + 3] == 6);
+    offset += 4;
+
+    check_descriptor(bytes, offset, 5, TUSB_DESC_CS_INTERFACE);
+    CHECK(bytes[offset + 2] == CDC_FUNC_DESC_UNION);
+    CHECK(bytes[offset + 3] == P4_USB_CDC_CONTROL_INTERFACE);
+    CHECK(bytes[offset + 4] == P4_USB_CDC_DATA_INTERFACE);
+    offset += 5;
+
+    check_endpoint(bytes, offset, P4_USB_CDC_EP_NOTIFY, TUSB_XFER_INTERRUPT,
+                   8, 1);
+    offset += 7;
+
+    check_descriptor(bytes, offset, 9, TUSB_DESC_INTERFACE);
+    CHECK(bytes[offset + 2] == P4_USB_CDC_DATA_INTERFACE);
+    CHECK(bytes[offset + 3] == 0);
+    CHECK(bytes[offset + 4] == 2);
+    CHECK(bytes[offset + 5] == TUSB_CLASS_CDC_DATA);
+    CHECK(bytes[offset + 6] == 0);
+    CHECK(bytes[offset + 7] == 0);
+    CHECK(bytes[offset + 8] == 0);
+    offset += 9;
+
+    check_endpoint(bytes, offset, P4_USB_CDC_EP_OUT, TUSB_XFER_BULK,
+                   packet_size, 0);
+    offset += 7;
+    check_endpoint(bytes, offset, P4_USB_CDC_EP_IN, TUSB_XFER_BULK,
+                   packet_size, 0);
+    offset += 7;
+
+    CHECK(offset == EXPECTED_CONFIG_LENGTH);
 }
 
 static void test_full_and_high_speed_configurations(void)
 {
     selected_speed = TUSB_SPEED_FULL;
-    check_vendor_configuration(tud_descriptor_configuration_cb(0), 64,
-                               TUSB_DESC_CONFIGURATION);
+    check_composite_configuration(tud_descriptor_configuration_cb(0), 64,
+                                  TUSB_DESC_CONFIGURATION);
 
     selected_speed = TUSB_SPEED_HIGH;
-    check_vendor_configuration(tud_descriptor_configuration_cb(0), 512,
-                               TUSB_DESC_CONFIGURATION);
+    check_composite_configuration(tud_descriptor_configuration_cb(0), 512,
+                                  TUSB_DESC_CONFIGURATION);
 
     CHECK(tud_descriptor_configuration_cb(1) == NULL);
 }
@@ -78,29 +171,36 @@ static void test_full_and_high_speed_configurations(void)
 static void test_other_speed_descriptors(void)
 {
     selected_speed = TUSB_SPEED_FULL;
-    check_vendor_configuration(tud_descriptor_other_speed_configuration_cb(0),
-                               512, TUSB_DESC_OTHER_SPEED_CONFIG);
+    check_composite_configuration(tud_descriptor_other_speed_configuration_cb(0),
+                                  512, TUSB_DESC_OTHER_SPEED_CONFIG);
 
     selected_speed = TUSB_SPEED_HIGH;
-    check_vendor_configuration(tud_descriptor_other_speed_configuration_cb(0),
-                               64, TUSB_DESC_OTHER_SPEED_CONFIG);
+    check_composite_configuration(tud_descriptor_other_speed_configuration_cb(0),
+                                  64, TUSB_DESC_OTHER_SPEED_CONFIG);
 
     CHECK(tud_descriptor_other_speed_configuration_cb(1) == NULL);
 }
 
-static void test_device_qualifier(void)
+static void test_composite_device_and_qualifier_classes(void)
 {
-    const uint8_t *bytes = tud_descriptor_device_qualifier_cb();
+    tusb_desc_device_t device;
     tusb_desc_device_qualifier_t qualifier;
 
-    CHECK(bytes != NULL);
-    memcpy(&qualifier, bytes, sizeof(qualifier));
+    memcpy(&device, tud_descriptor_device_cb(), sizeof(device));
+    CHECK(device.bLength == sizeof(device));
+    CHECK(device.bDescriptorType == TUSB_DESC_DEVICE);
+    CHECK(device.bDeviceClass == 0xef);
+    CHECK(device.bDeviceSubClass == 0x02);
+    CHECK(device.bDeviceProtocol == 0x01);
+    CHECK(device.bNumConfigurations == 1);
+
+    memcpy(&qualifier, tud_descriptor_device_qualifier_cb(), sizeof(qualifier));
     CHECK(qualifier.bLength == sizeof(qualifier));
     CHECK(qualifier.bDescriptorType == TUSB_DESC_DEVICE_QUALIFIER);
     CHECK(qualifier.bcdUSB == 0x0200);
-    CHECK(qualifier.bDeviceClass == 0);
-    CHECK(qualifier.bDeviceSubClass == 0);
-    CHECK(qualifier.bDeviceProtocol == 0);
+    CHECK(qualifier.bDeviceClass == 0xef);
+    CHECK(qualifier.bDeviceSubClass == 0x02);
+    CHECK(qualifier.bDeviceProtocol == 0x01);
     CHECK(qualifier.bMaxPacketSize0 == 64);
     CHECK(qualifier.bNumConfigurations == 1);
     CHECK(qualifier.bReserved == 0);
@@ -156,7 +256,7 @@ int main(void)
 {
     test_full_and_high_speed_configurations();
     test_other_speed_descriptors();
-    test_device_qualifier();
+    test_composite_device_and_qualifier_classes();
     test_string_indices_and_language();
     test_identity_validation_is_atomic();
     puts("test_descriptors: pass");

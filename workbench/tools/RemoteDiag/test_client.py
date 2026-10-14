@@ -171,24 +171,83 @@ class FakeEndpoint:
 
 
 class FakeInterface(list):
-    bInterfaceNumber = 0
-    bAlternateSetting = 0
-    bInterfaceClass = 0xFF
+    def __init__(self, number: int, class_code: int, subclass: int,
+                 protocol: int, endpoints):
+        super().__init__(endpoints)
+        self.bInterfaceNumber = number
+        self.bAlternateSetting = 0
+        self.bInterfaceClass = class_code
+        self.bInterfaceSubClass = subclass
+        self.bInterfaceProtocol = protocol
+        self.bNumEndpoints = len(endpoints)
+
+
+def composite_configuration_descriptor(packet_size: int = 64) -> bytes:
+    def endpoint(address: int, transfer_type: int, size: int, interval: int) -> bytes:
+        return bytes((7, 5, address, transfer_type, size & 0xFF, size >> 8, interval))
+
+    return b"".join((
+        bytes((9, 2, 98, 0, 3, 1, 0, 0x80, 50)),
+        bytes((9, 4, 0, 0, 2, 0xFF, 0, 0, 0)),
+        endpoint(0x01, 2, packet_size, 0),
+        endpoint(0x81, 2, packet_size, 0),
+        bytes((8, 0x0B, 1, 2, 2, 2, 0, 0)),
+        bytes((9, 4, 1, 0, 1, 2, 2, 0, 0)),
+        bytes((5, 0x24, 0, 0x20, 0x01)),
+        bytes((5, 0x24, 1, 0, 2)),
+        bytes((4, 0x24, 2, 6)),
+        bytes((5, 0x24, 6, 1, 2)),
+        endpoint(0x82, 3, 8, 1),
+        bytes((9, 4, 2, 0, 2, 0x0A, 0, 0, 0)),
+        endpoint(0x03, 2, packet_size, 0),
+        endpoint(0x83, 2, packet_size, 0),
+    ))
+
+
+class FakeConfiguration(list):
+    bConfigurationValue = 1
+    bNumInterfaces = 3
+    wTotalLength = 98
+
+    def __init__(self, *, interfaces=None):
+        if interfaces is None:
+            interfaces = (
+                FakeInterface(0, 0xFF, 0, 0,
+                              (FakeEndpoint(0x01), FakeEndpoint(0x81))),
+                FakeInterface(1, 2, 2, 0,
+                              (FakeEndpoint(0x82, 8, attributes=3),)),
+                FakeInterface(2, 0x0A, 0, 0,
+                              (FakeEndpoint(0x03), FakeEndpoint(0x83))),
+            )
+        super().__init__(interfaces)
 
 
 class FakeUSBDevice:
     bus = 1
     address = 2
     iProduct = 2
+    bDeviceClass = 0xEF
+    bDeviceSubClass = 0x02
+    bDeviceProtocol = 0x01
+    bNumConfigurations = 1
 
-    def __init__(self, *, product: str = client.PRODUCT_NAME, interface=None):
+    def __init__(self, *, product: str = client.PRODUCT_NAME,
+                 configuration=None, descriptor: bytes | None = None):
         self.product = product
-        self.interface = interface or FakeInterface((FakeEndpoint(0x01), FakeEndpoint(0x81)))
+        self.configuration = configuration or FakeConfiguration()
+        self.descriptor = descriptor or composite_configuration_descriptor()
         self.actions: list[str] = []
+
+    def ctrl_transfer(self, request_type: int, request: int, value: int,
+                      index: int, length: int, *, timeout: int):
+        self.actions.append(f"descriptor:{length}")
+        if (request_type, request, value, index, timeout) != (0x80, 0x06, 0x0200, 0, 1000):
+            raise AssertionError("unexpected or mutating USB control request")
+        return self.descriptor[:length]
 
     def get_active_configuration(self):
         self.actions.append("active_configuration")
-        return [self.interface]
+        return self.configuration
 
 
 def make_client(*, remote: FakeRemote | None = None, transport: FragmentedTransport | None = None,
@@ -423,8 +482,12 @@ class ClientTests(unittest.TestCase):
         with patch.dict("sys.modules", {"usb": usb, "usb.core": core, "usb.util": util}):
             transport = client.open_usb_transport(0x1111, 0x2222, 0, 2)
             with transport:
-                self.assertEqual(device.actions, ["active_configuration", "claim:0"])
+                self.assertEqual(device.actions, ["descriptor:9", "descriptor:98",
+                                                  "active_configuration", "claim:0"])
             self.assertEqual(device.actions[-2:], ["release:0", "dispose"])
+        self.assertEqual(device.actions.count("claim:0"), 1)
+        self.assertNotIn("claim:1", device.actions)
+        self.assertNotIn("claim:2", device.actions)
         self.assertNotIn("reset", device.actions)
         self.assertNotIn("set_configuration", device.actions)
         self.assertNotIn("detach_kernel_driver", device.actions)
@@ -435,6 +498,38 @@ class ClientTests(unittest.TestCase):
             with self.assertRaises(client.DiagError):
                 client.open_usb_transport(0x1111, 0x2222, 1, 2)
         self.assertNotIn("claim:0", wrong.actions)
+
+    def test_usb_client_rejects_mismatched_composite_tree_before_claim(self):
+        wrong_interfaces = FakeConfiguration(interfaces=(
+            FakeInterface(0, 0xFF, 0, 0,
+                          (FakeEndpoint(0x01), FakeEndpoint(0x81))),
+            FakeInterface(1, 2, 2, 0,
+                          (FakeEndpoint(0x82, 8, attributes=3),)),
+            FakeInterface(2, 0xFF, 0, 0,
+                          (FakeEndpoint(0x03), FakeEndpoint(0x83))),
+        ))
+        malformed = bytearray(composite_configuration_descriptor())
+        malformed[35] = 1  # IAD no longer groups both CDC interfaces.
+        bad_devices = (
+            FakeUSBDevice(configuration=wrong_interfaces),
+            FakeUSBDevice(descriptor=bytes(malformed)),
+        )
+        core = types.ModuleType("usb.core")
+        util = types.ModuleType("usb.util")
+        util.get_string = lambda target, _index: target.product
+        util.claim_interface = lambda target, number: target.actions.append(f"claim:{number}")
+        util.release_interface = lambda target, number: target.actions.append(f"release:{number}")
+        util.dispose_resources = lambda target: target.actions.append("dispose")
+        usb = types.ModuleType("usb")
+        usb.core = core
+        usb.util = util
+        for device in bad_devices:
+            core.find = lambda device=device, **_kwargs: [device]
+            with patch.dict("sys.modules", {"usb": usb, "usb.core": core, "usb.util": util}):
+                with self.assertRaises(client.DiagError):
+                    client.open_usb_transport(0x1111, 0x2222, device.bus, device.address)
+            self.assertFalse(any(action.startswith("claim:") for action in device.actions))
+            self.assertIn("dispose", device.actions)
 
 
 if __name__ == "__main__":

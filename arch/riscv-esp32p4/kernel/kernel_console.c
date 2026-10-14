@@ -29,7 +29,9 @@
 #include "kernel_intern.h"
 #include "tls.h"
 #if !defined(P4_CONSOLE_BACKEND_ONLY)
+#include <proto/exec.h>
 #include "console_ring.h"
+#include "console_tap.h"
 #endif
 
 #define SPIN_LIMIT      100000
@@ -281,11 +283,281 @@ static char console_line[P4_TLS_HARTS][CONSOLE_LINE];
 static unsigned int console_len[P4_TLS_HARTS];
 static volatile uint32_t console_holder;    /* hart + 1, or 0 */
 static struct p4_console_ring console_queue;
+static struct p4_console_ring console_tap_queue;
+/* State 0 is free, 1 is held, and 3 is held with a release waiting. All tap
+ * operations make one acquisition attempt. The combined state lets release
+ * revoke a session even when a bounded producer/pop currently owns the lock;
+ * that owner clears the ring before handing the lock on.
+ */
+static uint32_t console_tap_control;
+static void *console_tap_owner;
+static uint32_t console_tap_session;
+static uint32_t console_tap_active_session;
+static uint32_t console_tap_epoch;
+/* Lifetime loss total: unlike ring indices and contents, this is never reset
+ * at claim/release boundaries. It includes ring-full and control-lock drops.
+ */
+static uint32_t console_tap_lifetime_drops;
+static uint32_t console_tap_registered;
 static char console_frame[224];
 static unsigned int console_frame_len, console_frame_pos;
 static uint32_t console_reported_drops;
 static unsigned int console_last_overflow;
 static inline unsigned int console_hart(void);
+
+static int console_tap_trylock(void)
+{
+    uint32_t expected = 0;
+
+    return __atomic_compare_exchange_n(&console_tap_control, &expected, 1u, 0,
+                                       __ATOMIC_ACQUIRE, __ATOMIC_RELAXED);
+}
+
+/* Called with console_tap_control held. Logically emptying the tap ring only
+ * resets its indices and counters; unread slot bytes are unreachable and do
+ * not need to be overwritten in a producer or claim path.
+ */
+static void console_tap_clear_locked(void)
+{
+    __atomic_store_n(&console_tap_queue.lock, 0u, __ATOMIC_RELAXED);
+    __atomic_store_n(&console_tap_queue.head, 0u, __ATOMIC_RELAXED);
+    __atomic_store_n(&console_tap_queue.tail, 0u, __ATOMIC_RELAXED);
+    __atomic_store_n(&console_tap_queue.count, 0u, __ATOMIC_RELAXED);
+    __atomic_store_n(&console_tap_queue.next_sequence, 0u, __ATOMIC_RELAXED);
+    __atomic_store_n(&console_tap_queue.dropped, 0u, __ATOMIC_RELAXED);
+}
+
+static void console_tap_finish_release_locked(void *owner, uint32_t session)
+{
+    uint32_t active;
+
+    if (!owner || !session ||
+        __atomic_load_n(&console_tap_owner, __ATOMIC_RELAXED) != owner ||
+        __atomic_load_n(&console_tap_session, __ATOMIC_RELAXED) != session)
+        return;
+
+    /* Release may already have revoked this exact session before it acquired
+     * the control lock. Never clear a different active lease defensively.
+     */
+    active = __atomic_load_n(&console_tap_active_session, __ATOMIC_ACQUIRE);
+    if (active == session)
+    {
+        uint32_t expected = session;
+
+        if (!__atomic_compare_exchange_n(&console_tap_active_session,
+                                        &expected, 0u, 0,
+                                        __ATOMIC_ACQ_REL,
+                                        __ATOMIC_ACQUIRE))
+            return;
+    }
+    else if (active != 0u)
+        return;
+
+    console_tap_clear_locked();
+    __atomic_store_n(&console_tap_owner, NULL, __ATOMIC_RELAXED);
+    __atomic_store_n(&console_tap_session, 0u, __ATOMIC_RELAXED);
+}
+
+static void console_tap_unlock(void)
+{
+    uint32_t expected = 1u;
+
+    if (__atomic_compare_exchange_n(&console_tap_control, &expected, 0u, 0,
+                                    __ATOMIC_RELEASE, __ATOMIC_RELAXED))
+        return;
+
+    /* release() changed 1 to 3 after revoking active_session. No new tap
+     * operation can pass the lock until this matching-lease cleanup ends.
+     */
+    if (expected == 3u)
+    {
+        void *owner = __atomic_load_n(&console_tap_owner, __ATOMIC_RELAXED);
+        uint32_t session = __atomic_load_n(&console_tap_session,
+                                           __ATOMIC_RELAXED);
+
+        console_tap_finish_release_locked(owner, session);
+        __atomic_store_n(&console_tap_control, 0u, __ATOMIC_RELEASE);
+    }
+}
+
+static void console_tap_capture(const char *data, size_t length,
+                               uint8_t hart)
+{
+    uint32_t session = __atomic_load_n(&console_tap_active_session,
+                                       __ATOMIC_ACQUIRE);
+
+    if (!session)
+        return;
+
+    if (!console_tap_trylock())
+    {
+        /* This record was observed during a live claim. Account the loss in
+         * a lifetime counter; it may be recorded just after release/reclaim.
+         */
+        (void)__atomic_fetch_add(&console_tap_lifetime_drops, 1u,
+                                 __ATOMIC_RELAXED);
+        return;
+    }
+
+    /* A claim/release may have changed the epoch after the initial load. A
+     * record is never moved across that boundary into another consumer's
+     * session.
+     */
+    if (__atomic_load_n(&console_tap_active_session,
+                        __ATOMIC_ACQUIRE) == session &&
+        !p4_console_ring_push(&console_tap_queue, data, length, hart))
+        (void)__atomic_fetch_add(&console_tap_lifetime_drops, 1u,
+                                 __ATOMIC_RELAXED);
+
+    console_tap_unlock();
+}
+
+static uint32_t console_tap_claim(void *owner)
+{
+    uint32_t session;
+
+    if (!owner || !console_tap_trylock())
+        return 0u;
+    if (__atomic_load_n(&console_tap_active_session, __ATOMIC_ACQUIRE) ||
+        __atomic_load_n(&console_tap_owner, __ATOMIC_RELAXED) != NULL ||
+        __atomic_load_n(&console_tap_session, __ATOMIC_RELAXED) != 0u)
+    {
+        /* A release can revoke active_session just before its control-lock
+         * handoff. Do not admit a replacement owner while those old lease
+         * fields remain; the releasing call or its lock holder must finish
+         * that exact lease first.
+         */
+        console_tap_unlock();
+        return 0u;
+    }
+
+    console_tap_clear_locked();
+    session = console_tap_epoch + 1u;
+    if (!session)
+        session = 1u;
+    console_tap_epoch = session;
+    __atomic_store_n(&console_tap_owner, owner, __ATOMIC_RELAXED);
+    __atomic_store_n(&console_tap_session, session, __ATOMIC_RELAXED);
+    __atomic_store_n(&console_tap_active_session, session, __ATOMIC_RELEASE);
+    console_tap_unlock();
+    return session;
+}
+
+static void console_tap_release(void *owner, uint32_t session)
+{
+    uint32_t expected_session;
+    uint32_t expected_state;
+
+    if (!owner || !session)
+        return;
+
+    if (console_tap_trylock())
+    {
+        if (__atomic_load_n(&console_tap_owner, __ATOMIC_RELAXED) == owner &&
+            __atomic_load_n(&console_tap_session, __ATOMIC_RELAXED) == session)
+        {
+            /* Only the release that wins revocation may perform direct
+             * cleanup. If active_session is already zero, another release
+             * owns the interval between revocation and cleanup; leave its
+             * owner/session fields intact for that caller (or state-3
+             * unlock) to finish.
+             */
+            expected_session = session;
+            if (__atomic_compare_exchange_n(&console_tap_active_session,
+                                           &expected_session, 0u, 0,
+                                           __ATOMIC_ACQ_REL,
+                                           __ATOMIC_ACQUIRE))
+                console_tap_finish_release_locked(owner, session);
+        }
+        console_tap_unlock();
+        return;
+    }
+
+    /* A void release must still revoke promptly when a bounded producer or
+     * pop has the lock. The owner of state 1 observes state 3 before unlock
+     * and clears the ring. If that owner just unlocked, this caller takes the
+     * lock once and performs the same cleanup itself.
+     */
+    if (__atomic_load_n(&console_tap_owner, __ATOMIC_ACQUIRE) != owner ||
+        __atomic_load_n(&console_tap_session, __ATOMIC_ACQUIRE) != session)
+        return;
+
+    expected_session = session;
+    if (!__atomic_compare_exchange_n(&console_tap_active_session,
+                                    &expected_session, 0u, 0,
+                                    __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
+        return;
+
+    expected_state = 1u;
+    if (__atomic_compare_exchange_n(&console_tap_control, &expected_state,
+                                    3u, 0, __ATOMIC_ACQ_REL,
+                                    __ATOMIC_ACQUIRE))
+        return;
+
+    if (console_tap_trylock())
+    {
+        console_tap_finish_release_locked(owner, session);
+        console_tap_unlock();
+    }
+}
+
+static int console_tap_pop(void *owner, uint32_t session,
+                           struct p4_console_record *record)
+{
+    int result = 0;
+
+    if (!owner || !session || !record || !console_tap_trylock())
+        return 0;
+
+    if (__atomic_load_n(&console_tap_active_session, __ATOMIC_ACQUIRE) ==
+            session &&
+        __atomic_load_n(&console_tap_owner, __ATOMIC_RELAXED) == owner &&
+        __atomic_load_n(&console_tap_session, __ATOMIC_RELAXED) == session)
+        result = p4_console_ring_pop(&console_tap_queue, record);
+
+    console_tap_unlock();
+    return result;
+}
+
+static uint32_t console_tap_dropped(void *owner, uint32_t session)
+{
+    uint32_t active;
+
+    if (!owner || !session)
+        return 0u;
+    active = __atomic_load_n(&console_tap_active_session, __ATOMIC_ACQUIRE);
+    if (active != session ||
+        __atomic_load_n(&console_tap_owner, __ATOMIC_ACQUIRE) != owner ||
+        __atomic_load_n(&console_tap_session, __ATOMIC_ACQUIRE) != session)
+        return 0u;
+
+    return __atomic_load_n(&console_tap_lifetime_drops, __ATOMIC_RELAXED);
+}
+
+static struct P4ConsoleTapResource console_tap_resource =
+{
+    .node = { NULL, NULL, NT_RESOURCE, 0,
+              (char *)P4_CONSOLE_TAP_NAME },
+    .abi = P4_CONSOLE_TAP_ABI,
+    .size = sizeof(struct P4ConsoleTapResource),
+    .claim = console_tap_claim,
+    .release = console_tap_release,
+    .pop = console_tap_pop,
+    .dropped = console_tap_dropped
+};
+
+void krnP4ConsoleTapRegister(struct ExecBase *SysBase)
+{
+    uint32_t expected = 0u;
+
+    if (!SysBase ||
+        !__atomic_compare_exchange_n(&console_tap_registered, &expected, 1u,
+                                     0, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED))
+        return;
+
+    AddResource(&console_tap_resource);
+    __atomic_store_n(&console_tap_registered, 2u, __ATOMIC_RELEASE);
+}
 
 /* Fixed hexadecimal fields require no formatting library, allocation or
  * recursive console calls. In diagnostic mode len describes the original
@@ -423,6 +695,12 @@ static void console_emit(unsigned int hart)
     unsigned int spins = 0;
     int locked = 0;
     unsigned int i;
+
+    /* Mirror the complete record before either the existing queue or the
+     * bounded direct fallback consumes the per-hart line. The tap owns a
+     * separate ring and never participates in the USB/UART transmit path.
+     */
+    console_tap_capture(console_line[hart], console_len[hart], (uint8_t)hart);
 
     if (__atomic_load_n(&console_runtime, __ATOMIC_ACQUIRE) &&
         __atomic_load_n(&console_sender_ready, __ATOMIC_ACQUIRE))

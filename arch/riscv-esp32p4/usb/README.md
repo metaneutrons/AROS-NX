@@ -1,4 +1,4 @@
-# Opt-in ESP32-P4 USB echo experiment
+# Opt-in ESP32-P4 composite USB experiment
 
 Status: host-tested and native-build verified; **not hardware qualified**.
 This is a standalone AROS DOS application, not a resident, BSP member or
@@ -34,8 +34,21 @@ ALLOWMOUSE/UNATTENDED. No current image, normal startup or package changes.
 Diagnostic worker limits and its RDG1 host CLI are documented in RemoteDiag;
 native backend calls are not hard-time-bounded, unlike the controller polls.
 
-The tests open no USB or serial device. Nine Python staging tests, five host
-probe tests and five C suites at O0/O2 with ASan/UBSan cover ring bounds,
+The `diag` build also produces `USBRemoteTest`, a separately launched desktop
+consent gate. For private in-house tests only it uses pid.codes1209:0001,
+SCREEN Workbench, confined ROOT SYS:Prefs and explicit unattended mouse access.
+This test identity is not globally unique and must never be redistributed or
+used as a production default (https://pid.codes/1209/0001/). Deploy USBDiag and
+USBRemoteTest together in FLASHDISK0P0:; a normal program icon may launch the
+latter. Start requires confirmation, Cancel does not open USB; no autostart is
+installed. It runs synchronously for the application's600-second loop and
+writes stdout to volatile local RAM:USBDiag.log. A blocked native backend can
+delay shutdown beyond that loop deadline. The USB file root does not expose
+this RAM log. stderr goes to NIL:; nonzero status triggers a failure requester.
+Do not use local touch/mouse during a confirmed unattended run.
+
+The tests open no USB or serial device. Nine Python staging tests, six host
+probe tests and seven C suites at O0/O2 with ASan/UBSan cover ring bounds,
 partial transfers, FS/HS descriptors, owner-only OSAL/FIFO, PHY readback and
 restoration, failure budgets and main lifecycle/quarantine. Platform, time,
 controller and MMIO in the main fixture are fakes; these tests do not execute
@@ -50,6 +63,28 @@ inapplicable. DOS LoadSeg loads nonempty SHF_ALLOC sections, including
 `.eh_frame`. A successful link is not an on-target LoadSeg/startup test.
 
 ## Transport and ownership limits
+
+The configuration is now composite: vendor interface0 retains OUT01/IN81;
+CDC control1/data2 use notification82 and OUT03/IN83. CDC FIFOs are1024 bytes.
+The host remote client validates the complete tree and claims only interface0;
+the CDC interfaces remain available to the operating system and devserial.
+This layout has not yet enumerated on hardware.
+
+USBDiag normally requires the matching kernel's private ABI1
+`esp32p4console.resource`. Its exclusive lease mirrors future console records
+into an independent64-record ring, without consuming the debug queue or calling
+application code from kernel producers. Producers never wait for a USB reader.
+CDC sends original payload bytes, limited to256 bytes per polling iteration;
+partial writes retain their suffix. Overflow warnings remain enabled regardless
+of the normal console-prefix setting; records counts lifetime mirror losses,
+including earlier leases, modulo32 bits, not losses attributable to one session.
+Bus resets insert a continuity warning;
+this is not a lossless boot-history replay. CDC RX is discarded, and CDC control
+lines do not reset or flash the board. `NOLOGS` is an explicit lab-only fallback
+for an older kernel. Echo mode exposes the same descriptors but does not lease
+the console tap. CDC logging is available only while USBDiag runs after DOS,
+not during ROM or early boot. Native-ROM flashing is a separate recovery path,
+not an implemented firmware-update command in this application.
 
 - HS OTG rhport1, dedicated UTMI pins; no FS USB_WRAP access, USJ console
   sharing, debug-writer transport, driver detachment or hardware IRQ routing.

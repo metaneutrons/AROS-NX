@@ -14,6 +14,7 @@
 #include "tusb.h"
 #include "device/dcd.h"
 #include "../sdmmc/host.h"
+#include "../kernel/console_tap.h"
 #endif
 #include <setjmp.h>
 #include <stdio.h>
@@ -23,6 +24,7 @@
 #include "descriptors.h"
 #include "hs_phy.h"
 #include "p4_usb_platform.h"
+#include "cdc_log.h"
 #ifdef P4_USB_DIAG
 #include "bridge.h"
 static struct rd_bridge *diagnostic;
@@ -60,6 +62,40 @@ static void rcc_unlock(void *ctx) { (void)ctx; clock_host->release(clock_host); 
 
 struct Device *TimerBase;
 static struct Task *owner;
+#if !defined(P4_USB_ECHO_HOST_TEST)
+static struct P4ConsoleTapResource *log_resource;
+static uint32_t log_session;
+static struct p4_cdc_log cdc_log;
+static bool log_enabled;
+#ifdef P4_USB_DIAG
+static int log_pop(void *ctx,struct p4_console_record *record)
+{
+    (void)ctx;return log_resource->pop(owner,log_session,record);
+}
+static uint32_t log_dropped(void *ctx)
+{
+    (void)ctx;return log_resource->dropped(owner,log_session);
+}
+static bool cdc_connected(void *ctx){(void)ctx;return tud_cdc_connected();}
+static size_t cdc_room(void *ctx){(void)ctx;return tud_cdc_write_available();}
+static size_t cdc_write(void *ctx,const uint8_t *p,size_t n)
+{
+    (void)ctx;if(n>P4_USB_CDC_WRITE_CHUNK_MAX)n=P4_USB_CDC_WRITE_CHUNK_MAX;
+    return tud_cdc_write(p,(uint32_t)n);
+}
+static void cdc_flush(void *ctx){(void)ctx;tud_cdc_write_flush();}
+#endif
+static void cdc_step(void)
+{
+    /* CDC is log-only. Drain/discard unsolicited terminal input; never map
+       DTR/RTS, line coding or CDC RX onto reset, flash or remote commands. */
+    uint8_t discard[64];uint32_t n=tud_cdc_available();
+    if(n>sizeof(discard))n=sizeof(discard);
+    if(n)tud_cdc_read(discard,n);
+    if(log_enabled && !p4_cdc_log_step(&cdc_log,256))p4_usb_fault("CDC log stream error");
+}
+static void cdc_reset(void){if(log_enabled)p4_cdc_log_reset(&cdc_log);}
+#endif
 static struct timerequest *timer;
 static struct MsgPort *timer_port;
 struct echo_owner_record {
@@ -114,6 +150,9 @@ void tud_event_hook_cb(uint8_t port, uint32_t event, bool in_isr)
     (void)port; (void)in_isr; p4_usb_owner_check();
     if (event == DCD_EVENT_BUS_RESET_START || event == DCD_EVENT_UNPLUGGED) {
         p4_echo_reset(&echo);
+#if !defined(P4_USB_ECHO_HOST_TEST)
+        cdc_reset();
+#endif
 #ifdef P4_USB_DIAG
         if(diagnostic)rd_bridge_reset(diagnostic);
 #endif
@@ -121,6 +160,9 @@ void tud_event_hook_cb(uint8_t port, uint32_t event, bool in_isr)
 }
 void tud_mount_cb(void) {
     p4_echo_reset(&echo);
+#if !defined(P4_USB_ECHO_HOST_TEST)
+    cdc_reset();
+#endif
 #ifdef P4_USB_DIAG
     if(diagnostic)rd_bridge_reset(diagnostic);
 #endif
@@ -172,7 +214,7 @@ static void echo_step(void)
 
 int main(void)
 {
-    SIPTR args[10]={0}; struct RDArgs *rd;
+    SIPTR args[11]={0}; struct RDArgs *rd;
     uint32_t started;
     volatile uint32_t seconds=120;
     volatile int result=RETURN_FAIL;
@@ -180,9 +222,12 @@ int main(void)
     owner_claimed=quarantine=phy_active=controller_touched=polling_enabled=false;
     owner_record=NULL; owner_port=NULL; owner=NULL; clock_host=NULL;
     fault_reason=NULL;
+#if !defined(P4_USB_ECHO_HOST_TEST)
+    log_resource=NULL;log_session=0;log_enabled=false;
+#endif
 #ifdef P4_USB_DIAG
     diagnostic=NULL;
-    rd=ReadArgs((CONST_STRPTR)"ENABLE/S,VID/N/A,PID/N/A,SECONDS/N,STEADYCLOCKS/S,SCREEN/K/A,ROOT/K,ALLOWMOUSE/S,NONEAUTH/S,UNATTENDED/S",args,NULL);
+    rd=ReadArgs((CONST_STRPTR)"ENABLE/S,VID/N/A,PID/N/A,SECONDS/N,STEADYCLOCKS/S,SCREEN/K/A,ROOT/K,ALLOWMOUSE/S,NONEAUTH/S,UNATTENDED/S,NOLOGS/S",args,NULL);
 #else
     rd=ReadArgs((CONST_STRPTR)"ENABLE/S,VID/N/A,PID/N/A,SECONDS/N,STEADYCLOCKS/S",args,NULL);
 #endif
@@ -248,6 +293,22 @@ int main(void)
                 puts("USBEcho: HS IRQ source already routed; refusing ownership"); goto out;
             }
     owner=FindTask(NULL);
+#if defined(P4_USB_DIAG) && !defined(P4_USB_ECHO_HOST_TEST)
+    if(!args[10]) {
+        log_resource=OpenResource((CONST_STRPTR)P4_CONSOLE_TAP_NAME);
+        if(!log_resource || log_resource->abi!=P4_CONSOLE_TAP_ABI ||
+           log_resource->size<sizeof(*log_resource) || !log_resource->claim ||
+           !log_resource->release || !log_resource->pop || !log_resource->dropped ||
+           !(log_session=log_resource->claim(owner))) {
+            puts("USBDiag: matched console tap unavailable/busy; NOLOGS is explicit lab-only fallback");goto out;
+        }
+        const struct p4_cdc_source source={NULL,log_pop,log_dropped};
+        const struct p4_cdc_sink sink={NULL,cdc_connected,cdc_room,cdc_write,cdc_flush};
+        if(!p4_cdc_log_init(&cdc_log,&source,&sink))goto out;
+        log_enabled=true;
+        p4_cdc_log_reset(&cdc_log);
+    }
+#endif
     timer_port=CreateMsgPort();
     if(!timer_port) goto out;
     timer=(struct timerequest *)CreateIORequest(timer_port,sizeof(*timer));
@@ -272,6 +333,9 @@ int main(void)
         if(polling_enabled) dcd_int_handler(1);
         tud_task_ext(0,false);
         echo_step();
+#if !defined(P4_USB_ECHO_HOST_TEST)
+        cdc_step();
+#endif
         p4_usb_delay(2);
     }
     result=RETURN_OK;
@@ -306,6 +370,10 @@ stop:
         } else phy_active=false;
     }
 out:
+#if !defined(P4_USB_ECHO_HOST_TEST)
+    if(log_resource && log_session)log_resource->release(owner,log_session);
+    log_session=0;log_resource=NULL;log_enabled=false;
+#endif
 #ifdef P4_USB_DIAG
     rd_bridge_close(diagnostic);diagnostic=NULL;
 #endif

@@ -5,21 +5,35 @@
 static tusb_desc_device_t device = {
     .bLength = sizeof(tusb_desc_device_t), .bDescriptorType = TUSB_DESC_DEVICE,
     .bcdUSB = 0x0200, .bMaxPacketSize0 = 64,
+    .bDeviceClass = 0xef, .bDeviceSubClass = 0x02, .bDeviceProtocol = 0x01,
     .bcdDevice = 0x0001, .iManufacturer = 1, .iProduct = 2,
     .bNumConfigurations = 1
 };
-enum { CONFIG_LENGTH = TUD_CONFIG_DESC_LEN + TUD_VENDOR_DESC_LEN };
+enum {
+    CONFIG_LENGTH = TUD_CONFIG_DESC_LEN + TUD_VENDOR_DESC_LEN + TUD_CDC_DESC_LEN,
+    CONFIG_INTERFACE_COUNT = 3,
+    CDC_NOTIFICATION_PACKET_SIZE = 8
+};
 static const uint8_t fs_config[] = {
-    TUD_CONFIG_DESCRIPTOR(1, 1, 0, CONFIG_LENGTH, 0, 100),
-    TUD_VENDOR_DESCRIPTOR(0, 0, 0x01, 0x81, 64)
+    TUD_CONFIG_DESCRIPTOR(1, CONFIG_INTERFACE_COUNT, 0, CONFIG_LENGTH, 0, 100),
+    TUD_VENDOR_DESCRIPTOR(P4_USB_VENDOR_INTERFACE, 0,
+                          P4_USB_VENDOR_EP_OUT, P4_USB_VENDOR_EP_IN, 64),
+    TUD_CDC_DESCRIPTOR(P4_USB_CDC_CONTROL_INTERFACE, 0,
+                       P4_USB_CDC_EP_NOTIFY, CDC_NOTIFICATION_PACKET_SIZE,
+                       P4_USB_CDC_EP_OUT, P4_USB_CDC_EP_IN, 64)
 };
 static const uint8_t hs_config[] = {
-    TUD_CONFIG_DESCRIPTOR(1, 1, 0, CONFIG_LENGTH, 0, 100),
-    TUD_VENDOR_DESCRIPTOR(0, 0, 0x01, 0x81, 512)
+    TUD_CONFIG_DESCRIPTOR(1, CONFIG_INTERFACE_COUNT, 0, CONFIG_LENGTH, 0, 100),
+    TUD_VENDOR_DESCRIPTOR(P4_USB_VENDOR_INTERFACE, 0,
+                          P4_USB_VENDOR_EP_OUT, P4_USB_VENDOR_EP_IN, 512),
+    TUD_CDC_DESCRIPTOR(P4_USB_CDC_CONTROL_INTERFACE, 0,
+                       P4_USB_CDC_EP_NOTIFY, CDC_NOTIFICATION_PACKET_SIZE,
+                       P4_USB_CDC_EP_OUT, P4_USB_CDC_EP_IN, 512)
 };
 static const tusb_desc_device_qualifier_t qualifier = {
     .bLength = sizeof(tusb_desc_device_qualifier_t),
     .bDescriptorType = TUSB_DESC_DEVICE_QUALIFIER, .bcdUSB = 0x0200,
+    .bDeviceClass = 0xef, .bDeviceSubClass = 0x02, .bDeviceProtocol = 0x01,
     .bMaxPacketSize0 = 64, .bNumConfigurations = 1
 };
 int p4_usb_set_identity(uint16_t vid, uint16_t pid)

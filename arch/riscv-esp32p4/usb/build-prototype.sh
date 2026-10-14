@@ -29,9 +29,9 @@ python3 "$usb_src/prepare_stack.py" "$archive" "$output/tinyusb"
 "$cc" -print-sysroot
 stack="$output/tinyusb/src"
 sdk="$target/AROS/Developer"
-set -- "$usb_src/main.c" "$usb_src/hs_phy.c" "$usb_src/echo.c" "$usb_src/descriptors.c" \
+set -- "$usb_src/main.c" "$usb_src/hs_phy.c" "$usb_src/echo.c" "$usb_src/descriptors.c" "$usb_src/cdc_log.c" \
     "$stack/tusb.c" "$stack/common/tusb_fifo.c" "$stack/device/usbd.c" \
-    "$stack/class/vendor/vendor_device.c" \
+    "$stack/class/vendor/vendor_device.c" "$stack/class/cdc/cdc_device.c" \
     "$stack/portable/synopsys/dwc2/dwc2_common.c" \
     "$stack/portable/synopsys/dwc2/dcd_dwc2.c"
 if [ "$mode" = diag ]; then
@@ -53,3 +53,13 @@ done
 test -s "$output/$binary"
 shasum -a 256 "$output/$binary"
 wc -c "$output/$binary"
+if [ "$mode" = diag ]; then
+    "$cc" --sysroot="$sdk" -std=gnu11 -O2 -Wall -Wextra -Werror \
+        -march=rv32imafc_zicsr_zifencei_zaamo_zalrsc -mabi=ilp32f -mcmodel=medany \
+        -ffile-prefix-map="$usb_src"=aros-usb-echo \
+        -isystem "$target/gen/include" -I"$sdk/include" -L"$sdk/lib" \
+        "$usb_src/launch_diag.c" -o "$output/USBRemoteTest"
+    test -s "$output/USBRemoteTest"
+    shasum -a 256 "$output/USBRemoteTest"
+    wc -c "$output/USBRemoteTest"
+fi

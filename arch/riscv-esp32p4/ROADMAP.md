@@ -192,7 +192,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C1P | Graphical boot/update performance | `hardware partial; runtime hang gate open` | Rotation/mirror: 140 sanitizer cases; actual producer: 400 submissions/1,677 guarded IRQs. CPU90 synchronous full update 2.776 s; CPU360 synchronous 0.617 s; v2 coalesced submission 0.296 s. Paired v2 core/HIDD initially passes headless Wanderer and flash checks. Fabian observes speedup then slowdown/hang. Console-only nonblocking runtime fix now sanitizer-tested, flashed and verified; explanation of the observed hang remains unconfirmed. On 2026-10-01 Fabian reports drawing is fine so far after requester-free RAM Disk opening; duration unspecified. Sustained no-reader/stress and complete interactive regression gates remain open. |
 | CQ1 | Bounded queued SMP debug console | `hardware partial (JC1060); default-plain deployed/readback/headless; D1001 open` | 2026-10-13 framed core showed both harts/108 consecutive records and reader recovery. 2026-10-14: P4_CONSOLE_RECORD_PREFIX defaults0, optional1 keeps framing; overflow warnings always active. Clean native193024Ba68ca519.../independent readback and111.929s fresh218-row headless export show no normal prefix,22 touch heartbeats and CPU1 WLAN owner. Twelve sanitized USB/UART default/0/1 host runs pass; old-header mutation rejected. Plain logs cannot prove sequence continuity. Native overload/physical disconnect and fresh interactive gates remain open. Early/fatal direct output and timer-failure backlog loss remain explicit limits. |
-| RC0 | Independent USB remote diagnostic MVP | `build verified (echo + diagnostic candidate); hardware open` | 2026-10-14: separate USBDiag candidate238356B5e533fee... adds generic RGB capture/crop, opt-in unattended mouse/click, confined read-only DOS stat/list/download and raw metadata. Fourteen client tests, four O0/O2 sanitized C suites and fragmented Python/C pipe tests pass, with fake native APIs; echo regression passes. Final path lookup rejects all folded collisions only after observing bounded directory EOF;124 file assertions each. Two fresh native builds match; nothing installed/activated. Physical input arbitration, atomic source version and backend cancellation remain open; trusted local handler can block worker shutdown. HS power/transport/coexistence still unqualified, no console fallback. RC-v5 issues77/81/87 remain authority. |
+| RC0 | Independent USB remote diagnostic MVP | `composite and corrected kernel build verified; HS enumeration/recovery unresolved` | 2026-10-14: USBDiag260824B84ad340c... adds CDC logs alongside vendor-bulk; repeated fresh native builds match. Corrected core194384B03f997b1... builds cleanly; release/reclaim and duplicate-release races fixed, losses lifetime cumulative. Nine staging/six probe Python tests, seven O0/O2 sanitized USB C suites and fifteen RemoteDiag client tests pass. Explicit-consent GUI launcher and preserved helper volume prepared. Original debug queue remains separate. Nothing installed/activated. HS ROM absent in both connector orientations; FS ROM identity/security queries pass. Native firmware flashing, CDC and remote transfer remain three separate open hardware gates. Physical input arbitration, atomic source version, backend cancellation, HS power/coexistence remain open. RC-v5 issues77/81/87 remain authority. |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware verified` | Complete GB0 evidence: correctly oriented persistent Wanderer with title/icons/four edges, bounded graphical recovery without SD, 20/20 controlled EN-reset boots, a 30-minute desktop soak explicitly composed with B5's active concurrent SD/scanout stress, and an exact raw-card gate.  The latter used hardware-locked first host insertions around one normal D1001 boot; prepared image, pre-run readback and post-run readback are byte-identical at SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Two earlier comparisons remain documented as macOS `.fseventsd` contamination, not hidden as passes |
 | C4 | Touch as an absolute mouse HIDD | `hardware partial` | Since 2026-10-04 the touch path is the portable stack of D3 (`touchscreen.hidd`, `gsl3670.hidd`, `esp32p4board.resource`); the D1001 has not run it yet, so everything below describes the former kernel GSL driver and `p4touch.hidd`. D1001 identification, bounded firmware load/status and contact transport are hardware verified. The absolute mouse HIDD and nearest-contact continuity pass synchronized one-/two-contact tests; hardware IDs are not stable. A stationary pointer recovered after USB reset; its prior cause remains unknown. The tap policy defaults to button-free motion, tap-to-click and 400-ms hold-drag, preserving selectable direct mode and the right-button latch. Fabian confirms movement, tap and hold-drag with zero errors and clean release. A consented perimeter trace measures X=16..1638/Y=15..874; board-specific calibration now maps that range to the full surface. Its 3,863 host checks, build and package audit pass. A fresh synchronized run confirms four-edge reachability and menu-dropdown opening, with zero I2C errors and clean release at Y=5. Rapid double-tap reliability is reported poor; first-empty short-tap release (50-ms idle gap restored after renewed graphics slowdown) now pass 3,892 sanitizer checks and are a flashed candidate, not interactive acceptance; a volume requester precedes successful RAM Disk opening (name reported as TENEME, possibly THEME; unconfirmed). Theme assignments, Ice assets and PNG registration now pass a 167-entry host image verification; SD image now written/readback-verified/ejected; visible gate fails with missing png.library>=52; 171-entry runtime-library closure correction is now SD written/readback-verified/ejected (2026-10-01); synchronized 55-second boot reaches Wanderer and attempts the new runtime libraries; Fabian confirms requester-free RAM Disk opening and one visible toolbar symbol; complete toolbar and sustained performance are not yet accepted. Menu-item execution, bounded recovery, intermittent startup reliability and the 1,000-cycle gates remain open |
@@ -4448,6 +4448,15 @@ Acceptance gate:
 ## Track RC: independent remote diagnostic access
 
 ### RC0 - USB investigation and diagnostic-MVP slice
+
+Composite follow-up: vendor interface0 is retained while CDC control1/data2
+provide a separate OS serial endpoint. Runtime logs use a private permanent
+kernel tap, not callbacks into unloadable code and not the original debug
+queue. Overflow warnings remain unconditional; CDC lines never reset the board.
+Offline composite tests and repeat native application builds pass; corrected
+kernel build passes. HS ROM remains absent in both connector orientations;
+native application enumeration, log coexistence and ROM flashing remain open.
+Host mode and automatic role selection remain deferred.
 
 2026-10-14: Fabian authorizes USB pre-investigation for screenshots,
 mouse/click and read-only file access to support the unresolved N2T WLAN
@@ -44251,3 +44260,140 @@ remain open. No partial stage is a complete A/B update system.
   limitations/gates are unchanged; no WLAN or RC completion claim.
 - Final narrow independent review confirms collision finding resolved and
   documentation matches the corrected lookup; no new concern in that scope.
+
+### 2026-10-14 - RC0 composite CDC/bulk candidate and recovery audit
+
+- Evidence directory:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/usb-composite-2026-10-14.oVdLFX`.
+  Standalone `diag` mode, pinned TinyUSB4c195b7b..., explicit current generated
+  SDK and fresh objects, RV32 ILP32F O2 warnings-as-errors. Native-first and
+  native-second USBDiag both260824B SHA256
+  `84ad340cd2d152ad417cff93ee05ad700c4e45d8cdbfbead246ec96431ac6047`,
+  cmp exit0, build exits0. Echo206896B SHA256
+  `0c845736e00bf6428f57f6b137b587f9fe5b54947bf296d895f99915c3ce3bc9`, exit0.
+- Composite configuration98 bytes: vendor0 OUT01/IN81, CDC control1/data2,
+  notification82 and OUT03/IN83, FS64/HS512. Host clients verify the full tree
+  and claim only vendor0. CDC RX is discarded; DTR/RTS do not reset/flash.
+  Logs require matching kernel tap unless explicit lab-only NOLOGS; echo does
+  not claim logs. No automatic startup/installation, no early boot replay.
+- `usb-tests.log`: nine stager/six probe tests and six C suites at O0/O2
+  ASan/UBSan, exit0. `remote-tests.log`: fifteen client tests, four sanitized
+  C suites and fragmented Python/C pipeline,124 file assertions per mode,
+  exit0. Initial invocations omitted required output arguments and exited2;
+  corrected invocations above completed. A CDC warning-length test assertion
+  was corrected from33 to34; the production warning bytes were unchanged.
+- Console fixture passes USB/UART, both prefix modes, O0/O2, plus ring and
+  nonblocking regressions. Independent review nevertheless found two real
+  interleavings: deferred release could invalidate a fresh claim, and a late
+  contention increment could be charged to a new session. Corrections and
+  deterministic regression coverage are in progress; no flash of this kernel.
+  First build-core invocation failed before compilation on locale-sensitive
+  sed; rerun with LC_ALL=C is in progress, not yet a kernel build pass.
+- Debug USB303a:1001 `/dev/cu.usbmodem1101` is again present; devserial capture
+  receives WiFiLink records. This is existing debug firmware, not composite
+  enumeration or a new boot test. No reset, flash, SD/C6 write or cable move.
+- Read-only recovery audit: pinned IDF6.0.1 documents ROM native OTG CDC
+  (esptool) and DFU; ROM HS download transfers at full speed. Secure boot or
+  flash encryption disables this path. Read live security/MAC/flash/table
+  before writes; A/B is opt-in and must not be assumed installed. DFU expects
+  an addressed IDF archive, not raw core.bin. Retained legacy core193024B
+  a68ca519... is not erase-sector aligned; a future identical rewrite at
+  0x20000 must preserve the trailing0xe00 bytes and verify the full0x30000
+  affected range. No bootloader/table/eFuse change is authorized here.
+- Remaining risk/next gate: finish SMP corrections and clean core build, then
+  obtain fresh physical readiness for one-cable native-ROM enumeration and
+  verified recovery write/readback. No native recovery or CDC/remote hardware
+  pass, no host-role or automatic-role implementation is claimed.
+- Fabian subsequently confirmed BOOT/RESET access, USB-C as sole power, and
+  permission to release this port. `devserial close /dev/cu.usbmodem1101`
+  completed exit0; other managed ports/daemon/history remain untouched.
+  Awaiting the coordinated single-cable move with BOOT held into native-ROM
+  mode. First operation there is enumeration/security/identity, not a write.
+- After Fabian reported the cable connected, passive devserial/IOUSB inventory
+  and dfu-util --list showed no Espressif USB device, CDC port or DFU target.
+  No esptool device command, reset or write was issued. Native ROM entry is
+  therefore unconfirmed, not a recovery pass; next interaction is an explicit
+  BOOT-held RESET pulse at the native connector before repeating inventory.
+- The initial clean core build completed exit0:194320B SHA256
+  `b38754e4b4bb9e171d2a417b24b70c52fc04bfb09ce2b3b1d3fcb4b00c39b0ec`.
+  This is the pre-review-correction artifact, retained under `core/`; do not
+  flash it. The final corrected source requires another clean build.
+- Fabian confirmed HS specifically and performed BOOT-held RESET. Repeated
+  devserial, IOUSB and DFU inventory still showed no Espressif device. No chip
+  query/write/reset command could be sent. This does not prove failed ROM
+  entry or a hardware defect; strap state, ROM security and HS electrical
+  connectivity remain unmeasured. Next: return the sole cable to FS/debug,
+  enter ROM explicitly and read boot/security/identity before another HS trial.
+- FS ROM queries now succeeded with esptool/espefuse5.5.0, no-reset before
+  and after, no RAM stub: P4v1.3 MAC80:f1:b2:d3:3b:a6, Secure Boot disabled,
+  Flash Encryption disabled, security flags0. Targeted read-only eFuse summary
+  shows DIS_USB_OTG_DOWNLOAD_MODE=0, USB_PHY_SEL=0, both exchange-pin bits0,
+  DIS_USB_SERIAL_JTAG_DOWNLOAD_MODE=0. Logs `fs-security.log` and
+  `fs-usb-fuses.log` in the evidence directory. Thus FS ROM entry and expected
+  identity are confirmed; the measured security configuration does not explain
+  HS absence. No eFuse/flash write or reset command was issued; chip remains
+  in ROM download mode at FS. HS connector/cable/electrical/ROM behavior remain
+  unresolved; do not declare HS recovery supported on this installed board.
+- Kernel tap author corrected both review findings: pending owner/session now
+  prevents replacement claims until exact-lease cleanup; loss reporting is
+  explicitly lifetime cumulative, not attributed to a fresh claim. Deterministic
+  release/reclaim and contention regressions pass in the author's sanitized
+  host suite. A second clean target build is running under `core-final/`.
+- Further read-only ROM inspection through released FS, esptool5.5 no-reset:
+  GPIO_STRAP0x500e0038=0x104; HP clock0x500e6018=0x7c7f001f,
+  LP PHY/reset0x50111048=0xc0000000, HP USB ctrl0x500e515c=0x009ba640.
+  `fs-rom-hs-registers.log` records HS GSNPSID0x4f54400a,
+  GOTGCTL0x04c10000, GUSBCFG0x4000140d, DCTL0, DSTS0x00400003,
+  GINTSTS0x04008424. Readable ID, forced-device mode and cleared soft-disconnect
+  show internal ROM setup, not cable/host enumeration. Measurements were taken
+  with FS attached, not HS; session-valid observations cannot establish HS VBUS.
+  Initial read-reg spelling was rejected by current CLI (exit2); read-mem
+  commands succeeded. No peripheral register write was performed.
+- No matching macOS USB enumeration/descriptor/reset/overcurrent message was
+  returned by the bounded15-minute kernel log query; absent logs do not locate
+  the failure. Live FS flash-id confirms16MiB. Vendor schematic re-rendered:
+  USB3 dedicated ESP_USB_N/P, both connector orientations routed and5.1k CC
+  pull-downs; installed-board assembly/contact remains unmeasured.
+- A third release review identified duplicate concurrent release as an additional
+  corner case. Direct cleanup now also must win the exact active-session CAS;
+  deterministic overlapping-release test passes, independent source re-review
+  confirms closure. `core-final/` predates this extra fix and is not deployable;
+  `core-reviewed/` is the next clean build. Final host suite is re-running.
+- Fabian explicitly requires firmware flashing over HS in addition to CDC logs
+  and Remote-Bulk. Keep all three acceptance gates open separately. No eFuse,
+  bootloader or table mutation is part of this route. Private lab identity
+ 1209:0001 is permitted for in-house tests by https://pid.codes/1209/0001/,
+  not redistribution/product use; no default production identity is assigned.
+  A separately confirmed GUI launcher is being prepared for later native tests,
+  with no autostart. Fabian is now ready for a single-cable HS orientation test;
+  FS is released, no write occurred.
+- The reversed-connector HS test also had no attached device in IOUSB,
+  devserial or DFU inventory. Raw inventories retained as hs-reversed-*;
+  USB-tree SHA256a64f17fa61d64bba1efee72c8f031fbbb41690e8bcf4d6e8b1a2167268db5525.
+  Orientation-only failure is less likely, not excluded electrically. Next
+  comparison is an explicitly started AROS composite stack, not more identical
+  ROM reset trials; FS return/readiness requested before deployment.
+- Corrected clean core-reviewed build completed exit0,194384B SHA256
+  `03f997b19ce1909a5d12467ddb6f8dd65130163e33dcc3d3b2572cf95bec0647`.
+  Latest console fixture exit0; host log console-reviewed-tests.log SHA256
+  df8a5cd5724a7d92b233907f9d76f98ac0c5249f1696f609fb1090bf30b37a10.
+  Extra duplicate-release regression is included. No target execution claimed.
+- Native-launcher build exit0: USBDiag unchanged260824B84ad340c...;
+  USBRemoteTest40856B SHA256
+  `baa95f5e17de869b3725d13248374aee5595a99546b6f72f95d3e5e436e0fb8e`.
+  Launcher requires Start after disclosing unauthenticated screen/limited-file
+  and unattended pointer access. Cancel does not open USB. A600s run writes
+  stdout only to volatile RAM:USBDiag.log, stderr NIL:, nonzero status remains
+  an error. Seven sanitized O0/O2 USB suites now include five launcher fixture
+  cases (consent, library/DOS failures, statuses/cleanup); full runner exit0.
+  No real requester, LoadSeg or desktop effect measured yet.
+- Offline helper preparation preserves every prior file: rebuilding retained
+  config-interface-stage reproduces installed c94d8394... baseline byte-for-byte
+  (cmp0). New copied usb-helper-stage adds only USBDiag, USBRemoteTest and its
+  normal program icon. FAT16 usb-helpers.img4194304B SHA256
+  `99bba86c1b5adb55577365c4376ac154d59869b2b1c3abc3dc3af0ef96c9feaa`.
+  Read-only image attach, fsck_msdos -n and detach completed;36 files,
+  626KiB free. No live SD or flash change. Intended later writes remain core
+  at0x20000 (sector tail preserved) and helper0xc00000..0xffffff only, after
+  live identity/layout checks and independent readback. Native HS flash support
+  remains unproven regardless of an eventual successful application stack.

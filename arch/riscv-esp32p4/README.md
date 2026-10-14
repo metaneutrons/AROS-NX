@@ -1,5 +1,17 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Composite USB candidate (2026-10-14, hardware open): vendor-bulk interface0
+now coexists with CDC control1/data2 for devserial logs. Nine staging/six probe
+tests, seven O0/O2 sanitized USB C suites and fifteen RemoteDiag client tests
+pass offline. Two fresh USBDiag builds match (260824B,84ad340c...); the matching
+kernel console-tap integration passed its corrected clean build (194384B,
+03f997b1...). Native-ROM CDC/DFU did not enumerate at HS in either tested
+connector orientation. FS ROM identity/security queries pass; no security or
+OTG-download fuse restriction was found in those queries. Native HS recovery
+remains unresolved, not qualified. No firmware has been flashed for this gate.
+CDC only mirrors logs while the diagnostic
+application runs; it does not replace ROM/early-boot debug or implement flashing.
+
 Remote diagnostic USB prototype (2026-10-14, host/native-build verified):
 an isolated opt-in DOS USBEcho application uses pinned TinyUSB4c195b7b...,
 HS rhport1/DWC2 PIO, a single-owner polled AROS adapter, bounded queues/waits

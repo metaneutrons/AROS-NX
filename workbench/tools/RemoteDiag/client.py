@@ -24,6 +24,15 @@ SNAPSHOT_MAX = 4 * 1024 * 1024
 PATH_MAX = 512
 FILE_ENUM_MAX = 128
 PRODUCT_NAME = "P4 USB echo prototype"
+VENDOR_INTERFACE = 0
+CDC_CONTROL_INTERFACE = 1
+CDC_DATA_INTERFACE = 2
+VENDOR_OUT_ENDPOINT = 0x01
+VENDOR_IN_ENDPOINT = 0x81
+CDC_NOTIFY_ENDPOINT = 0x82
+CDC_OUT_ENDPOINT = 0x03
+CDC_IN_ENDPOINT = 0x83
+USB_BULK_PACKET_SIZES = (64, 512)
 
 RD_HELLO = 1
 RD_STATUS = 2
@@ -456,6 +465,118 @@ class USBBulkTransport:
         self.close()
 
 
+def _configuration_descriptors(device: Any) -> bytes:
+    """Read configuration 0 without changing device configuration or claiming an interface."""
+    header = bytes(device.ctrl_transfer(0x80, 0x06, 0x0200, 0, 9, timeout=1000))
+    if len(header) != 9 or header[0] != 9 or header[1] != 0x02:
+        raise DiagError("unexpected USB configuration descriptor header")
+    total_length = int.from_bytes(header[2:4], "little")
+    if total_length != 98:
+        raise DiagError("unexpected USB composite configuration length")
+    descriptor = bytes(device.ctrl_transfer(0x80, 0x06, 0x0200, 0,
+                                            total_length, timeout=1000))
+    if len(descriptor) != total_length:
+        raise DiagError("incomplete USB configuration descriptor")
+    return descriptor
+
+
+def _validate_configuration_descriptor(descriptor: bytes) -> int:
+    """Validate the complete fixed vendor-bulk plus CDC ACM descriptor tree."""
+    if (len(descriptor) != 98 or descriptor[:2] != b"\x09\x02" or
+            int.from_bytes(descriptor[2:4], "little") != len(descriptor) or
+            descriptor[4:9] != bytes((3, 1, 0, 0x80, 50))):
+        raise DiagError("unexpected USB composite configuration header")
+
+    entries: list[bytes] = []
+    offset = 0
+    while offset < len(descriptor):
+        if offset + 2 > len(descriptor):
+            raise DiagError("truncated USB configuration descriptor")
+        length = descriptor[offset]
+        if length < 2 or offset + length > len(descriptor):
+            raise DiagError("invalid USB configuration descriptor length")
+        entries.append(descriptor[offset:offset + length])
+        offset += length
+    if offset != len(descriptor) or len(entries) != 14:
+        raise DiagError("unexpected USB composite descriptor count")
+
+    bulk_packet_size = int.from_bytes(entries[2][4:6], "little")
+    if bulk_packet_size not in USB_BULK_PACKET_SIZES:
+        raise DiagError("unexpected USB bulk packet size")
+
+    def endpoint(address: int, transfer_type: int, packet_size: int,
+                 interval: int) -> bytes:
+        return bytes((7, 5, address, transfer_type, packet_size & 0xFF,
+                      packet_size >> 8, interval))
+
+    expected = [
+        bytes((9, 2, 98, 0, 3, 1, 0, 0x80, 50)),
+        bytes((9, 4, VENDOR_INTERFACE, 0, 2, 0xFF, 0, 0, 0)),
+        endpoint(VENDOR_OUT_ENDPOINT, 2, bulk_packet_size, 0),
+        endpoint(VENDOR_IN_ENDPOINT, 2, bulk_packet_size, 0),
+        bytes((8, 0x0B, CDC_CONTROL_INTERFACE, 2, 2, 2, 0, 0)),
+        bytes((9, 4, CDC_CONTROL_INTERFACE, 0, 1, 2, 2, 0, 0)),
+        bytes((5, 0x24, 0, 0x20, 0x01)),
+        bytes((5, 0x24, 1, 0, CDC_DATA_INTERFACE)),
+        bytes((4, 0x24, 2, 6)),
+        bytes((5, 0x24, 6, CDC_CONTROL_INTERFACE, CDC_DATA_INTERFACE)),
+        endpoint(CDC_NOTIFY_ENDPOINT, 3, 8, 1),
+        bytes((9, 4, CDC_DATA_INTERFACE, 0, 2, 0x0A, 0, 0, 0)),
+        endpoint(CDC_OUT_ENDPOINT, 2, bulk_packet_size, 0),
+        endpoint(CDC_IN_ENDPOINT, 2, bulk_packet_size, 0),
+    ]
+    if entries != expected:
+        raise DiagError("unexpected USB interface, CDC function, or endpoint descriptors")
+    return bulk_packet_size
+
+
+def _validate_interface_metadata(configuration: Any, packet_size: int) -> None:
+    """Cross-check PyUSB's parsed view before making the vendor claim."""
+    if (getattr(configuration, "bConfigurationValue", None) != 1 or
+            getattr(configuration, "bNumInterfaces", None) != 3 or
+            getattr(configuration, "wTotalLength", None) != 98):
+        raise DiagError("unexpected active USB configuration metadata")
+    interfaces = list(configuration)
+    if len(interfaces) != 3:
+        raise DiagError("unexpected number of active USB interfaces")
+    expected = {
+        VENDOR_INTERFACE: (0xFF, 0, 0, {
+            VENDOR_OUT_ENDPOINT: (2, packet_size),
+            VENDOR_IN_ENDPOINT: (2, packet_size),
+        }),
+        CDC_CONTROL_INTERFACE: (2, 2, 0, {CDC_NOTIFY_ENDPOINT: (3, 8)}),
+        CDC_DATA_INTERFACE: (0x0A, 0, 0, {
+            CDC_OUT_ENDPOINT: (2, packet_size),
+            CDC_IN_ENDPOINT: (2, packet_size),
+        }),
+    }
+    seen: set[int] = set()
+    for interface in interfaces:
+        number = interface.bInterfaceNumber
+        if (number not in expected or number in seen or
+                interface.bAlternateSetting != 0):
+            raise DiagError("unexpected active USB interface numbering or alternate setting")
+        seen.add(number)
+        class_code, subclass, protocol, expected_endpoints = expected[number]
+        endpoint_list = list(interface)
+        if (interface.bInterfaceClass != class_code or
+                interface.bInterfaceSubClass != subclass or
+                interface.bInterfaceProtocol != protocol or
+                getattr(interface, "bNumEndpoints", None) != len(expected_endpoints) or
+                len(endpoint_list) != len(expected_endpoints)):
+            raise DiagError("unexpected active USB interface class or endpoint count")
+        endpoints = {endpoint.bEndpointAddress: endpoint for endpoint in endpoint_list}
+        if len(endpoints) != len(endpoint_list) or set(endpoints) != set(expected_endpoints):
+            raise DiagError("unexpected active USB endpoint addresses")
+        for address, endpoint in endpoints.items():
+            transfer_type, endpoint_packet_size = expected_endpoints[address]
+            if ((endpoint.bmAttributes & 0x03) != transfer_type or
+                    endpoint.wMaxPacketSize != endpoint_packet_size):
+                raise DiagError("unexpected active USB endpoint type or packet size")
+    if seen != set(expected):
+        raise DiagError("USB composite interface is incomplete")
+
+
 def open_usb_transport(vid: int, pid: int, bus: int, address: int) -> USBBulkTransport:
     for value, label in ((vid, "VID"), (pid, "PID"), (bus, "bus"), (address, "address")):
         if isinstance(value, bool) or not isinstance(value, int):
@@ -484,29 +605,20 @@ def open_usb_transport(vid: int, pid: int, bus: int, address: int) -> USBBulkTra
         product = usb.util.get_string(device, device.iProduct)
         if product != PRODUCT_NAME:
             raise DiagError("unexpected USB product descriptor; refusing interface claim")
+        if (device.bDeviceClass != 0xEF or device.bDeviceSubClass != 0x02 or
+                device.bDeviceProtocol != 0x01 or device.bNumConfigurations != 1):
+            raise DiagError("unexpected USB composite device class; refusing interface claim")
+        packet_size = _validate_configuration_descriptor(_configuration_descriptors(device))
         configuration = device.get_active_configuration()
-        interfaces = list(configuration)
-        if len(interfaces) != 1:
-            raise DiagError("unexpected USB configuration; refusing interface claim")
-        interface = interfaces[0]
-        endpoint_list = list(interface)
-        endpoints = {endpoint.bEndpointAddress: endpoint for endpoint in endpoint_list}
-        if (interface.bInterfaceNumber != 0 or interface.bAlternateSetting != 0 or
-                interface.bInterfaceClass != 0xFF or len(endpoint_list) != 2 or
-                len(endpoints) != 2 or set(endpoints) != {0x01, 0x81}):
-            raise DiagError("unexpected USB interface or endpoint descriptors")
-        if any((endpoint.bmAttributes & 3) != 2 for endpoint in endpoints.values()):
-            raise DiagError("USB endpoints are not bulk endpoints")
-        packet_sizes = {endpoint.wMaxPacketSize for endpoint in endpoints.values()}
-        if len(packet_sizes) != 1 or next(iter(packet_sizes)) not in (64, 512):
-            raise DiagError("unexpected USB bulk packet sizes")
+        _validate_interface_metadata(configuration, packet_size)
     except DiagError:
         usb.util.dispose_resources(device)
         raise
     except Exception as exc:
         usb.util.dispose_resources(device)
         raise DiagError("could not verify active USB interface descriptors") from exc
-    return USBBulkTransport(device, usb.util, 0, 0x01, 0x81)
+    return USBBulkTransport(device, usb.util, VENDOR_INTERFACE,
+                            VENDOR_OUT_ENDPOINT, VENDOR_IN_ENDPOINT)
 
 
 def _print_json(value: Any) -> None:

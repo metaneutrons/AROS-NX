@@ -8,6 +8,7 @@ import time
 import unittest
 
 MAX_BYTES = 16 * 1024 * 1024
+PRODUCT_NAME = "P4 USB echo prototype"
 
 class ProbeError(RuntimeError):
     pass
@@ -58,6 +59,57 @@ def select(devices, bus, address):
         raise ProbeError("target absent or ambiguous; no device opened")
     return matches[0]
 
+def verify_composite_configuration(configuration):
+    """Return vendor interface 0 after checking the fixed CDC+bulk layout."""
+    if (getattr(configuration, "bConfigurationValue", None) != 1 or
+        getattr(configuration, "bNumInterfaces", None) != 3 or
+        getattr(configuration, "wTotalLength", None) != 98):
+        raise ProbeError("unexpected USB composite configuration")
+    interfaces = list(configuration)
+    if len(interfaces) != 3:
+        raise ProbeError("unexpected USB interface count")
+    expected = {
+        0: (0xFF, 0, 0, {0x01: (2, None), 0x81: (2, None)}),
+        1: (2, 2, 0, {0x82: (3, 8)}),
+        2: (0x0A, 0, 0, {0x03: (2, None), 0x83: (2, None)}),
+    }
+    seen = set()
+    bulk_packet_size = None
+    vendor_interface = None
+    for interface in interfaces:
+        number = interface.bInterfaceNumber
+        if number not in expected or number in seen or interface.bAlternateSetting != 0:
+            raise ProbeError("unexpected USB interface numbering or alternate setting")
+        seen.add(number)
+        class_code, subclass, protocol, expected_endpoints = expected[number]
+        endpoint_list = list(interface)
+        if (interface.bInterfaceClass != class_code or
+            interface.bInterfaceSubClass != subclass or
+            interface.bInterfaceProtocol != protocol or
+            getattr(interface, "bNumEndpoints", None) != len(expected_endpoints) or
+            len(endpoint_list) != len(expected_endpoints)):
+            raise ProbeError("unexpected USB interface class or endpoint count")
+        endpoints = {endpoint.bEndpointAddress: endpoint for endpoint in endpoint_list}
+        if len(endpoints) != len(endpoint_list) or set(endpoints) != set(expected_endpoints):
+            raise ProbeError("unexpected USB endpoint addresses")
+        for address, endpoint in endpoints.items():
+            transfer_type, packet_size = expected_endpoints[address]
+            if ((endpoint.bmAttributes & 3) != transfer_type or
+                (packet_size is not None and endpoint.wMaxPacketSize != packet_size)):
+                raise ProbeError("unexpected USB endpoint type or packet size")
+            if transfer_type == 2:
+                if endpoint.wMaxPacketSize not in (64, 512):
+                    raise ProbeError("unexpected USB bulk packet size")
+                if bulk_packet_size is None:
+                    bulk_packet_size = endpoint.wMaxPacketSize
+                elif endpoint.wMaxPacketSize != bulk_packet_size:
+                    raise ProbeError("inconsistent USB bulk packet sizes")
+        if number == 0:
+            vendor_interface = interface
+    if seen != set(expected) or vendor_interface is None:
+        raise ProbeError("USB composite interfaces are incomplete")
+    return vendor_interface
+
 class ProbeTests(unittest.TestCase):
     def test_partial_exact(self):
         rng = random.Random(1985)
@@ -94,6 +146,39 @@ class ProbeTests(unittest.TestCase):
         self.assertIs(select([target],1,2),target)
         for devices in ([],[target,target]):
             with self.assertRaises(ProbeError): select(devices,1,2)
+    def test_composite_layout_keeps_vendor_zero_and_rejects_shape_changes(self):
+        class Endpoint:
+            def __init__(self, address, packet_size, attributes):
+                self.bEndpointAddress=address
+                self.wMaxPacketSize=packet_size
+                self.bmAttributes=attributes
+        class Interface(list):
+            def __init__(self, number, class_code, subclass, protocol, endpoints):
+                super().__init__(endpoints)
+                self.bInterfaceNumber=number
+                self.bAlternateSetting=0
+                self.bInterfaceClass=class_code
+                self.bInterfaceSubClass=subclass
+                self.bInterfaceProtocol=protocol
+                self.bNumEndpoints=len(endpoints)
+        class Configuration(list):
+            bConfigurationValue=1
+            bNumInterfaces=3
+            wTotalLength=98
+        def fixture(packet_size=64):
+            return Configuration((
+                Interface(0,0xff,0,0,(Endpoint(0x01,packet_size,2),Endpoint(0x81,packet_size,2))),
+                Interface(1,2,2,0,(Endpoint(0x82,8,3),)),
+                Interface(2,0x0a,0,0,(Endpoint(0x03,packet_size,2),Endpoint(0x83,packet_size,2))),
+            ))
+        vendor=verify_composite_configuration(fixture())
+        self.assertEqual(vendor.bInterfaceNumber,0)
+        self.assertEqual(verify_composite_configuration(fixture(512)).bInterfaceNumber,0)
+        bad=fixture()
+        bad[2].bInterfaceClass=0xff
+        with self.assertRaises(ProbeError): verify_composite_configuration(bad)
+        missing=Configuration(fixture()[:2])
+        with self.assertRaises(ProbeError): verify_composite_configuration(missing)
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
@@ -116,17 +201,15 @@ def main():
     target=select(list(usb.core.find(find_all=True,idVendor=a.vid,idProduct=a.pid)),a.bus,a.address)
     claimed=False
     try:
-        if usb.util.get_string(target,target.iProduct)!="P4 USB echo prototype":
+        if usb.util.get_string(target,target.iProduct)!=PRODUCT_NAME:
             raise ProbeError("unexpected product; refusing interface claim")
+        if (target.bDeviceClass!=0xef or target.bDeviceSubClass!=0x02 or
+            target.bDeviceProtocol!=0x01 or target.bNumConfigurations!=1):
+            raise ProbeError("unexpected composite device class; refusing interface claim")
         # Do not detach drivers or change configuration to force access.
         config=target.get_active_configuration()
-        interface=config[(0,0)]
+        interface=verify_composite_configuration(config)
         endpoints={e.bEndpointAddress:e for e in interface}
-        if (interface.bInterfaceClass!=0xff or set(endpoints)!={0x01,0x81} or
-            any(e.bmAttributes & 3 != 2 for e in endpoints.values()) or
-            endpoints[1].wMaxPacketSize not in (64,512) or
-            endpoints[1].wMaxPacketSize!=endpoints[0x81].wMaxPacketSize):
-            raise ProbeError("unexpected interface/endpoint descriptors")
         usb.util.claim_interface(target,0); claimed=True
         payload=random.Random(time.time_ns()).randbytes(a.bytes)
         received=exchange(lambda d,t:target.write(0x01,d,timeout=t),
