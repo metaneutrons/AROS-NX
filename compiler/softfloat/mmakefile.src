@@ -9,7 +9,7 @@ SOFTFLOATARCHSUFFIX := "zip"
 #SOFTFLOATPATCHSPEC := $(SOFTFLOATARCHBASE)-aros.diff:libsoftfloat-$(LIBSOFTFLOATVERSION):-f,-p1
 SOFTFLOATARCHSRCDIR := $(PORTSDIR)/libsoftfloat/$(SOFTFLOATARCHBASE)
 
-%fetch mmake=linklibs-softfloat-fetch archive=$(SOFTFLOATARCHBASE) destination=$(PORTSDIR)/libsoftfloat \
+%fetch mmake=linklibs-softfloat-fetch archive=$(SOFTFLOATARCHBASE) location=$(PORTSSOURCEDIR) destination=$(PORTSDIR)/libsoftfloat \
     archive_origins=$(SOFTFLOATREPOSITORIES) suffixes=$(SOFTFLOATARCHSUFFIX) \
     patches_specs=$(PATCHSPEC)
 
