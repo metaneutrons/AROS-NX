@@ -307,6 +307,11 @@ int main(void)
         if(!p4_cdc_log_init(&cdc_log,&source,&sink))goto out;
         log_enabled=true;
         p4_cdc_log_reset(&cdc_log);
+        /* A known, non-secret marker exercises the actual kernel mirror,
+           rather than treating a CDC descriptor as proof of console output.
+           It stays in the tap queue until a reader asserts DTR. */
+        const char *marker="[USBDiag] console mirror claimed\n";
+        while(*marker)RawPutChar((UBYTE)*marker++);
     }
 #endif
     timer_port=CreateMsgPort();

@@ -62,4 +62,13 @@ if [ "$mode" = diag ]; then
     test -s "$output/USBRemoteTest"
     shasum -a 256 "$output/USBRemoteTest"
     wc -c "$output/USBRemoteTest"
+    "$cc" --sysroot="$sdk" -std=gnu11 -O2 -Wall -Wextra -Werror \
+        -DP4_USB_LAUNCH_ECHO \
+        -march=rv32imafc_zicsr_zifencei_zaamo_zalrsc -mabi=ilp32f -mcmodel=medany \
+        -ffile-prefix-map="$usb_src"=aros-usb-echo \
+        -isystem "$target/gen/include" -I"$sdk/include" -L"$sdk/lib" \
+        "$usb_src/launch_diag.c" -o "$output/USBEchoTest"
+    test -s "$output/USBEchoTest"
+    shasum -a 256 "$output/USBEchoTest"
+    wc -c "$output/USBEchoTest"
 fi

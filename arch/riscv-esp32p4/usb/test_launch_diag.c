@@ -1,5 +1,6 @@
-/* Host fixture for the standalone consent-gated USBDiag launcher.
- * Build with: cc -std=c11 -Wall -Wextra -Werror test_launch_diag.c -o test_launch_diag
+/* Host fixture for the consent-gated USB launchers.
+ * Diagnostic: cc -std=c11 -Wall -Wextra -Werror test_launch_diag.c
+ * Echo mode: add -DP4_USB_LAUNCH_ECHO=1 to the compile command.
  */
 #include <assert.h>
 #include <stdarg.h>
@@ -57,6 +58,22 @@ LONG EasyRequestArgs(void *window, struct EasyStruct *request,
 #define main launch_diag_main
 #include "launch_diag.c"
 #undef main
+
+#if defined(P4_USB_LAUNCH_ECHO)
+#define EXPECTED_CONSENT_TITLE "Private USB echo test"
+#define EXPECTED_FAILURE_TITLE "USBEcho did not complete"
+#define EXPECTED_LOG_PATH "RAM:USBEcho.log"
+#define EXPECTED_COMMAND \
+    "FLASHDISK0P0:USBEcho ENABLE VID 4617 PID 1 SECONDS 600 STEADYCLOCKS"
+#else
+#define EXPECTED_CONSENT_TITLE "Private USB diagnostics"
+#define EXPECTED_FAILURE_TITLE "USBDiag did not complete"
+#define EXPECTED_LOG_PATH "RAM:USBDiag.log"
+#define EXPECTED_COMMAND \
+    "FLASHDISK0P0:USBDiag ENABLE VID 4617 PID 1 SECONDS 600 " \
+    "STEADYCLOCKS NONEAUTH SCREEN Workbench ROOT SYS:Prefs " \
+    "ALLOWMOUSE UNATTENDED"
+#endif
 
 #define MAX_CALLS 8
 #define MAX_TEXT 1200
@@ -178,9 +195,9 @@ LONG EasyRequestArgs(void *window, struct EasyStruct *request,
              request->es_Text);
     snprintf(fake_request_gadgets, sizeof(fake_request_gadgets), "%s",
              request->es_GadgetFormat);
-    if (strcmp(request->es_Title, "Private USB diagnostics") == 0)
+    if (strcmp(request->es_Title, EXPECTED_CONSENT_TITLE) == 0)
         return fake_consent_result;
-    assert(strcmp(request->es_Title, "USBDiag did not complete") == 0);
+    assert(strcmp(request->es_Title, EXPECTED_FAILURE_TITLE) == 0);
     fake_failure_request_count++;
     return fake_failure_result;
 }
@@ -227,17 +244,14 @@ static void test_start_success(void)
     assert(fake_request_count == 1);
     assert(fake_failure_request_count == 0);
     assert(fake_open_count == 3);
-    assert(strcmp(fake_open_paths[0], "RAM:USBDiag.log") == 0);
+    assert(strcmp(fake_open_paths[0], EXPECTED_LOG_PATH) == 0);
     assert(fake_open_modes[0] == MODE_NEWFILE);
     assert(strcmp(fake_open_paths[1], "NIL:") == 0);
     assert(fake_open_modes[1] == MODE_OLDFILE);
     assert(strcmp(fake_open_paths[2], "NIL:") == 0);
     assert(fake_open_modes[2] == MODE_NEWFILE);
     assert(fake_system_count == 1);
-    assert(strcmp(fake_command,
-                  "FLASHDISK0P0:USBDiag ENABLE VID 4617 PID 1 SECONDS 600 "
-                  "STEADYCLOCKS NONEAUTH SCREEN Workbench ROOT SYS:Prefs "
-                  "ALLOWMOUSE UNATTENDED") == 0);
+    assert(strcmp(fake_command, EXPECTED_COMMAND) == 0);
     assert(fake_tag_count == 5);
     assert(fake_tags[0] == SYS_Input && fake_values[0] == 102);
     assert(fake_tags[1] == SYS_Output && fake_values[1] == 101);
@@ -245,11 +259,27 @@ static void test_start_success(void)
     assert(fake_tags[3] == SYS_Asynch && fake_values[3] == FALSE);
     assert(fake_tags[4] == SYS_Background && fake_values[4] == TRUE);
     assert_closed_exactly(3);
+    assert(strcmp(fake_request_title, EXPECTED_CONSENT_TITLE) == 0);
     assert(strstr(fake_request_text, "1209:0001") != NULL);
-    assert(strstr(fake_request_text, "no authentication or encryption") != NULL);
-    assert(strstr(fake_request_text, "RAM:USBDiag.log") != NULL);
+    assert(strstr(fake_request_text, EXPECTED_LOG_PATH) != NULL);
+#if defined(P4_USB_LAUNCH_ECHO)
+    assert(strstr(fake_request_text,
+                  "not\nexposed by this USB service") != NULL);
+    assert(strstr(fake_request_text, "USB bulk accepts test bytes") != NULL);
+    assert(strstr(fake_request_text,
+                  "No screen capture, filesystem access, pointer control or\n"
+                  "input injection is enabled") != NULL);
+    assert(strstr(fake_request_text, "no authentication") == NULL);
+    assert(strstr(fake_command, " SCREEN ") == NULL);
+    assert(strstr(fake_command, " ROOT ") == NULL);
+    assert(strstr(fake_command, " ALLOWMOUSE") == NULL);
+    assert(strstr(fake_command, " UNATTENDED") == NULL);
+    assert(strstr(fake_command, " NONEAUTH") == NULL);
+#else
     assert(strstr(fake_request_text, "not exposed by this USB service") != NULL);
+    assert(strstr(fake_request_text, "no authentication or encryption") != NULL);
     assert(strstr(fake_request_text, "No local touch or\nmouse") != NULL);
+#endif
     assert(strcmp(fake_request_gadgets, "Start|Cancel") == 0);
     assert_request_lines_fit();
 }
@@ -292,7 +322,7 @@ static void test_file_open_failures_cleanup(void)
         assert(fake_system_count == 0);
         assert(fake_library_close_count == 1);
         assert_closed_exactly(failure_at - 1);
-        assert(strstr(fake_request_text, "RAM:USBDiag.log") != NULL);
+        assert(strstr(fake_request_text, EXPECTED_LOG_PATH) != NULL);
         assert(strstr(fake_request_text, "not exposed over USB") != NULL);
         assert_request_lines_fit();
     }
@@ -316,6 +346,10 @@ int main(void)
     test_library_open_failure();
     test_file_open_failures_cleanup();
     test_system_result_is_preserved();
-    puts("launcher host fixture: 5 tests passed");
+#if defined(P4_USB_LAUNCH_ECHO)
+    puts("echo launcher host fixture: 5 tests passed");
+#else
+    puts("diagnostic launcher host fixture: 5 tests passed");
+#endif
     return 0;
 }

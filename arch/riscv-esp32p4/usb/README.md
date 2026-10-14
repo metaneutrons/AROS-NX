@@ -1,6 +1,8 @@
 # Opt-in ESP32-P4 composite USB experiment
 
-Status: host-tested and native-build verified; **not hardware qualified**.
+Status: host-tested and native-build verified; installed on JC1060 via FS for
+explicit tests, **not hardware qualified**. Successful FS installation is not
+HS recovery, USB transport or remote-backend acceptance.
 This is a standalone AROS DOS application, not a resident, BSP member or
 remote-control service. It is never automatically installed or started.
 The default build remains echo-only. The separately selected `diag` build now
@@ -47,8 +49,18 @@ delay shutdown beyond that loop deadline. The USB file root does not expose
 this RAM log. stderr goes to NIL:; nonzero status triggers a failure requester.
 Do not use local touch/mouse during a confirmed unattended run.
 
+It additionally builds `USBEchoTest` from the same launcher with
+P4_USB_LAUNCH_ECHO. Deploy the separately built USBEcho executable with it.
+This mode exposes echo test bytes only, logs to RAM:USBEcho.log and grants no
+screen, file or input access. Qualify enumeration/byte-exact echo first; do not
+start USBRemoteTest as a substitute for that gate. Both launchers require Start
+after a requester and use no boot/autostart changes. USBDiag emits one known
+raw-console marker after claiming its tap so CDC logging can be distinguished
+from descriptor-only enumeration; a reader must assert DTR. Overflow warnings
+remain unconditional and early/pre-claim logs are still unavailable.
+
 The tests open no USB or serial device. Nine Python staging tests, six host
-probe tests and seven C suites at O0/O2 with ASan/UBSan cover ring bounds,
+probe tests and eight C suites at O0/O2 with ASan/UBSan cover ring bounds,
 partial transfers, FS/HS descriptors, owner-only OSAL/FIFO, PHY readback and
 restoration, failure budgets and main lifecycle/quarantine. Platform, time,
 controller and MMIO in the main fixture are fakes; these tests do not execute

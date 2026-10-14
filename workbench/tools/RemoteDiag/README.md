@@ -95,7 +95,10 @@ sh workbench/tools/RemoteDiag/run-tests.sh NEW_HOST_OUTPUT
 This produces standalone `USBDiag`, not a new kernel/image. Original `USBEcho`
 build/test mode remains available. The shared experimental USB product string
 is still `P4 USB echo prototype`; the host additionally validates RDG1 HELLO.
-Do not deploy until connector/VBUS/power and the echo transport are qualified.
+Prepared executables may be installed ahead of testing without autostart.
+Do not activate the diagnostic backend until the echo transport and actual
+connector/power arrangement have been checked for that experiment. The separate
+USBEchoTest launcher grants no screen/file/input capability for this first gate.
 
 Later, on AROS, with authorized decimal laboratory VID/PID and explicitly
 reviewed root/screen choices:

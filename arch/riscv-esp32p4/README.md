@@ -1,5 +1,13 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+2026-10-15 USB-MVP scope confirmed: screenshots, mouse/click, read-only files,
+CDC logs and HS firmware flashing; larger remote-control features deferred.
+Echo-only and diagnostic launchers now permit separate transport/backend gates.
+Eight sanitized USB host suites pass. JC1060 FS installation is byte-for-byte
+readback verified; the return boot shows two harts, watchdog, touch and graphics.
+HS echo/CDC/remote tests and HS flashing remain unqualified. HS-ROM absence
+remains unresolved and is not a completed gate.
+
 Composite USB candidate (2026-10-14, hardware open): vendor-bulk interface0
 now coexists with CDC control1/data2 for devserial logs. Nine staging/six probe
 tests, seven O0/O2 sanitized USB C suites and fifteen RemoteDiag client tests

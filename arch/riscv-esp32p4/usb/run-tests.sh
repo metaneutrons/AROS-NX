@@ -27,6 +27,7 @@ for optimization in 0 2; do
     "$cc" $flags -DP4_USB_PHY_TEST -I"$src" "$src/test_hs_phy.c" "$src/hs_phy.c" -o "$output/phy-O$optimization"
     "$cc" $flags -I"$src" "$src/test_cdc_log.c" "$src/cdc_log.c" -o "$output/cdc-O$optimization"
     "$cc" $flags -I"$src" "$src/test_launch_diag.c" -o "$output/launcher-O$optimization"
+    "$cc" $flags -DP4_USB_LAUNCH_ECHO -I"$src" "$src/test_launch_diag.c" -o "$output/echo-launcher-O$optimization"
     "$cc" $flags -DP4_USB_ECHO_HOST_TEST -Dmain=p4_usb_echo_app_main -I"$src" -c "$src/main.c" -o "$output/main-O$optimization.o"
     "$cc" $flags -I"$src" "$src/test_main.c" "$src/echo.c" "$output/main-O$optimization.o" -o "$output/main-O$optimization"
     "$output/echo-O$optimization"
@@ -35,6 +36,7 @@ for optimization in 0 2; do
     "$output/phy-O$optimization"
     "$output/cdc-O$optimization"
     "$output/launcher-O$optimization"
+    "$output/echo-launcher-O$optimization"
     "$output/main-O$optimization"
 done
 echo 'USB echo host tests passed; no native enumeration/transfer is claimed'
