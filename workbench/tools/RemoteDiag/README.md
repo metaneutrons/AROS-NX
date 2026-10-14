@@ -29,9 +29,11 @@ protocol. No mmake target, BSP inclusion, network listener or autostart is added
   device/handler syntax, absolute volumes, parent traversal, links or writes.
   A trusted configured root is resolved and its actual object lock pinned.
   Walks compare canonical metadata/parent identity and revalidate ancestry
-  (64 levels). Native handler lookup decides ASCII case variants; ambiguous
-  case-fold collisions fail closed. Listing/path searches scan at most128
-  entries per directory; large directories can return LIMIT.
+  (64 levels). Native handler lookup decides ASCII case variants. Path lookups
+  reject all multiple case-fold-equivalent candidates, independent of their
+  enumeration order. Listing/path searches scan at most128 entries per
+  directory; a path lookup without observed EOF cannot prove uniqueness and
+  returns LIMIT, even if a candidate was found.
 - Full32-bit native protection mask, comment and raw DateStamp on stat/list.
   Owner R/W/E/D are active-low; owner no-read is explicitly enforced. Group,
   other and unknown mask bits are not truncated or reinterpreted. Bit7 is

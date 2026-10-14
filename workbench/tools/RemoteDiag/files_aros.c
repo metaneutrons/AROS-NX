@@ -336,6 +336,7 @@ static int rd_find_child(BPTR parent, const char *component,
 {
     struct FileInfoBlock entry;
     unsigned int scanned;
+    bool found = false, reached_end = false;
     int status;
 
     if (!Examine(parent, fib))
@@ -348,8 +349,10 @@ static int rd_find_child(BPTR parent, const char *component,
 
     for (scanned = 0; scanned < RD_FILE_ENUM_MAX; ++scanned) {
         if (!ExNext(parent, fib)) {
-            if ((LONG)IoErr() == ERROR_NO_MORE_ENTRIES)
-                return RD_DENIED;
+            if ((LONG)IoErr() == ERROR_NO_MORE_ENTRIES) {
+                reached_end = true;
+                break;
+            }
             return RD_IO;
         }
 
@@ -357,23 +360,29 @@ static int rd_find_child(BPTR parent, const char *component,
                 sizeof(fib->fib_FileName), component, component_length))
             continue;
 
-        /* On case-sensitive handlers, ASCII-fold collisions can produce more
-           than one candidate. Resolve the original spelling once, then require
-           its canonical FIB to match this candidate; a collision fails closed. */
+        if (found)
+            return RD_CHANGED;
         entry = *fib;
-        if (rd_is_link_type(entry.fib_DirEntryType))
-            return RD_DENIED;
-        if (rd_check_object_type(&entry) != RD_OK)
-            return RD_DENIED;
-        status = rd_lock_checked_entry(parent, component, &entry, fib,
-            child_out);
-        if (status != RD_OK)
-            return status;
-        *child_fib = *fib;
-        return RD_OK;
+        found = true;
     }
 
-    return RD_LIMIT;
+    /* A bounded scan that did not observe EOF cannot prove the candidate is
+       unique, so do not lock or return any entry from that partial listing. */
+    if (!reached_end)
+        return RD_LIMIT;
+    if (!found)
+        return RD_DENIED;
+    if (rd_is_link_type(entry.fib_DirEntryType) ||
+        rd_check_object_type(&entry) != RD_OK)
+        return RD_DENIED;
+
+    /* Preserve entry separately from the ExNext cursor FIB above. Lock the
+       original component, then verify that it resolved to this unique entry. */
+    status = rd_lock_checked_entry(parent, component, &entry, fib, child_out);
+    if (status != RD_OK)
+        return status;
+    *child_fib = *fib;
+    return RD_OK;
 }
 
 static int rd_resolve(struct rd_files *files, const char *relative,

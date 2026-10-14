@@ -767,11 +767,20 @@ static void test_path_and_links(void)
     {
         struct rd_test_node *upper = new_node("Case.txt", ST_FILE, docs_node);
         struct rd_test_node *lower = new_node("case.txt", ST_FILE, docs_node);
+        struct rd_test_node *exact_first = new_node("exact-case.txt",
+            ST_FILE, docs_node);
+        struct rd_test_node *variant_second = new_node("Exact-case.txt",
+            ST_FILE, docs_node);
 
         set_data(upper, "upper");
         set_data(lower, "lower");
+        set_data(exact_first, "exact");
+        set_data(variant_second, "variant");
         status = rd_files_stat(files, "docs/case.txt", &metadata);
-        CHECK("case-fold collision cannot select a different canonical entry",
+        CHECK("case-fold collision is rejected when requested spelling is second",
+            status == RD_CHANGED);
+        status = rd_files_stat(files, "docs/exact-case.txt", &metadata);
+        CHECK("case-fold collision is rejected when exact spelling is first",
             status == RD_CHANGED);
     }
 
@@ -822,6 +831,9 @@ static void test_read_protection_and_limits(void)
     }
     status = rd_files_stat(files, "docs/item129", &metadata);
     CHECK("component enumeration stops at the 128-entry bound",
+        status == RD_LIMIT);
+    status = rd_files_stat(files, "docs/item000", &metadata);
+    CHECK("a candidate before an unverified scan bound is not returned",
         status == RD_LIMIT);
     status = rd_files_list(files, "docs", 127, &metadata);
     CHECK("the last in-bound list index is serviced", status == RD_OK);

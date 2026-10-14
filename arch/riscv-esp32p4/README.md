@@ -21,7 +21,7 @@ screenshot, mouse/click and read-only-file backends at Fabian's request, still
 ahead of hardware qualification:
 [RemoteDiag](../../workbench/tools/RemoteDiag/README.md).
 Fourteen host-client tests, four O0/O2 sanitized C suites and fragmented
-Python/C pipe tests pass; native238156B2b183aa7... builds twice identically.
+Python/C pipe tests pass; final native238356B5e533fee... builds twice identically.
 No installation/activation or native USB/capture/input/file pass. Optional
 input requires ALLOWMOUSE/UNATTENDED; physical-input arbitration remains open.
 Files retain raw protection/comment/DateStamp and a pinned explicit root;
