@@ -140,12 +140,20 @@ requires absence but no leave event. This uses the original deadline; it
 does not authenticate UID-zero event causality or qualify the installed peer.
 Its default-off native build is byte-identical to the installed resource.
 Nine sanitized workflow configurations and the primary repeat pass; native
-builds work with and without diagnostics. The probe is installed in
-BSP4049840Bc0e9079e... with byte-exact independent readback and headless return;
-the association result is not yet known.
+builds work with and without diagnostics. The probe was installed in
+BSP4049840Bc0e9079e... and refused the idle first join: successful283 produced
+no leave event before the original deadline, so no CONFIG/CONNECT was sent.
+The owner then retired; Fabian reported Could not start. The probe was withdrawn:
+BSPde813a9a.../resource8036006e... is restored with exact independent readback
+and headless return. No root fix or WiFi/IP acceptance follows from this run.
 Espressif documents the leave event for an already-connected station, not
 every successful idle Disconnect. Missing-event refusal therefore cannot
 establish a peer defect; do not enable this probe as production policy.
+Next implement the reference's first idle join only with a one-shot,
+post-hardware-reset/startup eligibility record, no prior association or
+maintenance reuse, successful STA_START observation and two stable correlated
+NOT_CONNECT queries. Every other case retains the existing teardown path;
+FullMAC admission/security gates remain unchanged. This flow is not yet implemented.
 Console overflow reporting stays unconditional and unchanged.
 No C6 update or
 security-policy change is claimed.
