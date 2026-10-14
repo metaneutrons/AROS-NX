@@ -153,7 +153,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
-| N2T | Explicit accepted-risk WLAN association test | `first-idle candidate build verified; hardware open`: One-shot reset/startup record and two stable absent queries implemented, including late initial START. Candidate resource23be48ff.../BSPaa776547... not yet deployed. Idle leave probe refused and was withdrawn; exact BSPde813a9a... remains installed. Earlier first DOWN/retry distinction remains unresolved. Quiet touch preserved. Corrected SYS stacka31b79e6... startup/IP untested; FullMAC peer admission0 | Verify candidate on installed peer after independent readback and fresh user readiness; retain teardown for later/ambiguous states. Corrected-stack/DHCP, original SAE/required-PMF/no-fallback, routes/DNS/bidirectional traffic/reconnect/load remain open |
+| N2T | Explicit accepted-risk WLAN association test | `first-idle candidate installed; association open`: One-shot reset/startup record and two stable absent queries implemented, including late initial START. Resource23be48ff.../BSPaa776547... exact readback and headless return verified; no new association yet. Idle leave probe refused/withdrawn; BSPde813a9a... retained for recovery. Earlier first DOWN/retry distinction unresolved. Quiet touch preserved. Corrected SYS stacka31b79e6... startup/IP untested; FullMAC peer admission0 | Obtain fresh user readiness and verify first idle join on installed peer; retain teardown for later/ambiguous states. Corrected-stack/DHCP, original SAE/required-PMF/no-fallback, routes/DNS/bidirectional traffic/reconnect/load remain open |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1734,7 +1734,8 @@ late initial START is awaited within the original budget, then two unchanged
 revision samples are required. Decoded remote errors fail without mutation;
 connected contradictions return to legacy teardown. Maintenance/disconnect or
 the first admitted attempt consumes eligibility permanently for that reset.
-Installed-peer and IP/security qualification remain open; restored BSP remains.
+Candidate installed with independent exact readback and headless return;
+installed-peer association and IP/security qualification remain open.
 
 Canonical name decision (2026-10-12): retain flashdisk.device and its generic
 MBR-derived FLASHDISK0P0 DOS name; no architecture-specific rename policy.
@@ -43729,3 +43730,27 @@ remain open. No partial stage is a complete A/B update system.
   this BSP and verify headless return, then obtain fresh readiness for one
   open-WLAN Scan/Connect. No C6 update or flash metadata writes. Corrected SYS
   startup/DHCP, strict SAE/required-PMF/no-fallback and full data/load gates open.
+
+### 2026-10-14 - N2T initial idle candidate installed, no interactive attempt
+
+- Runtime source9ba04b5a15; supplementary protected secret cleanup3832017e83.
+  Identity P4v1.3/MAC80:f1:b2:d3:3b:a6/16MiB confirmed before writing only
+  BSP0x820000..0xbfd4e4,4052196Baa776547...; prior exact BSPde813a9a...
+  retained. Writer44416 exits0/hash verified. Independent read65890 exits0,
+  cmp0 and SHA256aa7765470499ca1cea5051cc39172d5424d46c688ab80f01ecf7fa33a4a6f6f4.
+  Target-only devserial close/reopen and explicit-offset esptool fallback;
+  no daemon/history/other-port changes. Bootloader/table/otadata/NVS, core,
+  helpers/SYS/SD and C6 firmware unchanged. Capture resumed before release.
+- Fixed capture25906..26126/221 rows/26.753525s, initial-idle-headless-final.jsonl
+  SHA256f313898f0742913af2e0123759f2abaa1aeffe03ed9148fa7b5bac1d3ec12f6b.
+  Commanded ROM reset25906 only, main watchdog armed25942, SMP hart1/cpus2
+  26060, queued sender26061, quiet GT911 startup26078, GPIO54 resetok1 at26095,
+  owner CPU1 ready26101. Two initial STA_START observations end at revision2;
+  stable unassociated AP-info0x300f afterward. No new request/RPC/join or
+  matched fatal/Guru/panic/overflow/normal prefix/routine touch heartbeat.
+  Opening may itself reset: no exactly-one-electrical-reset claim.
+- Evidence console-prefix-2026-10-14.Cu8SYY/initial-idle-{identity,write,
+  readback}.log/bin, boot-first.jsonl and headless{-final}.jsonl. Headless
+  startup does not prove displayed frames, input, first join or IP/security.
+  Fresh user readiness is required next for flash WiFi, one Scan and one open
+  Connect with a newly assigned capture. No rail-off or C6 update required.

@@ -157,8 +157,11 @@ FullMAC admission/security gates remain unchanged. Late initial STA_START can
 arrive while querying, but its arrival query never counts as a stable sample.
 Decoded query errors fail before mutation; connected state uses legacy teardown.
 Native resource362976B23be48ff... builds; BSP4052196Baa776547... preserves all
-41 other members and passes the loader audit. This candidate is not yet deployed
-or hardware-qualified; the restored BSPde813a9a... remains installed.
+41 other members and passes the loader audit. The candidate is now installed
+with independent exact readback and a26.753525s headless return showing both
+harts, watchdog armed, GPIO54 C6 reset and WLAN owner CPU1 ready. No association
+was attempted. Fresh interactive and radio/IP qualification remain open;
+BSPde813a9a... is retained for recovery.
 Console overflow reporting stays unconditional and unchanged.
 No C6 update or
 security-policy change is claimed.
