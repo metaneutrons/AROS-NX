@@ -35,10 +35,17 @@ poll-enable state; core226976B8f8c1a01... and status43100Bef177224... are
 now installed over Debug/FS with independent full readbacks. Fresh boot
 IDs30712..30912 show both CPUs, watchdog and USBPort ready/remote closed.
 Fabian confirms the HS desktop and status-dialog loop progress after Refresh;
-IOKit still shows no P4 and no CDC port. The v2 register photograph remains
-pending; owner progress is not enumeration. No remote grant,
+IOKit still shows no P4 and no CDC port. The v2 register photograph confirms
+polling and repeated resets; owner progress is not enumeration. No remote grant,
 PHY tuning, USB reset, endpoint claim or raw MMIO access from the GUI. Exact
 artifacts, source comparison and still-open enumeration gate are in ROADMAP.
+
+The next HS photograph shows poll1, Reset-end33 and SETUP0/mounts0, with
+EP0 OUT size0. This late snapshot does not prove what was written at reset.
+A new DCD-path trace candidate227248B57d90f44... and status43196Bbc3a5d97...
+are offline/native-build verified, not installed. They distinguish immediate
+reset/enum readback from RX-FIFO/SETUP branch counts without additional FIFO
+pops or endpoint/PHY writes. The enumeration root cause remains open.
 
 WiFiLink follow-up2026-10-15 (JC1060 installed/readback verified): `u` is the
 per-query RPC UID, not a link-state value. Correlation remains unchanged,

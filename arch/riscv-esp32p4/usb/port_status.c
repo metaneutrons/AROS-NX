@@ -31,6 +31,8 @@ int main(void)
                 "PCGC %08lx  HPCLK %08lx\n"
                 "LPCLK %08lx  SUSPENDM %08lx  UTMI %08lx\n"
                 "EP0 OUT ctl %08lx size %08lx irq %08lx\n\n"
+                "DCD resets %lu size reset %08lx enum %08lx\n"
+                "RX IRQ %lu SETUP RX %lu DONE %lu\n\n"
                 "State: 0 starting, 1 ready, 2 faulted\n"
                 "Phase: 1 prerequisites, 2 PHY, 3 core, 4 polling, 9 fault\n"
                 "Cached by USB owner. Refresh checks progress.\n"
@@ -44,7 +46,9 @@ int main(void)
                 (unsigned long)s.dcfg,(unsigned long)s.dctl,(unsigned long)s.dsts,
                 (unsigned long)s.pcgcctl,(unsigned long)s.hp_clock,
                 (unsigned long)s.lp_control,(unsigned long)s.suspendm,(unsigned long)s.utmi_fc06,
-                (unsigned long)s.doepctl0,(unsigned long)s.doeptsiz0,(unsigned long)s.doepint0);
+                (unsigned long)s.doepctl0,(unsigned long)s.doeptsiz0,(unsigned long)s.doepint0,
+                (unsigned long)s.dcd_resets,(unsigned long)s.reset_size,(unsigned long)s.enum_size,
+                (unsigned long)s.rx_irqs,(unsigned long)s.setup_rx,(unsigned long)s.setup_done);
         } else {
             snprintf(text,sizeof(text),"%s\nNo USB operation has been started.",
                 result<0?"Snapshot temporarily busy; use Refresh.":

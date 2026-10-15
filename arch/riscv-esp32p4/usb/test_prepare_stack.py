@@ -125,6 +125,14 @@ class PinnedArchiveTests(unittest.TestCase):
             self.assertEqual(common_c.count("p4_usb_guard();"), 4)
             self.assertEqual(common_h.count("p4_usb_guard();"), 2)
             self.assertEqual(dcd_c.count("p4_usb_guard();"), 5)
+            self.assertEqual(dcd_c.count("p4_usb_dcd_trace("), 5)
+            self.assertIn("handle_bus_reset(rhport);\n    p4_usb_dcd_trace(P4_USB_TRACE_RESET, dwc2->epout[0].doeptsiz);", dcd_c)
+            self.assertIn("p4_usb_dcd_trace(P4_USB_TRACE_ENUM, dwc2->epout[0].doeptsiz);\n    handle_enum_done(rhport);", dcd_c)
+            for label in ("RX_IRQ", "SETUP_RX", "SETUP_DONE"):
+                self.assertEqual(dcd_c.count("p4_usb_dcd_trace(P4_USB_TRACE_" + label + ", 0);"), 1)
+            # Observation must not add another read from the destructive FIFO.
+            self.assertEqual(dcd_c.count("dwc2->grxstsp"),
+                             (upstream / "src/portable/synopsys/dwc2/dcd_dwc2.c").read_text().count("dwc2->grxstsp"))
             usb_wrap_guard = (
                 "#if defined(TUP_USBIP_DWC2_ESP32) && !TU_CHECK_MCU(OPT_MCU_ESP32S31) "
                 "&& !defined(P4_USB_POLLED_HS_ONLY)"

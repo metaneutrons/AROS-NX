@@ -349,6 +349,31 @@ def _apply_p4_patches(root: Path) -> None:
         [
             ('#include "dwc2_common.h"\n', '#include "dwc2_common.h"\n#include "p4_usb_platform.h"\n', 1),
             (
+                "    handle_bus_reset(rhport);\n",
+                "    handle_bus_reset(rhport);\n    p4_usb_dcd_trace(P4_USB_TRACE_RESET, dwc2->epout[0].doeptsiz);\n",
+                1,
+            ),
+            (
+                "    handle_enum_done(rhport);\n",
+                "    p4_usb_dcd_trace(P4_USB_TRACE_ENUM, dwc2->epout[0].doeptsiz);\n    handle_enum_done(rhport);\n",
+                1,
+            ),
+            (
+                "  if (gintsts & GINTSTS_RXFLVL) {\n",
+                "  if (gintsts & GINTSTS_RXFLVL) {\n    p4_usb_dcd_trace(P4_USB_TRACE_RX_IRQ, 0);\n",
+                1,
+            ),
+            (
+                "    case GRXSTS_PKTSTS_SETUP_RX: {\n",
+                "    case GRXSTS_PKTSTS_SETUP_RX: {\n      p4_usb_dcd_trace(P4_USB_TRACE_SETUP_RX, 0);\n",
+                1,
+            ),
+            (
+                "    case GRXSTS_PKTSTS_SETUP_DONE: {\n",
+                "    case GRXSTS_PKTSTS_SETUP_DONE: {\n      p4_usb_dcd_trace(P4_USB_TRACE_SETUP_DONE, 0);\n",
+                1,
+            ),
+            (
                 "#if defined(TUP_USBIP_DWC2_ESP32) && !TU_CHECK_MCU(OPT_MCU_ESP32S31)",
                 "#if defined(TUP_USBIP_DWC2_ESP32) && !TU_CHECK_MCU(OPT_MCU_ESP32S31) && !defined(P4_USB_POLLED_HS_ONLY)",
                 2,

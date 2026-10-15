@@ -57,6 +57,21 @@ static struct MsgPort diagnostic_lease;
 static jmp_buf failure;
 static const char *fault_reason;
 static struct P4USBSnapshot observation;
+static uint32_t dcd_resets,reset_size,enum_size,rx_irqs,setup_rx,setup_done;
+
+/* Owner-only trace points in the actual DCD, never an extra FIFO pop.
+ * Keep the immediate post-reset read distinct from a later GUI snapshot. */
+void p4_usb_dcd_trace(enum p4_usb_trace_point point,uint32_t value)
+{
+    p4_usb_owner_check();
+    switch(point) {
+    case P4_USB_TRACE_RESET: ++dcd_resets;reset_size=value;break;
+    case P4_USB_TRACE_ENUM: enum_size=value;break;
+    case P4_USB_TRACE_RX_IRQ: ++rx_irqs;break;
+    case P4_USB_TRACE_SETUP_RX: ++setup_rx;break;
+    case P4_USB_TRACE_SETUP_DONE: ++setup_done;break;
+    }
+}
 
 static bool try_lock(void) { return AttemptSemaphore(&lock) != 0; }
 static void unlock(void) { ReleaseSemaphore(&lock); }
@@ -174,6 +189,8 @@ static void observe(uint32_t phase,uint32_t loops,uint32_t irq_seen,
     struct P4USBSnapshot next={0};
     next.phase=phase;next.loops=loops;next.irq_seen=irq_seen;
     next.polling=polling;
+    next.dcd_resets=dcd_resets;next.reset_size=reset_size;next.enum_size=enum_size;
+    next.rx_irqs=rx_irqs;next.setup_rx=setup_rx;next.setup_done=setup_done;
     next.resets=resets;next.setups=setups;next.mounts=mounts;
     next.hp_clock=mmio(0x500e6018u);next.lp_control=mmio(0x50111048u);
     next.suspendm=mmio(0x500e515cu);
