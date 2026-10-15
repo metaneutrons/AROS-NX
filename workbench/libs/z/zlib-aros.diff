@@ -553,9 +553,9 @@ diff -ruN zlib/x86_simd.h zlib.aros/x86_simd.h
 diff -ruN zlib/zconf.h zlib.aros/zconf.h
 --- zlib/zconf.h	2025-06-19 22:48:50.470000000 +0000
 +++ zlib.aros/zconf.h	1970-01-01 00:00:00.000000000 +0000
-@@ -1,558 +0,0 @@
+@@ -1,566 +0,0 @@
 -/* zconf.h -- configuration of the zlib compression library
-- * Copyright (C) 1995-2024 Jean-loup Gailly, Mark Adler
+- * Copyright (C) 1995-2026 Jean-loup Gailly, Mark Adler
 - * For conditions of distribution and use, see copyright notice in zlib.h
 - */
 -
@@ -601,7 +601,10 @@ diff -ruN zlib/zconf.h zlib.aros/zconf.h
 -#  ifndef Z_SOLO
 -#    define compress              z_compress
 -#    define compress2             z_compress2
+-#    define compress_z            z_compress_z
+-#    define compress2_z           z_compress2_z
 -#    define compressBound         z_compressBound
+-#    define compressBound_z       z_compressBound_z
 -#  endif
 -#  define crc32                 z_crc32
 -#  define crc32_combine         z_crc32_combine
@@ -612,6 +615,7 @@ diff -ruN zlib/zconf.h zlib.aros/zconf.h
 -#  define crc32_z               z_crc32_z
 -#  define deflate               z_deflate
 -#  define deflateBound          z_deflateBound
+-#  define deflateBound_z        z_deflateBound_z
 -#  define deflateCopy           z_deflateCopy
 -#  define deflateEnd            z_deflateEnd
 -#  define deflateGetDictionary  z_deflateGetDictionary
@@ -627,6 +631,7 @@ diff -ruN zlib/zconf.h zlib.aros/zconf.h
 -#  define deflateSetDictionary  z_deflateSetDictionary
 -#  define deflateSetHeader      z_deflateSetHeader
 -#  define deflateTune           z_deflateTune
+-#  define deflateUsed           z_deflateUsed
 -#  define deflate_copyright     z_deflate_copyright
 -#  define get_crc_table         z_get_crc_table
 -#  ifndef Z_SOLO
@@ -696,9 +701,12 @@ diff -ruN zlib/zconf.h zlib.aros/zconf.h
 -#  define inflate_copyright     z_inflate_copyright
 -#  define inflate_fast          z_inflate_fast
 -#  define inflate_table         z_inflate_table
+-#  define inflate_fixed         z_inflate_fixed
 -#  ifndef Z_SOLO
 -#    define uncompress            z_uncompress
 -#    define uncompress2           z_uncompress2
+-#    define uncompress_z          z_uncompress_z
+-#    define uncompress2_z         z_uncompress2_z
 -#  endif
 -#  define zError                z_zError
 -#  ifndef Z_SOLO
@@ -802,10 +810,12 @@ diff -ruN zlib/zconf.h zlib.aros/zconf.h
 -#  endif
 -#endif
 -
--#if defined(ZLIB_CONST) && !defined(z_const)
--#  define z_const const
--#else
--#  define z_const
+-#ifndef z_const
+-#  ifdef ZLIB_CONST
+-#    define z_const const
+-#  else
+-#    define z_const
+-#  endif
 -#endif
 -
 -#ifdef Z_SOLO
@@ -1008,7 +1018,7 @@ diff -ruN zlib/zconf.h zlib.aros/zconf.h
 -#  define Z_HAVE_UNISTD_H
 -#endif
 -
--#ifdef HAVE_STDARG_H    /* may be set to #if 1 by ./configure */
+-#if HAVE_STDARG_H-0     /* may be set to #if 1 by ./configure */
 -#  define Z_HAVE_STDARG_H
 -#endif
 -
@@ -1041,12 +1051,8 @@ diff -ruN zlib/zconf.h zlib.aros/zconf.h
 -#endif
 -
 -#ifndef Z_HAVE_UNISTD_H
--#  ifdef __WATCOMC__
--#    define Z_HAVE_UNISTD_H
--#  endif
--#endif
--#ifndef Z_HAVE_UNISTD_H
--#  if defined(_LARGEFILE64_SOURCE) && !defined(_WIN32)
+-#  if defined(__WATCOMC__) || defined(__GO32__) || \
+-      (defined(_LARGEFILE64_SOURCE) && !defined(_WIN32))
 -#    define Z_HAVE_UNISTD_H
 -#  endif
 -#endif
@@ -1081,17 +1087,19 @@ diff -ruN zlib/zconf.h zlib.aros/zconf.h
 -#endif
 -
 -#ifndef z_off_t
--#  define z_off_t long
+-#  define z_off_t long long
 -#endif
 -
 -#if !defined(_WIN32) && defined(Z_LARGE64)
 -#  define z_off64_t off64_t
+-#elif defined(__MINGW32__)
+-#  define z_off64_t long long
+-#elif defined(_WIN32) && !defined(__GNUC__)
+-#  define z_off64_t __int64
+-#elif defined(__GO32__)
+-#  define z_off64_t offset_t
 -#else
--#  if defined(_WIN32) && !defined(__GNUC__)
--#    define z_off64_t __int64
--#  else
--#    define z_off64_t z_off_t
--#  endif
+-#  define z_off64_t z_off_t
 -#endif
 -
 -/* MVS linker does not support external names larger than 8 bytes */
@@ -1115,9 +1123,9 @@ diff -ruN zlib/zconf.h zlib.aros/zconf.h
 diff -ruN zlib/zconf.h.chr zlib.aros/zconf.h.chr
 --- zlib/zconf.h.chr	1970-01-01 00:00:00.000000000 +0000
 +++ zlib.aros/zconf.h.chr	2025-06-20 22:12:16.280200500 +0000
-@@ -0,0 +1,558 @@
+@@ -0,0 +1,566 @@
 +/* zconf.h -- configuration of the zlib compression library
-+ * Copyright (C) 1995-2024 Jean-loup Gailly, Mark Adler
++ * Copyright (C) 1995-2026 Jean-loup Gailly, Mark Adler
 + * For conditions of distribution and use, see copyright notice in zlib.h
 + */
 +
@@ -1163,7 +1171,10 @@ diff -ruN zlib/zconf.h.chr zlib.aros/zconf.h.chr
 +#  ifndef Z_SOLO
 +#    define compress              z_compress
 +#    define compress2             z_compress2
++#    define compress_z            z_compress_z
++#    define compress2_z           z_compress2_z
 +#    define compressBound         z_compressBound
++#    define compressBound_z       z_compressBound_z
 +#  endif
 +#  define crc32                 z_crc32
 +#  define crc32_combine         z_crc32_combine
@@ -1174,6 +1185,7 @@ diff -ruN zlib/zconf.h.chr zlib.aros/zconf.h.chr
 +#  define crc32_z               z_crc32_z
 +#  define deflate               z_deflate
 +#  define deflateBound          z_deflateBound
++#  define deflateBound_z        z_deflateBound_z
 +#  define deflateCopy           z_deflateCopy
 +#  define deflateEnd            z_deflateEnd
 +#  define deflateGetDictionary  z_deflateGetDictionary
@@ -1189,6 +1201,7 @@ diff -ruN zlib/zconf.h.chr zlib.aros/zconf.h.chr
 +#  define deflateSetDictionary  z_deflateSetDictionary
 +#  define deflateSetHeader      z_deflateSetHeader
 +#  define deflateTune           z_deflateTune
++#  define deflateUsed           z_deflateUsed
 +#  define deflate_copyright     z_deflate_copyright
 +#  define get_crc_table         z_get_crc_table
 +#  ifndef Z_SOLO
@@ -1258,9 +1271,12 @@ diff -ruN zlib/zconf.h.chr zlib.aros/zconf.h.chr
 +#  define inflate_copyright     z_inflate_copyright
 +#  define inflate_fast          z_inflate_fast
 +#  define inflate_table         z_inflate_table
++#  define inflate_fixed         z_inflate_fixed
 +#  ifndef Z_SOLO
 +#    define uncompress            z_uncompress
 +#    define uncompress2           z_uncompress2
++#    define uncompress_z          z_uncompress_z
++#    define uncompress2_z         z_uncompress2_z
 +#  endif
 +#  define zError                z_zError
 +#  ifndef Z_SOLO
@@ -1364,10 +1380,12 @@ diff -ruN zlib/zconf.h.chr zlib.aros/zconf.h.chr
 +#  endif
 +#endif
 +
-+#if defined(ZLIB_CONST) && !defined(z_const)
-+#  define z_const const
-+#else
-+#  define z_const
++#ifndef z_const
++#  ifdef ZLIB_CONST
++#    define z_const const
++#  else
++#    define z_const
++#  endif
 +#endif
 +
 +#ifdef Z_SOLO
@@ -1570,7 +1588,7 @@ diff -ruN zlib/zconf.h.chr zlib.aros/zconf.h.chr
 +#  define Z_HAVE_UNISTD_H
 +#endif
 +
-+#ifdef HAVE_STDARG_H    /* may be set to #if 1 by ./configure */
++#if HAVE_STDARG_H-0     /* may be set to #if 1 by ./configure */
 +#  define Z_HAVE_STDARG_H
 +#endif
 +
@@ -1603,12 +1621,8 @@ diff -ruN zlib/zconf.h.chr zlib.aros/zconf.h.chr
 +#endif
 +
 +#ifndef Z_HAVE_UNISTD_H
-+#  ifdef __WATCOMC__
-+#    define Z_HAVE_UNISTD_H
-+#  endif
-+#endif
-+#ifndef Z_HAVE_UNISTD_H
-+#  if defined(_LARGEFILE64_SOURCE) && !defined(_WIN32)
++#  if defined(__WATCOMC__) || defined(__GO32__) || \
++      (defined(_LARGEFILE64_SOURCE) && !defined(_WIN32))
 +#    define Z_HAVE_UNISTD_H
 +#  endif
 +#endif
@@ -1643,17 +1657,19 @@ diff -ruN zlib/zconf.h.chr zlib.aros/zconf.h.chr
 +#endif
 +
 +#ifndef z_off_t
-+#  define z_off_t long
++#  define z_off_t long long
 +#endif
 +
 +#if !defined(_WIN32) && defined(Z_LARGE64)
 +#  define z_off64_t off64_t
++#elif defined(__MINGW32__)
++#  define z_off64_t long long
++#elif defined(_WIN32) && !defined(__GNUC__)
++#  define z_off64_t __int64
++#elif defined(__GO32__)
++#  define z_off64_t offset_t
 +#else
-+#  if defined(_WIN32) && !defined(__GNUC__)
-+#    define z_off64_t __int64
-+#  else
-+#    define z_off64_t z_off_t
-+#  endif
++#  define z_off64_t z_off_t
 +#endif
 +
 +/* MVS linker does not support external names larger than 8 bytes */
