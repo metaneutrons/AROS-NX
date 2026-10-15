@@ -41,6 +41,30 @@ Fresh physical readiness is required for each cable/recovery interaction.
 
 ## Optional single-cable diagnostic journal (default OFF)
 
+`HS_REFERENCE_LINK_TRACE=ON` adds read-only UTMI FC00..FC07 snapshots before
+and after installer execution and queued TinyUSB event counters to sample6.
+The option defaults OFF; the original example/PHY/DWC configuration is not
+modified. FC reads are skipped unless HP bus and LP reference clocks are on
+and both reset bits are clear. No FIFO reads or W1C writes are added. The
+weak event hook is replaced only in this opt-in build: it increments lock-free
+32-bit atomic counters, without flash/log/OS calls from interrupt context.
+Snapshots are independent relaxed loads, not one coherent time point; counts
+wrap modulo32 bits. Counts describe successfully queued stack events, not all
+physical bus packets or raw IRQs. SOF interrupts are not additionally enabled.
+Port-filtered events (including TinyUSB's port0 deferred functions) are reported
+as filtered, never as missing bus events. DSTS line/speed/suspend/frame fields
+are raw source-defined observations, not electrical-health proof. In particular
+Espressif documents that HS cannot monitor VBUS automatically; GOTGCTL BSESVLD0
+alone is not evidence of absent VBUS or the cause of failed enumeration.
+
+Normal staged+link capture uses at most14 of16 slots for the bounded formatter
+output (13 observed in the FS control). No new storage/layout exception. Native
+FS control of197728B2d612c32... saves pre-install clock-off refusal to read FC,
+post-install FC values and zero queued bus events with HS unattached, followed
+by complete sample6. This verifies instrumentation only. The HS run must still
+use fresh scratch and BOOT-held ROM-only FS retrieval; it has not been run with
+this enhanced artifact. AROS is restored afterward, not left as the test app.
+
 The JC1060 vendor tree at `~/Downloads/JC1060P470C_I_W_Y` contains generic
 `bsp_usb_host_start()` implementations but no invoked HS USB-device startup
 in the inspected IDF/Arduino demos. Those host helpers are not a known-good

@@ -99,6 +99,17 @@ void hs_reference_trace_event(const char *stage,int error,int line)
         report(hs_trace_append(&store,&state,text,(size_t)n,work,HS_JOURNAL_SECTOR));
     xSemaphoreGive(trace_lock);
 }
+/* Task-context diagnostic only; never called by the USB ISR hook. */
+void hs_reference_trace_note(const char *text,size_t n)
+{
+    if(!text || !n || n>HS_TRACE_TEXT_MAX || !work || !trace_lock)return;
+    if(xSemaphoreTake(trace_lock,pdMS_TO_TICKS(100))!=pdTRUE) {
+        ESP_LOGE("HSTrace","note omitted: mutex timeout");return;
+    }
+    if(state.active)
+        report(hs_trace_append(&store,&state,text,n,work,HS_JOURNAL_SECTOR));
+    xSemaphoreGive(trace_lock);
+}
 void hs_reference_trace_sample(const char *text,size_t n)
 {
     static bool attempted;

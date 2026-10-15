@@ -114,6 +114,15 @@ After manual RESET-only clears DOWNLOAD, a subsequent captured FS boot reaches
 PSRAM200MHz, graphics/touch, USB owner remote closed and CPU1 WiFi ready.
 AROS is running again; this is headless boot evidence, not visual acceptance.
 HS acceptance remains open; this is not the injected self-test.
+Common-path follow-up: source and schematic audit found no proven missing PHY
+clock/reset step. A default-off HS_REFERENCE_LINK_TRACE now adds clock-gated
+read-only analog-register snapshots and lock-free queued-event counters, not
+PHY tuning. Native FS control197728B2d612c32... stores13 valid records including
+pre/post snapshots and complete sample6; HS is unattached, so zero queued bus
+events is expected, not a reception pass. Raw GOTGCTL BSESVLD0 alone is not a
+VBUS diagnosis. Exact AROS recovery/readback and FS return are verified. The
+enhanced HS measurement still needs fresh physical readiness and protected
+BOOT-held ROM-only retrieval; no enumeration fix is claimed.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
