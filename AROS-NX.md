@@ -89,6 +89,15 @@ product lane verifies them again before CMake configuration. Add new product
 sources to these contracts rather than adding another source-specific workflow
 job. Intel macOS remains outside the qualified host matrix.
 
+The locked Mesa 26 archive has two reviewed HTTPS candidates: its canonical
+Mesa archive origin followed by the Buildroot source mirror. Both must provide
+the same declared 43,776,320 bytes and SHA-256; the mirror is transport
+redundancy, not a different source version or a relaxed integrity policy. An
+unavailable candidate can advance to the next declared candidate, but a poisoned
+existing cache entry is never repaired from the network. This mitigates the
+observed intermittent primary transport failure; it does not establish the
+network root cause of a past CI error whose detailed diagnostic was discarded.
+
 ## Cross-toolchain release baseline
 
 `aros-toolchains.lock.toml` pins the stable

@@ -18,6 +18,10 @@ STAGING = ROOT / "scripts/ci/product-sources.staging.json"
 MESA_ROLE = "product:mesa@26.0.0"
 MESA_FILENAME = "mesa-26.0.0.tar.xz"
 MESA_SHA256 = "2a44e98e64d5c36cec64633de2d0ec7eff64703ee25b35364ba8fcaa84f33f72"
+MESA_CANDIDATES = [
+    "https://archive.mesa3d.org/mesa-26.0.0.tar.xz",
+    "https://sources.buildroot.net/mesa3d/mesa-26.0.0.tar.xz",
+]
 MESA_SOURCE_GUARD = (
     "MESA_ARCHIVE_CHECKSUMS := "
     f"{MESA_FILENAME}=sha256:{MESA_SHA256}"
@@ -63,7 +67,7 @@ class MesaSourceCacheTests(unittest.TestCase):
 
         mesa = mesa_sources[0]
         self.assertEqual(mesa["filename"], MESA_FILENAME)
-        self.assertEqual(mesa["candidates"], [{"url": "https://archive.mesa3d.org/mesa-26.0.0.tar.xz"}])
+        self.assertEqual(mesa["candidates"], [{"url": url} for url in MESA_CANDIDATES])
         self.assertEqual(mesa["representation"], "archive")
         self.assertEqual(mesa["normalization"], "exact-bytes-v1")
         self.assertEqual(
@@ -147,6 +151,33 @@ class MesaSourceCacheTests(unittest.TestCase):
     def test_repository_contract_rejects_modified_mesa_digest(self) -> None:
         plan, staging = self.read_contract_data()
         next(entry for entry in plan["entries"] if entry["role"] == MESA_ROLE)["integrity"]["sha256"] = "0" * 64
+        plan_path, staging_path = self.write_contract_data(plan, staging)
+        with self.assertRaises(AssertionError):
+            self.assert_repository_contract(plan_path, staging_path)
+
+    def test_repository_contract_rejects_removed_mesa_fallback(self) -> None:
+        plan, staging = self.read_contract_data()
+        next(entry for entry in plan["entries"] if entry["role"] == MESA_ROLE)["candidates"] = [
+            {"url": MESA_CANDIDATES[0]}
+        ]
+        plan_path, staging_path = self.write_contract_data(plan, staging)
+        with self.assertRaises(AssertionError):
+            self.assert_repository_contract(plan_path, staging_path)
+
+    def test_repository_contract_rejects_reordered_mesa_fallback(self) -> None:
+        plan, staging = self.read_contract_data()
+        next(entry for entry in plan["entries"] if entry["role"] == MESA_ROLE)["candidates"] = [
+            {"url": url} for url in reversed(MESA_CANDIDATES)
+        ]
+        plan_path, staging_path = self.write_contract_data(plan, staging)
+        with self.assertRaises(AssertionError):
+            self.assert_repository_contract(plan_path, staging_path)
+
+    def test_repository_contract_rejects_unknown_mesa_mirror(self) -> None:
+        plan, staging = self.read_contract_data()
+        next(entry for entry in plan["entries"] if entry["role"] == MESA_ROLE)["candidates"][1] = {
+            "url": "https://mirror.example.invalid/mesa-26.0.0.tar.xz"
+        }
         plan_path, staging_path = self.write_contract_data(plan, staging)
         with self.assertRaises(AssertionError):
             self.assert_repository_contract(plan_path, staging_path)
