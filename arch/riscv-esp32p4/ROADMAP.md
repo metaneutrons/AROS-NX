@@ -264,11 +264,14 @@ change any board's hardware acceptance state.
   unchanged. This diagnostic composition is not protected-main qualification.
 - The native SDK exporter correctly rejected the stale `configure.in` seal:
   the Darwin host case now selects installed GNU make for response-file rules.
-  Refresh only that reviewed input digest to
+  Refresh only that reviewed input digest in all four SDK contracts to
   `715d96905d246e8286c5cd187b88fc22b7c7fb1245f5641125831735373bfd5a`.
   No SDK roots, probes, ABI, source inventory or verification policy change.
-- Validation is the source-owned exporter check and its regressions, followed
-  by isolated exact-source producer preflights. These gates do not prove new
+- Validation: 68 source CI tests passed after the native seal refresh. The
+  isolated producer preflight then correctly rejected the same stale input
+  in the three LLVM SDK contracts, before any compiler fan-out. Refresh their
+  identical digest too and repeat both source-owned exporter checks and the
+  exact-source producer preflight. These gates do not prove new
   compiler A/B equality, SDK execution, relocation or hardware acceptance.
 - Safety: source metadata only; no existing build, board, firmware, media,
   tag, release or diagnostic-run mutation. TC0 remains `in development`;
