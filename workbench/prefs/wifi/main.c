@@ -29,6 +29,9 @@
 
 #include "wifigui.h"
 #include "locale.h"
+#include "volatile_config.h"
+
+BOOL WifiVolatile = WIFI_VOLATILE_DEFAULT;
 
 #define VERSION "$VER: WiFi 1.0 (20.08.2026) AROS Dev Team"
 
@@ -56,6 +59,7 @@ static BOOL busy;                       /* a command is in flight */
  * and the same request sent again. */
 static TEXT pending_ssid[WIFI_SSID_MAX];
 static LONG pending_protected;
+static enum WifiSecurityProfile pending_security_profile = WIFI_SECURITY_UNKNOWN;
 
 /* ------------------------------------------------------------------------- */
 
@@ -173,9 +177,28 @@ static IPTR ScanFunc(struct Hook *hook, Object *caller, void *data)
  * stored for a protected network, and then the requester opens. */
 static void StartConnect(CONST_STRPTR key)
 {
+    size_t key_length = 0;
+
+    if (pending_security_profile == WIFI_SECURITY_UNKNOWN)
+    {
+        SetStatus((CONST_STRPTR)"Cannot connect: security type is unknown.");
+        return;
+    }
+    if (key != NULL)
+    {
+        while (key_length < sizeof(msg->wm_Key) && key[key_length] != '\0')
+            key_length++;
+        if (key_length == sizeof(msg->wm_Key))
+        {
+            WifiClearSecret(msg->wm_Key, sizeof(msg->wm_Key));
+            SetStatus((CONST_STRPTR)"Password exceeds the 63-character limit.");
+            return;
+        }
+    }
     snprintf(msg->wm_SSID, sizeof(msg->wm_SSID), "%s", pending_ssid);
     snprintf(msg->wm_Key, sizeof(msg->wm_Key), "%s",
         (const char *)(key != NULL ? key : (CONST_STRPTR)""));
+    msg->wm_SecurityProfile = pending_security_profile;
     msg->wm_Protected = pending_protected;
 
     {
@@ -205,7 +228,15 @@ static IPTR ConnectFunc(struct Hook *hook, Object *caller, void *data)
         return 0;
 
     snprintf(pending_ssid, sizeof(pending_ssid), "%s", net->wn_SSID);
-    pending_protected = (strcmp(net->wn_Protection, "open") != 0);
+    pending_security_profile =
+        WifiSecurityProfileFromLabel((CONST_STRPTR)net->wn_Protection);
+    if (pending_security_profile == WIFI_SECURITY_UNKNOWN)
+    {
+        pending_protected = FALSE;
+        SetStatus((CONST_STRPTR)"Cannot connect: security type is unknown.");
+        return 0;
+    }
+    pending_protected = pending_security_profile != WIFI_SECURITY_OPEN;
     StartConnect(NULL);
     return 0;
 }
@@ -301,6 +332,33 @@ static IPTR DisconnectFunc(struct Hook *hook, Object *caller, void *data)
 }
 
 /* A reply came back from the worker. */
+static void RefreshDeviceChooser(void)
+{
+    LONG i, active = 0;
+
+    for (i = 0; i < msg->wm_DeviceCount; i++)
+    {
+        if (msg->wm_DeviceUnits[i] != 0)
+            snprintf(devlabels[i], sizeof(devlabels[i]), "%s unit %ld",
+                msg->wm_Devices[i], (long)msg->wm_DeviceUnits[i]);
+        else
+            snprintf(devlabels[i], sizeof(devlabels[i]), "%s",
+                msg->wm_Devices[i]);
+        devnames[i] = (CONST_STRPTR)devlabels[i];
+        if (Stricmp(msg->wm_Devices[i], msg->wm_Device) == 0 &&
+            msg->wm_DeviceUnits[i] == msg->wm_Unit)
+            active = i;
+    }
+    if (msg->wm_DeviceCount == 0)
+        devnames[0] = _(MSG_NO_DEVICE);
+    devnames[msg->wm_DeviceCount ? msg->wm_DeviceCount : 1] = NULL;
+    /* Updating labels must not dispatch DeviceFunc, clear the scan results or
+     * submit another worker message while this reply is being consumed. */
+    SetAttrs(devcycle, MUIA_NoNotify, TRUE,
+        MUIA_Cycle_Entries, (IPTR)devnames,
+        MUIA_Cycle_Active, active, TAG_DONE);
+}
+
 static void HandleReply(void)
 {
     struct WifiMsg *m;
@@ -312,6 +370,7 @@ static void HandleReply(void)
         switch (m->wm_Cmd)
         {
         case WCMD_SCAN:
+            RefreshDeviceChooser();
             FillList();
             SetStatus(m->wm_Status);
             break;
@@ -351,7 +410,7 @@ static void HandleReply(void)
 
 /* ------------------------------------------------------------------------- */
 
-int main(void)
+int main(int argc, char **argv)
 {
     struct Hook scan_hook, connect_hook, display_hook, keyok_hook, keycancel_hook;
     struct Hook details_hook, detailsok_hook, disconnect_hook, device_hook;
@@ -359,6 +418,18 @@ int main(void)
     LONG i, preselect = 0;
     ULONG sigs = 0, replysig;
     int rc = RETURN_FAIL;
+
+    (void)argv;
+    if (argc > 0)
+    {
+        IPTR args[1] = { 0 };
+        struct RDArgs *parsed = ReadArgs((CONST_STRPTR)"VOLATILE/S", args, NULL);
+        if (parsed == NULL)
+            return RETURN_FAIL;
+        if (args[0])
+            WifiVolatile = TRUE;
+        FreeArgs(parsed);
+    }
 
     Locale_Initialize();
 
@@ -659,6 +730,8 @@ cleanup:
         Wait(SIGF_SINGLE);              /* worker has deleted its port */
     }
 
+    if (msg != NULL)
+        WifiClearSecret(msg->wm_Key, sizeof(msg->wm_Key));
     FreeVec(msg);
     if (replyport != NULL)
         DeleteMsgPort(replyport);

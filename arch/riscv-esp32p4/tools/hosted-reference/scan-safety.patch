@@ -1,0 +1,99 @@
+--- a/host/drivers/rpc/core/rpc_rsp.c
++++ b/host/drivers/rpc/core/rpc_rsp.c
+@@ -2,6 +2,7 @@
+ /* SPDX-License-Identifier: GPL-2.0 OR Apache-2.0 */
+ 
+ #include "rpc_core.h"
++#include "rpc_common.h"
+ #include "rpc_slave_if.h"
+ #include "adapter.h"
+ #include "esp_log.h"
+@@ -54,6 +55,8 @@
+ 	}
+ 
+ 	/* 2. update basic fields */
++	/* A missing/malformed response must not inherit calloc's SUCCESS value. */
++	app_resp->resp_event_status = RPC_ERR_PROTOBUF_DECODE;
+ 	app_resp->msg_type = RPC_TYPE__Resp;
+ 	app_resp->msg_id = rpc_msg->msg_id;
+ 	app_resp->uid = rpc_msg->uid;
+@@ -66,6 +69,8 @@
+ 		RPC_FAIL_ON_NULL(resp_get_mac_address);
+ 		RPC_ERR_IN_RESP(resp_get_mac_address);
+ 		RPC_FAIL_ON_NULL(resp_get_mac_address->mac.data);
++		if (rpc_msg->resp_get_mac_address->mac.len != 6)
++			goto fail_parse_rpc_msg;
+ 
+ 		RPC_RSP_COPY_BYTES(app_resp->u.wifi_mac.mac, rpc_msg->resp_get_mac_address->mac);
+ 		ESP_LOGD(TAG, "Mac addr: "MACSTR, MAC2STR(app_resp->u.wifi_mac.mac));
+@@ -248,17 +253,33 @@
+ 		RPC_FAIL_ON_NULL(resp_wifi_scan_get_ap_records);
+ 		RPC_ERR_IN_RESP(resp_wifi_scan_get_ap_records);
+ 		p_c_list = rpc_msg->resp_wifi_scan_get_ap_records->ap_records;
++		/* Validate before narrowing, allocation or any byte copy. */
++		if (rpc_msg->resp_wifi_scan_get_ap_records->number < 0 ||
++			rpc_msg->resp_wifi_scan_get_ap_records->number > UINT16_MAX ||
++			(size_t)rpc_msg->resp_wifi_scan_get_ap_records->number !=
++				rpc_msg->resp_wifi_scan_get_ap_records->n_ap_records)
++			goto fail_parse_rpc_msg;
+ 
+ 		p_a->number = rpc_msg->resp_wifi_scan_get_ap_records->number;
+ 
+ 		if (!p_a->number) {
+ 			ESP_LOGI(TAG, "No AP found");
+-			goto fail_parse_rpc_msg2;
++			break;
+ 		}
+ 		ESP_LOGD(TAG, "Num AP records: %u",
+ 				app_resp->u.wifi_scan_ap_list.number);
+ 
+ 		RPC_FAIL_ON_NULL(resp_wifi_scan_get_ap_records->ap_records);
++		for (i = 0; i < p_a->number; ++i) {
++			WifiApRecord *record = p_c_list[i];
++			if (!record || !record->country || !record->he_ap ||
++				record->ssid.len >= sizeof(((wifi_ap_record_t *)0)->ssid) ||
++				(record->ssid.len && !record->ssid.data) ||
++				record->bssid.len != 6 || !record->bssid.data ||
++				record->country->cc.len > sizeof(((wifi_country_t *)0)->cc) ||
++				(record->country->cc.len && !record->country->cc.data))
++				goto fail_parse_rpc_msg;
++		}
+ 
+ 		list = (wifi_ap_record_t*)g_h.funcs->_h_calloc(p_a->number,
+ 				sizeof(wifi_ap_record_t));
+@@ -591,6 +612,4 @@
+ fail_parse_rpc_msg:
+ 	return SUCCESS;
+ 
+-fail_parse_rpc_msg2:
+-	return FAILURE;
+ }
+--- a/host/drivers/rpc/wrap/rpc_wrap.c
++++ b/host/drivers/rpc/wrap/rpc_wrap.c
+@@ -1430,6 +1430,7 @@
+ 
+ 	if (!number || !*number || !ap_records)
+ 		return FAILURE;
++	const uint16_t capacity = *number;
+ 
+ 	g_h.funcs->_h_memset(ap_records, 0, (*number)*sizeof(wifi_ap_record_t));
+ 
+@@ -1437,9 +1438,15 @@
+ 	resp = wifi_scan_get_ap_records(req);
+ 	if (resp && resp->resp_event_status == SUCCESS) {
+ 		ESP_LOGV(TAG, "num: %u",resp->u.wifi_scan_ap_list.number);
+-
+-		g_h.funcs->_h_memcpy(ap_records, resp->u.wifi_scan_ap_list.out_list,
+-				resp->u.wifi_scan_ap_list.number * sizeof(wifi_ap_record_t));
++		if (resp->u.wifi_scan_ap_list.number > capacity ||
++			(resp->u.wifi_scan_ap_list.number && !resp->u.wifi_scan_ap_list.out_list)) {
++			resp->resp_event_status = RPC_ERR_PROTOBUF_DECODE;
++		} else {
++			if (resp->u.wifi_scan_ap_list.number)
++				g_h.funcs->_h_memcpy(ap_records, resp->u.wifi_scan_ap_list.out_list,
++					resp->u.wifi_scan_ap_list.number * sizeof(wifi_ap_record_t));
++			*number = resp->u.wifi_scan_ap_list.number;
++		}
+ 	}
+ 	return rpc_rsp_callback(resp);
+ }

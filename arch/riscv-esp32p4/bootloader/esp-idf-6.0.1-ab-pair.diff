@@ -1,0 +1,27 @@
+diff --git a/components/bootloader_support/src/bootloader_utility.c b/components/bootloader_support/src/bootloader_utility.c
+--- a/components/bootloader_support/src/bootloader_utility.c
++++ b/components/bootloader_support/src/bootloader_utility.c
+@@ -53,7 +53,13 @@
+ #include "esp_fault.h"
+
+ #if CONFIG_SECURE_ENABLE_TEE
+ #include "bootloader_utility_tee.h"
+ #endif
++#if CONFIG_PARTITION_TABLE_OFFSET == 0x20000 && CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE
++#include "aros_ab_check.h"
++#define AROS_AB_PAIR_CHECK_ENABLED 1
++#else
++#define AROS_AB_PAIR_CHECK_ENABLED 0
++#endif
+
+ ESP_LOG_ATTR_TAG(TAG, "boot");
+@@ -479,2 +485,9 @@
+     if (bootloader_load_image(partition, data) == ESP_OK) {
++#if AROS_AB_PAIR_CHECK_ENABLED
++        if (!bootloader_aros_ab_pair_valid(partition, data)) {
++            ESP_LOGE(TAG, "Rejecting kernel/BSP pair for partition at 0x%" PRIx32,
++                     partition->offset);
++            return false;
++        }
++#endif
+         ESP_LOGI(TAG, "Loaded app from partition at offset 0x%" PRIx32, partition->offset);

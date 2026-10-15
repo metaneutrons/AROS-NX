@@ -20,15 +20,26 @@
 
 #include <exec/types.h>
 #include <exec/io.h>
+#include <exec/errors.h>
 #include <exec/memory.h>
 #include <dos/dos.h>
 #include <devices/sana2.h>
 #include <devices/sana2wireless.h>
+#include <devices/sana2wireless_fullmac.h>
 #include <devices/newstyle.h>
 
 #include <proto/exec.h>
 #include <proto/utility.h>
 #include <proto/dos.h>
+
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+#include <aros/debug.h>
+/* Numeric boundaries only: no network identity, address or credential data. */
+static void sana2_lifecycle_trace(unsigned stage)
+{
+	bug("[WiFiWM] s=%u\n", stage);
+}
+#endif
 
 #ifndef UPINT
 #ifdef __AROS__
@@ -76,6 +87,59 @@ static const struct TagItem buffer_tags[] = {
 	{TAG_END, 0}
 };
 
+#define WPA_DRIVER_SANA2_QUERY_COMMAND_LIMIT 256
+
+static void wpa_driver_sana2_prepare_device_query(
+	struct IOStdReq *request, struct NSDeviceQueryResult *device_info)
+{
+	device_info->DevQueryFormat = 0;
+	device_info->SizeAvailable = 0;
+	device_info->DeviceType = NSDEVTYPE_UNKNOWN;
+	device_info->DeviceSubType = 0;
+	device_info->SupportedCommands = NULL;
+	request->io_Command = NSCMD_DEVICEQUERY;
+	request->io_Data = device_info;
+	request->io_Length = sizeof(*device_info);
+	request->io_Actual = 0;
+	request->io_Error = 0;
+}
+
+static int wpa_driver_sana2_device_query_result_valid(
+	const struct NSDeviceQueryResult *device_info, ULONG actual, int io_error,
+	int *hard_mac)
+{
+	ULONG i;
+	int has_get_networks = 0;
+
+	if (hard_mac == NULL)
+		return 0;
+	*hard_mac = 0;
+	if (device_info == NULL || io_error != 0 ||
+		actual != sizeof(*device_info) || device_info->DevQueryFormat != 0 ||
+		device_info->SizeAvailable < sizeof(*device_info) ||
+		device_info->DeviceType != NSDEVTYPE_SANA2 ||
+		device_info->SupportedCommands == NULL)
+		return 0;
+
+	for (i = 0; i < WPA_DRIVER_SANA2_QUERY_COMMAND_LIMIT; i++) {
+		if (device_info->SupportedCommands[i] == 0) {
+			*hard_mac = has_get_networks;
+			return 1;
+		}
+		if (device_info->SupportedCommands[i] == S2_GETNETWORKS)
+			has_get_networks = 1;
+	}
+
+	return 0;
+}
+
+static int wpa_driver_sana2_configinterface_already_online(
+	int io_error, ULONG wire_error)
+{
+	return io_error == S2ERR_BAD_STATE &&
+		wire_error == S2WERR_UNIT_ONLINE;
+}
+
 struct wpa_driver_sana2_data {
 	void *ctx;
 	char *device_name;
@@ -90,9 +154,23 @@ struct wpa_driver_sana2_data {
 	char ssid[MAX_SSID_LEN + 1];
 	int freq;
 	int device_opened;
+	int signal_registered;
 	int hard_mac;
 	int scanning;
 	int online;
+	/* An attempted WEP install may have changed hardware even on failure. */
+	int wep_key_attempted;
+	/* Queried and retained per open device instance; never use global defaults. */
+	int wireless_caps_queried;
+	int wireless_caps_valid;
+	struct Sana2WirelessCapabilities wireless_caps;
+	int fullmac_caps_valid;
+	struct Sana2FullMACCapabilities fullmac_caps;
+	ULONG next_association_cookie;
+	ULONG active_association_cookie;
+	ULONG active_fullmac_profile;
+	ULONG fullmac_link_cookie, fullmac_link_profile;
+	int fullmac_terminal_fenced;
 };
 
 static int b_rates[] = {
@@ -213,6 +291,105 @@ static int wpa_driver_sana2_scan(void *priv,
 }
 
 
+static void wpa_driver_sana2_set_security_summary(
+	struct wpa_driver_sana2_data *drv, struct wpa_scan_res *res,
+	struct TagItem **tag_lists, size_t index)
+{
+	struct TagItem *tag;
+	const struct Sana2WirelessSecuritySummary *source;
+	struct wpa_security_summary *summary = &res->security_summary;
+	const ULONG known_flags = S2WIRELESS_SUMF_KNOWN |
+		S2WIRELESS_SUMF_PRIVACY;
+	const ULONG no_suites = 0;
+
+	if (!drv->wireless_caps_valid ||
+	    !(drv->wireless_caps.Flags & S2WIRELESS_CAPF_SECURITY_SUMMARY))
+		return;
+
+	/* A missing or unusable summary from a summary-capable device is not
+	 * evidence that the network is open. */
+	os_memset(summary, 0, sizeof(*summary));
+	summary->flags = WPA_SECURITY_SUMMARY_PRESENT |
+		WPA_SECURITY_SUMMARY_PRIVACY;
+	res->caps |= IEEE80211_CAP_PRIVACY;
+	tag = FindTagItem(S2INFO_SecuritySummary, tag_lists[index]);
+	if (tag == NULL || tag->ti_Data == 0)
+		return;
+
+	source = (const struct Sana2WirelessSecuritySummary *) (UPINT)
+		tag->ti_Data;
+	if (source->Size != (ULONG) sizeof(*source) ||
+	    source->Version != S2WIRELESS_SUMMARY_VERSION ||
+	    (source->Flags & ~known_flags) != 0)
+		return;
+
+	if (source->Flags == S2WIRELESS_SUMF_KNOWN &&
+	    source->Protocols == no_suites &&
+	    source->KeyManagement == no_suites &&
+	    source->PairwiseCiphers == no_suites &&
+	    source->GroupCiphers == no_suites) {
+		summary->flags = WPA_SECURITY_SUMMARY_PRESENT |
+			WPA_SECURITY_SUMMARY_KNOWN;
+		res->caps &= ~IEEE80211_CAP_PRIVACY;
+		return;
+	}
+
+	if (source->Flags == (S2WIRELESS_SUMF_KNOWN | S2WIRELESS_SUMF_PRIVACY) &&
+	    source->Protocols == (S2WIRELESS_PROTO_RSN |
+				  S2WIRELESS_PROTO_RSN_SAE) &&
+	    source->KeyManagement == (S2WIRELESS_KEY_PSK |
+				      S2WIRELESS_KEY_SAE) &&
+	    source->PairwiseCiphers == S2WIRELESS_CIPHER_CCMP &&
+	    source->GroupCiphers == S2WIRELESS_CIPHER_CCMP) {
+		summary->flags |= WPA_SECURITY_SUMMARY_KNOWN;
+		/* WPA_PROTO_RSN has no separate transition-mode value. Preserve the
+		 * explicit PSK|SAE AKM pair so the SAE-only selector can distinguish
+		 * this mapped tuple from pure SAE without enabling legacy PSK matching. */
+		summary->proto = WPA_PROTO_RSN;
+		summary->key_mgmt = WPA_KEY_MGMT_PSK | WPA_KEY_MGMT_SAE;
+		summary->pairwise_cipher = WPA_CIPHER_CCMP;
+		summary->group_cipher = WPA_CIPHER_CCMP;
+		return;
+	}
+
+	if (source->Flags == (S2WIRELESS_SUMF_KNOWN | S2WIRELESS_SUMF_PRIVACY) &&
+	    source->Protocols == S2WIRELESS_PROTO_RSN_SAE &&
+	    source->KeyManagement == S2WIRELESS_KEY_SAE &&
+	    source->PairwiseCiphers == S2WIRELESS_CIPHER_CCMP &&
+	    source->GroupCiphers == S2WIRELESS_CIPHER_CCMP) {
+		summary->flags |= WPA_SECURITY_SUMMARY_KNOWN;
+		summary->proto = WPA_PROTO_RSN;
+		summary->key_mgmt = WPA_KEY_MGMT_SAE;
+		summary->pairwise_cipher = WPA_CIPHER_CCMP;
+		summary->group_cipher = WPA_CIPHER_CCMP;
+		return;
+	}
+
+	if (source->Flags != (S2WIRELESS_SUMF_KNOWN |
+			      S2WIRELESS_SUMF_PRIVACY) ||
+	    source->KeyManagement != S2WIRELESS_KEY_PSK ||
+	    (source->Protocols != S2WIRELESS_PROTO_WPA &&
+	     source->Protocols != S2WIRELESS_PROTO_RSN) ||
+	    (source->PairwiseCiphers != S2WIRELESS_CIPHER_TKIP &&
+	     source->PairwiseCiphers != S2WIRELESS_CIPHER_CCMP) ||
+	    (source->GroupCiphers != S2WIRELESS_CIPHER_TKIP &&
+	     source->GroupCiphers != S2WIRELESS_CIPHER_CCMP))
+		return;
+
+	summary->flags = WPA_SECURITY_SUMMARY_PRESENT |
+		WPA_SECURITY_SUMMARY_KNOWN | WPA_SECURITY_SUMMARY_PRIVACY;
+	summary->proto = source->Protocols == S2WIRELESS_PROTO_WPA ?
+		WPA_PROTO_WPA : WPA_PROTO_RSN;
+	summary->key_mgmt = WPA_KEY_MGMT_PSK;
+	summary->pairwise_cipher =
+		source->PairwiseCiphers == S2WIRELESS_CIPHER_TKIP ?
+		WPA_CIPHER_TKIP : WPA_CIPHER_CCMP;
+	summary->group_cipher =
+		source->GroupCiphers == S2WIRELESS_CIPHER_TKIP ?
+		WPA_CIPHER_TKIP : WPA_CIPHER_CCMP;
+}
+
+
 static struct wpa_scan_results * wpa_driver_sana2_get_scan_results(void *priv)
 {
 	struct wpa_driver_sana2_data *drv = priv;
@@ -282,6 +459,9 @@ static struct wpa_scan_results * wpa_driver_sana2_get_scan_results(void *priv)
 
 			if (res->level > res->noise)
 				res->qual = res->level - res->noise;
+
+			wpa_driver_sana2_set_security_summary(drv, res,
+				tag_lists, i);
 
 			/* Copy all IEs if available, or make fake IEs
 			 * containing just SSID */
@@ -372,10 +552,143 @@ static int wpa_driver_sana2_set_key(const char *ifname, void *priv,
 	/* Work-around for a bug in MLME code */
 	if (wpa_driver_sana2_cipher(alg) == S2ENC_WEP)
 		using_wep = 1;
+	if (alg == WPA_ALG_WEP && key_len != 0)
+		drv->wep_key_attempted = 1;
 
 	err = DoIO((APTR)request);
+	if (request->ios2_Req.io_Error != 0)
+		err = -1;
+	request->ios2_Data = NULL;
+	request->ios2_StatData = NULL;
 
-	return err;
+	return err == 0 ? 0 : -1;
+}
+
+
+static int wpa_driver_sana2_associate_fullmac(
+	struct wpa_driver_sana2_data *drv,
+	struct wpa_driver_associate_params *params)
+{
+	struct Sana2FullMACAssociation selection;
+	struct Sana2WirelessCredential credential, *secret = NULL;
+	struct IOSana2Req *request;
+	char ssid[MAX_SSID_LEN + 1];
+	size_t length, i;
+	ULONG cookie, channel = 0;
+	int err;
+
+	if (!drv || !params || !drv->request || !drv->hard_mac ||
+	    !drv->fullmac_caps_valid || !drv->wireless_caps_valid ||
+	    !(drv->wireless_caps.Flags & S2WIRELESS_CAPF_CONNECT_FAILED) ||
+	    !(drv->event_mask & S2EVENT_CONNECT_FAILED) ||
+	    params->mode != IEEE80211_MODE_INFRA ||
+	    !params->ssid || !params->ssid_len ||
+	    params->ssid_len > MAX_SSID_LEN || params->wpa_ie_len ||
+	    params->wpa_ie || params->fullmac_allow_diagnostic > 1 ||
+	    params->auth_alg != WPA_AUTH_ALG_OPEN ||
+	    drv->next_association_cookie == 0xffffffffUL)
+		return -1;
+	for (i = 0; i < params->ssid_len; ++i)
+		if (!params->ssid[i])
+			return -1;
+	for (i = 0; i < 4; ++i)
+		if (params->wep_key_len[i] || params->wep_key[i])
+			return -1;
+	if (params->freq) {
+		if (params->freq == 2484)
+			channel = 14;
+		else if (params->freq >= 2412 && params->freq <= 2472 &&
+			 (params->freq - 2407) % 5 == 0)
+			channel = (params->freq - 2407) / 5;
+		else
+			return -1;
+	}
+	os_memset(&selection, 0, sizeof(selection));
+	os_memset(&credential, 0, sizeof(credential));
+	selection.Size = sizeof(selection);
+	selection.Version = S2FULLMAC_VERSION;
+	selection.Profile = params->fullmac_profile;
+	selection.Flags = params->fullmac_allow_diagnostic ?
+		S2FULLMAC_ASSOCF_ALLOW_DIAGNOSTIC_RISK : 0;
+	selection.SAEPweMethod = params->fullmac_sae_pwe_mode;
+	credential.Size = sizeof(credential);
+	credential.Version = S2WIRELESS_CREDENTIAL_VERSION;
+	if (selection.Profile == S2FULLMAC_PROFILE_OPEN) {
+		if (params->key_mgmt_suite != KEY_MGMT_NONE || params->passphrase ||
+		    params->psk || params->sae_password || params->sae_password_len ||
+		    params->pairwise_suite != CIPHER_NONE ||
+		    params->group_suite != CIPHER_NONE)
+			return -1;
+	} else {
+		if (params->pairwise_suite != CIPHER_CCMP ||
+		    params->group_suite != CIPHER_CCMP)
+			return -1;
+		secret = &credential;
+		if (selection.Profile == S2FULLMAC_PROFILE_SAE_CCMP_PMF) {
+			if (params->key_mgmt_suite != KEY_MGMT_SAE ||
+			    params->passphrase || params->psk ||
+			    params->sae_password_len > 63)
+				return -1;
+			selection.PMFPolicy = S2FULLMAC_PMF_REQUIRED;
+			credential.Kind = S2WIRELESS_CRED_SAE_PASSWORD;
+			credential.Data = params->sae_password;
+			credential.Length = params->sae_password_len;
+		} else if (selection.Profile == S2FULLMAC_PROFILE_WPA2_CCMP) {
+			if (params->key_mgmt_suite != KEY_MGMT_PSK ||
+			    params->sae_password || params->sae_password_len ||
+			    (params->passphrase && params->psk))
+				return -1;
+			if (params->passphrase) {
+				for (length = 0; length < 64 && params->passphrase[length];
+				     ++length) {}
+				credential.Kind = S2WIRELESS_CRED_WPA2_PASSPHRASE;
+				credential.Data = (const UBYTE *)params->passphrase;
+				credential.Length = length;
+			} else {
+				credential.Kind = S2WIRELESS_CRED_WPA2_PSK;
+				credential.Data = params->psk;
+				credential.Length = S2WIRELESS_PSK_SIZE;
+			}
+		} else
+			return -1;
+	}
+	if (!Sana2FullMACAssociationValid(&drv->fullmac_caps, &selection, secret))
+		return -1;
+	CopyMem(params->ssid, ssid, params->ssid_len);
+	ssid[params->ssid_len] = '\0';
+	cookie = ++drv->next_association_cookie;
+	struct TagItem tags[] = {
+		{S2INFO_SSID, (UPINT)ssid},
+		{params->bssid ? S2INFO_BSSID : TAG_IGNORE, (UPINT)params->bssid},
+		{S2INFO_PortType, S2PORT_MANAGED},
+		{S2INFO_Channel, channel},
+		{S2INFO_FullMACAssociation, (UPINT)&selection},
+		{secret ? S2INFO_WirelessCredential : TAG_IGNORE, (UPINT)secret},
+		{S2INFO_AssociationCookie, cookie},
+		{TAG_END, 0}
+	};
+	request = drv->request;
+	drv->active_association_cookie = 0;
+	drv->active_fullmac_profile = 0;
+	drv->fullmac_link_cookie = drv->fullmac_link_profile = 0;
+	drv->fullmac_terminal_fenced = 1;
+	request->ios2_Req.io_Command = S2_SETOPTIONS;
+	request->ios2_StatData = NULL;
+	request->ios2_Data = tags;
+	request->ios2_DataLength = 0;
+	/* Borrowed objects live through synchronous Reply only. Provider copies
+	 * and owns any async secret; ACK is never a CONNECT or completion event. */
+	err = DoIO((APTR)request);
+	if (request->ios2_Req.io_Error)
+		err = -1;
+	request->ios2_Data = NULL;
+	request->ios2_StatData = NULL;
+	if (!err) {
+		strcpy(drv->ssid, ssid);
+		drv->active_association_cookie = cookie;
+		drv->active_fullmac_profile = selection.Profile;
+	}
+	return err ? -1 : 0;
 }
 
 
@@ -383,18 +696,93 @@ static int wpa_driver_sana2_associate(
 	void *priv, struct wpa_driver_associate_params *params)
 {
 	struct wpa_driver_sana2_data *drv = priv;
-	int err = 0, i, alg;
-	struct IOSana2Req *request = drv->request;
-	struct TagItem *tag_list2 = NULL;
-	char *ssid = os_zalloc(MAX_SSID_LEN + 1);
+	int err, i, alg, offload, has_wep = 0;
+	ULONG cookie = 0;
+	size_t passphrase_len;
+	struct IOSana2Req *request;
+	char ssid[MAX_SSID_LEN + 1];
+
+	if (params && params->fullmac_profile)
+		return wpa_driver_sana2_associate_fullmac(drv, params);
+	if (params && (params->sae_password || params->sae_password_len ||
+		params->fullmac_allow_diagnostic || params->fullmac_sae_pwe_mode ||
+		params->key_mgmt_suite == KEY_MGMT_SAE))
+		return -1;
+
+	/* SANA SSID tags are C strings, not length-delimited byte strings.
+	 * Reject identities that cannot be represented before any device I/O. */
+	if (drv == NULL || params == NULL || drv->request == NULL ||
+	    params->ssid == NULL || params->ssid_len == 0 ||
+	    params->ssid_len > MAX_SSID_LEN ||
+	    (params->wpa_ie_len != 0 && params->wpa_ie == NULL))
+		return -1;
+	/* The WPA/RSN/WPS contract describes one complete IE. Validate the
+	 * caller's readable extent before looking at its embedded length, and
+	 * before any device I/O (including legacy key clears). */
+	if (params->wpa_ie_len != 0 &&
+	    (params->wpa_ie_len < 2 || params->wpa_ie_len > 257 ||
+	     (size_t)params->wpa_ie[1] + 2 != params->wpa_ie_len))
+		return -1;
+	for (i = 0; i < params->ssid_len; i++) {
+		if (params->ssid[i] == '\0')
+			return -1;
+	}
+	for (i = 0; i < 4; i++) {
+		if (params->wep_key_len[i] != 0 && params->wep_key[i] == NULL)
+			return -1;
+		if (params->wep_key_len[i] != 0)
+			has_wep = 1;
+	}
+	offload = drv->wireless_caps_valid &&
+		(drv->wireless_caps.Flags & S2WIRELESS_CAPF_FOURWAY);
+	if (offload) {
+		for (i = 0; i < 4; i++) {
+			if (params->wep_key_len[i] != 0)
+				return -1;
+		}
+	}
+	/* Never forward credentials based only on a caller supplying them.
+	 * Raw PSK additionally requires its explicit binary credential capability;
+	 * never reinterpret its bytes as a passphrase or silently drop it. */
+	if ((params->passphrase != NULL || params->psk != NULL) &&
+	    (!offload || params->key_mgmt_suite != KEY_MGMT_PSK ||
+	     params->mode != IEEE80211_MODE_INFRA))
+		return -1;
+	if (offload && params->key_mgmt_suite == KEY_MGMT_PSK &&
+	    params->passphrase == NULL &&
+	    (params->psk == NULL ||
+	     !(drv->wireless_caps.Flags & S2WIRELESS_CAPF_RAW_PSK)))
+		return -1;
+	if (params->passphrase != NULL) {
+		for (passphrase_len = 0; passphrase_len < 64 &&
+		     params->passphrase[passphrase_len] != '\0'; passphrase_len++) {
+			if ((unsigned char)params->passphrase[passphrase_len] < 32 ||
+			    (unsigned char)params->passphrase[passphrase_len] > 126)
+				return -1;
+		}
+		if (passphrase_len < 8 || passphrase_len > 63)
+			return -1;
+	}
+	if (drv->hard_mac && drv->wireless_caps_valid &&
+	    (drv->wireless_caps.Flags & S2WIRELESS_CAPF_CONNECT_FAILED)) {
+		if (drv->next_association_cookie == 0xffffffffUL)
+			return -1;
+		cookie = ++drv->next_association_cookie;
+	}
+	request = drv->request;
+	CopyMem(params->ssid, ssid, params->ssid_len);
+	ssid[params->ssid_len] = '\0';
+	/* DoIO waits for Reply. The device must consume/copy these borrowed
+	 * options before replying; no allocation survives the call. */
 	struct TagItem tag_list[] =
 		{{S2INFO_SSID, (UPINT)ssid},
 		{(params->bssid != NULL) ? S2INFO_BSSID : TAG_IGNORE,
 			(UPINT)params->bssid},
 		{S2INFO_PortType, (params->mode == IEEE80211_MODE_IBSS) ?
 			S2PORT_ADHOC : S2PORT_MANAGED},
-		{S2INFO_Channel, params->freq == 2484 ?
-			14 : (params->freq - 2407) / 5},
+		{S2INFO_Channel, params->freq == 0 ? 0 :
+			(params->freq == 2484 ?
+				14 : (params->freq - 2407) / 5)},
 		{S2INFO_WPAInfo, (params->wpa_ie_len > 0) ?
 			(UPINT)params->wpa_ie : (UPINT)NULL},
 		{S2INFO_AuthTypes, params->auth_alg},
@@ -402,47 +790,221 @@ static int wpa_driver_sana2_associate(
 		 * run the handshake ourselves wpa_supplicant leaves these NULL. */
 		{(params->passphrase != NULL) ? S2INFO_Passphrase : TAG_IGNORE,
 			(UPINT)params->passphrase},
+		/* Prefer the validated passphrase when the caller supplies both.
+		 * A raw key remains binary and is borrowed only until Reply. */
+		{(params->passphrase == NULL && params->psk != NULL) ?
+			S2INFO_PSK : TAG_IGNORE, (UPINT)params->psk},
+		{(offload && (drv->wireless_caps.Flags &
+			S2WIRELESS_CAPF_IE_EXTENT)) ? S2INFO_WPAInfoLength : TAG_IGNORE,
+			(UPINT)params->wpa_ie_len},
+		{cookie ? S2INFO_AssociationCookie : TAG_IGNORE, (UPINT)cookie},
 		{TAG_END, 0}};
 
-	if (ssid == NULL) {
-		err = 1;
-	}
-
-	if (err == 0) {
-		CopyMem(params->ssid, ssid, params->ssid_len);
-		ssid[params->ssid_len] = '\0';
-
-		tag_list2 = CloneTagItems(tag_list);
-		if (tag_list2 == NULL) {
-			err = 1;
-		}
-	}
-
-	/* Set or clear WEP keys */
-	for (i = 0; i < 4; i++) {
+	/* Legacy host-handshake devices still set/clear WEP slots. Firmware
+	 * offload owns its key state and does not imply S2_SETKEY support. */
+	/* A validated legacy attempt replaces the typed event contract. The
+	 * provider must quiesce canceled work before acknowledging new options. */
+	drv->active_association_cookie = drv->active_fullmac_profile = 0;
+	drv->fullmac_link_cookie = drv->fullmac_link_profile = 0;
+	for (i = 0; !offload && i < 4; i++) {
 		if (params->wep_key_len[i] > 0)
 			alg = WPA_ALG_WEP;
 		else
 			alg = WPA_ALG_NONE;
-		wpa_driver_sana2_set_key(NULL, priv, alg, broadcast_addr, i,
+		err = wpa_driver_sana2_set_key(NULL, priv, alg, broadcast_addr, i,
 			i == params->wep_tx_keyidx, NULL, 0,
 			params->wep_key[i], params->wep_key_len[i]);
+		if (err != 0 || request->ios2_Req.io_Error != 0) {
+			request->ios2_Data = NULL;
+			request->ios2_StatData = NULL;
+			/* A device with no WEP history may legitimately not implement
+			 * empty WEP-slot clears. Never ignore a real install error or
+			 * a failure to remove possibly installed WEP keys. */
+			if (!has_wep && !drv->wep_key_attempted &&
+			    (request->ios2_Req.io_Error == S2ERR_NOT_SUPPORTED ||
+			     request->ios2_Req.io_Error == IOERR_NOCMD))
+				continue;
+			return -1;
+		}
 	}
+	if (!offload && !has_wep)
+		drv->wep_key_attempted = 0;
 
 	/* Set other options */
-	if (err == 0) {
-		request->ios2_Req.io_Command = S2_SETOPTIONS;
-		request->ios2_Data = tag_list2;
-		err = DoIO((APTR)request);
-		FreeTagItems(tag_list2);
-	}
+	request->ios2_Req.io_Command = S2_SETOPTIONS;
+	request->ios2_StatData = NULL;
+	request->ios2_Data = tag_list;
+	err = DoIO((APTR)request);
+	if (request->ios2_Req.io_Error != 0)
+		err = -1;
+	request->ios2_Data = NULL;
+	request->ios2_StatData = NULL;
 
 	/* Store current SSID and BSSID */
 	if (err == 0) {
 		strcpy(drv->ssid, ssid);
+		drv->active_association_cookie = cookie;
+		drv->fullmac_terminal_fenced = 0;
 	}
 
-	return 0;
+	return err == 0 ? 0 : -1;
+}
+
+
+static void wpa_driver_sana2_stay_alive(void *eloop_ctx, void *timeout_ctx);
+
+static int wpa_driver_sana2_disassociate(void *priv, const u8 *addr,
+	int reason_code)
+{
+	struct wpa_driver_sana2_data *drv = priv;
+	struct IOSana2Req *request;
+	struct TagItem tags[] = {{S2INFO_Disassociate, 1}, {TAG_END, 0}};
+	int err;
+
+	/* This is local cancellation, not an assertion about an AP's reason.
+	 * CONNECT_FAILED devices must support the standalone leave tag. Keep
+	 * legacy devices' existing unsupported-callback behavior unchanged. */
+	(void)addr;
+	(void)reason_code;
+	if (drv == NULL || drv->request == NULL || !drv->hard_mac ||
+	    !drv->wireless_caps_valid ||
+	    !(drv->wireless_caps.Flags & S2WIRELESS_CAPF_CONNECT_FAILED))
+		return -1;
+
+	/* Retire locally even if the device refuses leave: canceled work must
+	 * not reach the supplicant as a failure of an active attempt. Do not
+	 * fabricate DISCONNECT or claim confirmed radio teardown on Reply. */
+	drv->active_association_cookie = 0;
+	drv->active_fullmac_profile = 0;
+	drv->fullmac_link_cookie = drv->fullmac_link_profile = 0;
+	eloop_cancel_timeout(wpa_driver_sana2_stay_alive, drv->ctx, drv);
+	request = drv->request;
+	request->ios2_Req.io_Command = S2_SETOPTIONS;
+	request->ios2_DataLength = 0;
+	request->ios2_WireError = 0;
+	request->ios2_StatData = NULL;
+	request->ios2_Data = tags;
+	err = DoIO((APTR)request);
+	if (request->ios2_Req.io_Error != 0)
+		err = -1;
+	request->ios2_Data = NULL;
+	request->ios2_StatData = NULL;
+	return err == 0 ? 0 : -1;
+}
+
+
+static int wpa_driver_sana2_wireless_caps_valid(
+	const struct Sana2WirelessCapabilities *caps)
+{
+	const ULONG known_flags = S2WIRELESS_CAPF_FOURWAY |
+		S2WIRELESS_CAPF_SECURITY_SUMMARY | S2WIRELESS_CAPF_RAW_PSK |
+		S2WIRELESS_CAPF_IE_EXTENT | S2WIRELESS_CAPF_CONNECT_FAILED;
+	const ULONG known_protocols = S2WIRELESS_PROTO_WPA |
+		S2WIRELESS_PROTO_RSN | S2WIRELESS_PROTO_RSN_SAE;
+	const ULONG known_key_mgmt = S2WIRELESS_KEY_PSK |
+		S2WIRELESS_KEY_EAP | S2WIRELESS_KEY_SAE;
+	const ULONG known_ciphers = S2WIRELESS_CIPHER_TKIP |
+		S2WIRELESS_CIPHER_CCMP | S2WIRELESS_CIPHER_GCMP;
+	const ULONG fourway_protocols = S2WIRELESS_PROTO_WPA |
+		S2WIRELESS_PROTO_RSN;
+	const ULONG fourway_ciphers = S2WIRELESS_CIPHER_TKIP |
+		S2WIRELESS_CIPHER_CCMP;
+
+	if (caps->SizeAvailable != (ULONG) sizeof(*caps) ||
+	    caps->SizeSupplied != (ULONG) sizeof(*caps) ||
+	    caps->Version != S2WIRELESS_CAPABILITIES_VERSION ||
+	    (caps->Flags & ~known_flags) != 0 ||
+	    (caps->Protocols & ~known_protocols) != 0 ||
+	    (caps->KeyManagement & ~known_key_mgmt) != 0 ||
+	    (caps->PairwiseCiphers & ~known_ciphers) != 0 ||
+	    (caps->GroupCiphers & ~known_ciphers) != 0)
+		return 0;
+
+	/* The masks describe offload suites. Reject incomplete or unsupported
+	 * declarations instead of projecting EAP/SAE/GCMP onto older WPA fields. */
+	if (caps->Flags & S2WIRELESS_CAPF_FOURWAY) {
+		if (caps->Protocols == 0 ||
+		    (caps->Protocols & ~fourway_protocols) != 0 ||
+		    caps->KeyManagement != S2WIRELESS_KEY_PSK ||
+		    caps->PairwiseCiphers == 0 ||
+		    (caps->PairwiseCiphers & ~fourway_ciphers) != 0 ||
+		    caps->GroupCiphers == 0 ||
+		    (caps->GroupCiphers & ~fourway_ciphers) != 0)
+			return 0;
+	} else if ((caps->Flags & (S2WIRELESS_CAPF_RAW_PSK |
+				 S2WIRELESS_CAPF_IE_EXTENT)) != 0 ||
+		   caps->Protocols != 0 || caps->KeyManagement != 0 ||
+		   caps->PairwiseCiphers != 0 || caps->GroupCiphers != 0) {
+		return 0;
+	}
+
+	return 1;
+}
+
+
+static int wpa_driver_sana2_query_wireless_caps(
+	struct wpa_driver_sana2_data *drv)
+{
+	struct Sana2WirelessCapabilities caps;
+	struct IOSana2Req *request = drv->request;
+
+	if (request == NULL)
+		return 0;
+
+	os_memset(&caps, 0, sizeof(caps));
+	caps.SizeAvailable = sizeof(caps);
+	caps.Version = S2WIRELESS_CAPABILITIES_VERSION;
+	request->ios2_Req.io_Command = S2_GETWIRELESSCAPABILITIES;
+	request->ios2_StatData = (APTR) &caps;
+	request->ios2_Data = NULL;
+	request->ios2_DataLength = 0;
+	if (DoIO((APTR) request) != 0 || request->ios2_Req.io_Error != 0 ||
+	    !wpa_driver_sana2_wireless_caps_valid(&caps)) {
+		request->ios2_StatData = NULL;
+		return 0;
+	}
+	request->ios2_StatData = NULL;
+
+	drv->wireless_caps = caps;
+	drv->wireless_caps_valid = 1;
+	/* Negotiate independently; legacy FOURWAY and its masks retain v1 meaning.
+	 * Require truthful summary and correlated failure/cancel semantics before
+	 * making the optional typed path available to any native caller. */
+	if (drv->hard_mac && (caps.Flags & S2WIRELESS_CAPF_SECURITY_SUMMARY) &&
+	    (caps.Flags & S2WIRELESS_CAPF_CONNECT_FAILED)) {
+		struct Sana2FullMACCapabilities fullmac;
+		os_memset(&fullmac, 0, sizeof(fullmac));
+		fullmac.SizeAvailable = sizeof(fullmac);
+		fullmac.Version = S2FULLMAC_VERSION;
+		request->ios2_Req.io_Command = S2_GETFULLMACCAPABILITIES;
+		request->ios2_StatData = &fullmac;
+		if (DoIO((APTR)request) == 0 && !request->ios2_Req.io_Error &&
+		    Sana2FullMACCapabilitiesValid(&fullmac)) {
+			drv->fullmac_caps = fullmac;
+			drv->fullmac_caps_valid = 1;
+		}
+		request->ios2_StatData = NULL;
+	}
+	return 1;
+}
+
+
+static ULONG wpa_driver_sana2_initial_event_mask(
+	struct wpa_driver_sana2_data *drv)
+{
+	ULONG mask = S2EVENT_OFFLINE;
+	if (drv->hard_mac)
+		mask |= S2EVENT_CONNECT | S2EVENT_DISCONNECT;
+	/* Capability negotiation must precede the first ONEVENT subscription.
+	 * get_capa runs later and must not silently change an already parked mask. */
+	if (!drv->wireless_caps_queried) {
+		drv->wireless_caps_queried = 1;
+		wpa_driver_sana2_query_wireless_caps(drv);
+	}
+	if (drv->hard_mac && drv->wireless_caps_valid &&
+	    (drv->wireless_caps.Flags & S2WIRELESS_CAPF_CONNECT_FAILED))
+		mask |= S2EVENT_CONNECT_FAILED;
+	return mask;
 }
 
 
@@ -493,12 +1055,64 @@ static int wpa_driver_sana2_get_capa(void *priv, struct wpa_driver_capa *capa)
 	}
 
 	if (!drv->hard_mac)
-		capa->flags = WPA_DRIVER_FLAGS_USER_SPACE_MLME;
+		capa->flags |= WPA_DRIVER_FLAGS_USER_SPACE_MLME;
 
-	/* No 4-way offload: the newer FullMAC firmware (CYW43456) has no
-	 * internal supplicant - sup_wpa comes back BCME_UNSUPPORTED - so we run
-	 * the handshake here and hand the driver the keys with S2_SETKEY, the
-	 * way brcmfmac and OpenBSD's bwfm do it. */
+	if (!drv->wireless_caps_queried) {
+		drv->wireless_caps_queried = 1;
+		wpa_driver_sana2_query_wireless_caps(drv);
+	}
+
+	if (drv->wireless_caps_valid) {
+		const struct Sana2WirelessCapabilities *caps =
+			&drv->wireless_caps;
+		if (drv->hard_mac && (caps->Flags & S2WIRELESS_CAPF_CONNECT_FAILED))
+			capa->flags |= WPA_DRIVER_FLAGS_CANCEL_PENDING;
+
+		if (caps->Flags & S2WIRELESS_CAPF_SECURITY_SUMMARY)
+			capa->flags |= WPA_DRIVER_FLAGS_SECURITY_SUMMARY;
+
+		if (caps->Flags & S2WIRELESS_CAPF_FOURWAY) {
+			unsigned int pairwise_enc = 0;
+			unsigned int group_enc = 0;
+
+			/* The legacy capa structure can represent only these two
+			 * ciphers and the PSK variants of WPA and RSN. Keep the
+			 * role-specific masks separate for summary-aware selection. */
+			capa->key_mgmt = 0;
+			capa->enc = 0;
+			if (caps->Protocols & S2WIRELESS_PROTO_WPA)
+				capa->key_mgmt |=
+					WPA_DRIVER_CAPA_KEY_MGMT_WPA_PSK;
+			if (caps->Protocols & S2WIRELESS_PROTO_RSN)
+				capa->key_mgmt |=
+					WPA_DRIVER_CAPA_KEY_MGMT_WPA2_PSK;
+			if (caps->PairwiseCiphers & S2WIRELESS_CIPHER_TKIP)
+				pairwise_enc |= WPA_DRIVER_CAPA_ENC_TKIP;
+			if (caps->PairwiseCiphers & S2WIRELESS_CIPHER_CCMP)
+				pairwise_enc |= WPA_DRIVER_CAPA_ENC_CCMP;
+			if (caps->GroupCiphers & S2WIRELESS_CIPHER_TKIP)
+				group_enc |= WPA_DRIVER_CAPA_ENC_TKIP;
+			if (caps->GroupCiphers & S2WIRELESS_CIPHER_CCMP)
+				group_enc |= WPA_DRIVER_CAPA_ENC_CCMP;
+			capa->enc = pairwise_enc | group_enc;
+			if ((caps->Flags & S2WIRELESS_CAPF_SECURITY_SUMMARY) &&
+			    (caps->Flags & S2WIRELESS_CAPF_FOURWAY)) {
+				capa->summary_pairwise_enc = pairwise_enc;
+				capa->summary_group_enc = group_enc;
+			}
+			capa->flags |= WPA_DRIVER_FLAGS_4WAY_HANDSHAKE;
+		}
+	}
+
+	if (drv->fullmac_caps_valid) {
+		capa->flags |= WPA_DRIVER_FLAGS_FULLMAC_ASSOCIATION;
+		capa->fullmac_profiles = drv->fullmac_caps.Profiles;
+		capa->fullmac_sae_pwe_modes = drv->fullmac_caps.SAEPweMethods;
+		capa->fullmac_diagnostic_risk =
+			!!(drv->fullmac_caps.Flags & S2FULLMAC_CAPF_DIAGNOSTIC_RISK);
+	}
+	/* Without a valid per-device FOURWAY result, the existing host-side
+	 * handshake and S2_SETKEY path remains unchanged. */
 
 	return 0;
 }
@@ -749,10 +1363,67 @@ static int wpa_driver_sana2_mlme_remove_sta(void *priv, const u8 *addr)
 }
 
 
+static void wpa_driver_sana2_connect_failed(
+	struct wpa_driver_sana2_data *drv, const struct IOSana2Req *request)
+{
+	if (!drv->hard_mac || !drv->wireless_caps_valid ||
+	    !(drv->wireless_caps.Flags & S2WIRELESS_CAPF_CONNECT_FAILED) ||
+	    request->ios2_Req.io_Error != 0 ||
+	    request->ios2_WireError != S2EVENT_CONNECT_FAILED ||
+	    !drv->active_association_cookie ||
+	    request->ios2_DataLength != drv->active_association_cookie)
+		return;
+	drv->active_association_cookie = 0;
+	drv->active_fullmac_profile = 0;
+	eloop_cancel_timeout(wpa_driver_sana2_stay_alive, drv->ctx, drv);
+	wpa_supplicant_event(drv->ctx, EVENT_ASSOC_FAILED, NULL);
+}
+
+
+/* The negotiated typed path requires exact opener-scoped terminal cookies.
+ * Network-info contents can refine identity later; they are not success. */
+static int wpa_driver_sana2_fullmac_terminal_event(
+	struct wpa_driver_sana2_data *drv, const struct IOSana2Req *request)
+{
+	union wpa_event_data data;
+	ULONG event = request->ios2_WireError;
+	if (!drv->fullmac_terminal_fenced && !drv->active_fullmac_profile &&
+	    !drv->fullmac_link_profile)
+		return 0;
+	if (request->ios2_Req.io_Error)
+		return 1;
+	if (event & S2EVENT_OFFLINE) {
+		drv->active_association_cookie = drv->active_fullmac_profile = 0;
+		drv->fullmac_link_cookie = drv->fullmac_link_profile = 0;
+		wpa_supplicant_event(drv->ctx, EVENT_DISASSOC, NULL);
+		return 1;
+	}
+	if (event == S2EVENT_CONNECT && drv->active_fullmac_profile &&
+	    drv->active_association_cookie &&
+	    request->ios2_DataLength == drv->active_association_cookie) {
+		os_memset(&data, 0, sizeof(data));
+		data.assoc_info.fullmac_profile = drv->active_fullmac_profile;
+		data.assoc_info.fullmac_cookie = drv->active_association_cookie;
+		drv->fullmac_link_profile = drv->active_fullmac_profile;
+		drv->fullmac_link_cookie = drv->active_association_cookie;
+		drv->active_association_cookie = drv->active_fullmac_profile = 0;
+		wpa_supplicant_event(drv->ctx, EVENT_ASSOC, &data);
+	} else if (event == S2EVENT_DISCONNECT && drv->fullmac_link_profile &&
+		   drv->fullmac_link_cookie &&
+		   request->ios2_DataLength == drv->fullmac_link_cookie) {
+		drv->fullmac_link_cookie = drv->fullmac_link_profile = 0;
+		wpa_supplicant_event(drv->ctx, EVENT_DISASSOC, NULL);
+	} else if (event == S2EVENT_CONNECT_FAILED)
+		wpa_driver_sana2_connect_failed(drv, request);
+	/* Mixed/stale/duplicate events are consumed without a fabricated edge. */
+	return 1;
+}
+
+
 static void wpa_driver_sana2_event_handler(int sig, void *sig_ctx)
 {
 	struct wpa_driver_sana2_data *drv = sig_ctx;
-	int i;
+	int i, typed_terminal;
 	ULONG events;
 	struct IOSana2Req *request;
 	union wpa_event_data event_data;
@@ -800,11 +1471,17 @@ static void wpa_driver_sana2_event_handler(int sig, void *sig_ctx)
 			break;
 
 		case S2_ONEVENT:
+			os_memset(&event_data, 0, sizeof(event_data));
 			events = request->ios2_WireError;
 			if (request->ios2_Req.io_Error != 0)
 				events = 0;
-			if (events & S2EVENT_CONNECT)
+			typed_terminal = wpa_driver_sana2_fullmac_terminal_event(drv, request);
+			if (!typed_terminal && (events & S2EVENT_CONNECT) &&
+			    (!(drv->wireless_caps_valid &&
+			       (drv->wireless_caps.Flags & S2WIRELESS_CAPF_CONNECT_FAILED)) ||
+			     drv->active_association_cookie != 0))
 			{
+				drv->active_association_cookie = 0;
 				request->ios2_Req.io_Command =
 					S2_GETNETWORKINFO;
 				pool = CreatePool(MEMF_PUBLIC | MEMF_CLEAR,
@@ -836,7 +1513,8 @@ static void wpa_driver_sana2_event_handler(int sig, void *sig_ctx)
 					drv->ctx, drv);
 			}
 
-			if (events & S2EVENT_DISCONNECT) {
+			if (!typed_terminal && (events & S2EVENT_DISCONNECT)) {
+				drv->active_association_cookie = 0;
 				wpa_supplicant_event(drv->ctx, EVENT_DISASSOC,
 					NULL);
 
@@ -845,6 +1523,9 @@ static void wpa_driver_sana2_event_handler(int sig, void *sig_ctx)
 					wpa_driver_sana2_stay_alive,
 					drv->ctx, drv);
 			}
+
+			if (!typed_terminal && (events & S2EVENT_CONNECT_FAILED))
+				wpa_driver_sana2_connect_failed(drv, request);
 
 			if (events & S2EVENT_ONLINE) {
 				drv->event_mask &= ~S2EVENT_ONLINE;
@@ -859,12 +1540,16 @@ static void wpa_driver_sana2_event_handler(int sig, void *sig_ctx)
 			}
 
 			if (events & S2EVENT_OFFLINE) {
+				drv->active_association_cookie = 0;
+				drv->active_fullmac_profile = 0;
+				drv->fullmac_link_cookie = drv->fullmac_link_profile = 0;
 				drv->event_mask &= ~S2EVENT_OFFLINE;
 				drv->event_mask |= S2EVENT_ONLINE;
 			}
 
 			/* Send request back to receive next event */
 			request->ios2_Req.io_Command = S2_ONEVENT;
+			request->ios2_DataLength = 0;
 			request->ios2_WireError = drv->event_mask;
 			SendIO((APTR)request);
 			break;
@@ -883,10 +1568,28 @@ static void wpa_driver_sana2_deinit(void *priv)
 	struct wpa_driver_sana2_data *drv = priv;
 	int i;
 
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+	sana2_lifecycle_trace(20);
+#endif
+
+	/* Retire callbacks before destroying anything they may reference. */
+	eloop_cancel_timeout(wpa_driver_sana2_stay_alive, drv->ctx, drv);
+	if (drv->signal_registered) {
+		eloop_unregister_signal(drv->port->mp_SigBit,
+			wpa_driver_sana2_event_handler, drv);
+		drv->signal_registered = 0;
+	}
+
 	/* Abort outstanding I/O requests */
 	if (drv->eapol_request != NULL) {
 		AbortIO((APTR)drv->eapol_request);
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+		sana2_lifecycle_trace(21);
+#endif
 		WaitIO((APTR)drv->eapol_request);
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+		sana2_lifecycle_trace(22);
+#endif
 		FreeVec(drv->eapol_request);
 	}
 
@@ -900,19 +1603,40 @@ static void wpa_driver_sana2_deinit(void *priv)
 
 	if (drv->event_request != NULL) {
 		AbortIO((APTR)drv->event_request);
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+		sana2_lifecycle_trace(23);
+#endif
 		WaitIO((APTR)drv->event_request);
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+		sana2_lifecycle_trace(24);
+#endif
+		FreeVec(drv->event_request);
 	}
 
 	/* Close device */
 	if (drv->device_opened) {
 		AbortIO((APTR)drv->request);
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+		sana2_lifecycle_trace(25);
+#endif
 		WaitIO((APTR)drv->request);
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+		sana2_lifecycle_trace(26);
+#endif
 		CloseDevice((APTR)drv->request);
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+		sana2_lifecycle_trace(27);
+#endif
 	}
-	DeleteIORequest((APTR)drv->request);
-	DeleteMsgPort(drv->port);
+	if (drv->request != NULL)
+		DeleteIORequest((APTR)drv->request);
+	if (drv->port != NULL) {
+		SetSignal(0, (ULONG)1 << drv->port->mp_SigBit);
+		DeleteMsgPort(drv->port);
+	}
 
-	FreeVec(drv->device_name);
+	if (drv->device_name != NULL)
+		FreeVec(drv->device_name);
 
 	os_free(drv);
 }
@@ -927,6 +1651,10 @@ static void * wpa_driver_sana2_init(void *ctx, const char *ifname)
 	struct IOSana2Req *request, *eapol_request, *mlme_request;
 	struct NSDeviceQueryResult device_info =
 		{0, sizeof(struct NSDeviceQueryResult)};
+
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+	sana2_lifecycle_trace(1);
+#endif
 
 	drv = os_zalloc(sizeof(*drv));
 	if (drv == NULL)
@@ -951,14 +1679,18 @@ static void * wpa_driver_sana2_init(void *ctx, const char *ifname)
 		unit_no = atoi(end + 1);
 
 		drv->port = CreateMsgPort();
-		drv->request = (APTR)CreateIORequest(drv->port,
-			sizeof(struct IOSana2Req));
-		if (drv->request == NULL)
+		if (drv->port != NULL)
+			drv->request = (APTR)CreateIORequest(drv->port,
+				sizeof(struct IOSana2Req));
+		if (drv->port == NULL || drv->request == NULL)
 			err = 1;
 	}
 
 	if (err == 0) {
 		/* Open device */
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+		sana2_lifecycle_trace(2);
+#endif
 		drv->request->ios2_BufferManagement = (APTR)buffer_tags;
 		if (OpenDevice((TEXT *)drv->device_name, unit_no,
 			(APTR)drv->request, 0) != 0)
@@ -966,32 +1698,47 @@ static void * wpa_driver_sana2_init(void *ctx, const char *ifname)
 	}
 
 	/* Register a handler for the port's signal */
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+	sana2_lifecycle_trace(3);
+#endif
 	if (err == 0) {
 		drv->device_opened = 1;
 
-		eloop_register_signal(drv->port->mp_SigBit,
-			wpa_driver_sana2_event_handler, drv);
+		if (eloop_register_signal(drv->port->mp_SigBit,
+			wpa_driver_sana2_event_handler, drv) != 0)
+			err = 1;
+		else
+			drv->signal_registered = 1;
 	}
 
 	/* Check if this is a hard-MAC device */
 	if (err == 0) {
+		struct IOStdReq *std_request = (struct IOStdReq *)drv->request;
+		int hard_mac = 0;
+
 		request = drv->request;
-		((struct IOStdReq *)request)->io_Command = NSCMD_DEVICEQUERY;
-		((struct IOStdReq *)request)->io_Data = &device_info;
-		if (DoIO((APTR)request) != 0)
+		wpa_driver_sana2_prepare_device_query(std_request, &device_info);
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+		sana2_lifecycle_trace(4);
+#endif
+		if (DoIO((APTR)request) != 0 ||
+			!wpa_driver_sana2_device_query_result_valid(&device_info,
+				std_request->io_Actual, std_request->io_Error, &hard_mac))
 			err = 1;
-		else {
-			for (i = 0; device_info.SupportedCommands[i] != 0; i++)
-				if (device_info.SupportedCommands[i]
-					== S2_GETNETWORKS)
-					drv->hard_mac = 1;
-		}
+		else
+			drv->hard_mac = hard_mac;
 	}
 
 	/* Put device online */
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+	sana2_lifecycle_trace(5);
+#endif
 	if (err == 0) {
 		request = drv->request;
 		request->ios2_Req.io_Command = S2_GETSTATIONADDRESS;
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+		sana2_lifecycle_trace(6);
+#endif
 		if (DoIO((APTR)request) != 0)
 			err = 1;
 	}
@@ -1002,17 +1749,31 @@ static void * wpa_driver_sana2_init(void *ctx, const char *ifname)
 		request->ios2_Req.io_Command = S2_CONFIGINTERFACE;
 		CopyMem(drv->addr, request->ios2_SrcAddr, ETH_ALEN);
 
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+		sana2_lifecycle_trace(7);
+#endif
+
 		if (DoIO((APTR)request) != 0) {
 			if (request->ios2_WireError == S2WERR_IS_CONFIGURED) {
 				request->ios2_Req.io_Command = S2_ONLINE;
-				DoIO((APTR)request);
-			} else
+				if (DoIO((APTR)request) != 0 &&
+				    !wpa_driver_sana2_configinterface_already_online(
+					request->ios2_Req.io_Error,
+					request->ios2_WireError))
+					err = 1;
+			} else if (!wpa_driver_sana2_configinterface_already_online(
+					request->ios2_Req.io_Error,
+					request->ios2_WireError))
 				err = 1;
 		}
-		drv->online = 1;
+		if (err == 0)
+			drv->online = 1;
 	}
 
 	/* Create and queue up EAPOL frame read request */
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+	sana2_lifecycle_trace(8);
+#endif
 	if (err == 0) {
 		request = drv->request;
 		request->ios2_Req.io_Command = CMD_READ;
@@ -1059,12 +1820,9 @@ static void * wpa_driver_sana2_init(void *ctx, const char *ifname)
 	if (err == 0) {
 		/* Create and send event-notification request */
 		request = drv->request;
+		drv->event_mask = wpa_driver_sana2_initial_event_mask(drv);
 		request->ios2_Req.io_Command = S2_ONEVENT;
-		if (drv->hard_mac)
-			drv->event_mask = S2EVENT_CONNECT | S2EVENT_DISCONNECT
-				| S2EVENT_OFFLINE;
-		else
-			drv->event_mask = S2EVENT_OFFLINE;
+		request->ios2_DataLength = 0;
 		request->ios2_WireError = drv->event_mask;
 
 		drv->event_request = AllocVec(sizeof(struct IOSana2Req),
@@ -1099,6 +1857,8 @@ const struct wpa_driver_ops wpa_driver_sana2_ops = {
 	.deinit = wpa_driver_sana2_deinit,
 	.scan2 = wpa_driver_sana2_scan,
 	.associate = wpa_driver_sana2_associate,
+	.disassociate = wpa_driver_sana2_disassociate,
+	.deauthenticate = wpa_driver_sana2_disassociate,
 	.get_capa = wpa_driver_sana2_get_capa,
 	.get_mac_addr = wpa_driver_sana2_get_mac_addr,
 	.send_eapol = wpa_driver_sana2_send_eapol,

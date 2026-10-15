@@ -28,6 +28,8 @@ ESP32P4SDCARDFILES := \
     sdcard_esp32p4_bus \
     sdcard_esp32p4_time
 
+#MM kernel-sdcard-esp32p4-riscv : kernel-esp32p4sdmmc
+
 %build_archspecific \
   mainmmake=kernel-sdcard maindir=rom/devs/sdcard \
   arch=esp32p4-riscv modname=sdcard \

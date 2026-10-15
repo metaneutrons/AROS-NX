@@ -23,6 +23,26 @@ import struct
 import sys
 
 SECTOR = 512
+# MBR sector addresses are 32-bit, so the last addressable LBA is 2^32 - 1.
+MAX_IMAGE_SECTORS = 0x100000000
+
+
+def parse_size_bytes(value):
+    """Parse a positive, sector-aligned image size in bytes."""
+    try:
+        size = int(value, 0)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "must be an integer byte count") from exc
+    if size <= 0:
+        raise argparse.ArgumentTypeError("must be positive")
+    if size % SECTOR:
+        raise argparse.ArgumentTypeError(
+            "must be a multiple of %d bytes" % SECTOR)
+    if size // SECTOR > MAX_IMAGE_SECTORS:
+        raise argparse.ArgumentTypeError(
+            "exceeds the MBR addressable image size")
+    return size
 
 
 def lfn_checksum(short_name: bytes) -> int:
@@ -119,12 +139,14 @@ class FatImage:
         if fat_bits == 32 and self.clusters < 65525:
             raise SystemExit(
                 "only %d clusters: FAT32 requires at least 65525.  Use a "
-                "larger --size-mb or a smaller --cluster-sectors."
+                "larger --size-mb/--size-bytes or a smaller "
+                "--cluster-sectors."
                 % self.clusters)
         if fat_bits == 16 and not (4085 <= self.clusters <= 65524):
             raise SystemExit(
                 "%d clusters: FAT16 requires 4085 to 65524.  Adjust "
-                "--size-mb or --cluster-sectors." % self.clusters)
+                "--size-mb/--size-bytes or --cluster-sectors."
+                % self.clusters)
 
         # Cluster 0 and 1 are reserved.  On FAT32 cluster 2 is the root
         # directory; on FAT16 the root is not a cluster at all and 2 is the
@@ -457,7 +479,12 @@ def main():
     ap.add_argument("--content", required=True,
                     help="host directory whose contents become the image")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--size-mb", type=int, default=64)
+    size_group = ap.add_mutually_exclusive_group()
+    size_group.add_argument("--size-mb", type=int,
+                            help="image size in MiB (default: 64)")
+    size_group.add_argument("--size-bytes", type=parse_size_bytes,
+                            help="exact image size in bytes; must be a "
+                                 "positive multiple of 512")
     ap.add_argument("--part-start", type=int, default=2048)
     # One sector per cluster by default.  FAT32 is only FAT32 above 65524
     # clusters, and a 64 MiB image cannot reach that with larger clusters:
@@ -474,11 +501,26 @@ def main():
                          "such as anything that has to fit in the flash")
     args = ap.parse_args()
 
+    if args.size_bytes is not None:
+        size_bytes = args.size_bytes
+    else:
+        size_mb = 64 if args.size_mb is None else args.size_mb
+        if size_mb <= 0:
+            ap.error("--size-mb must be positive")
+        size_bytes = size_mb * 1024 * 1024
+
+    total = size_bytes // SECTOR
+    if args.part_start < 1 or args.part_start >= total:
+        ap.error("--part-start must be at least 1 and below the image size")
+    if total > MAX_IMAGE_SECTORS:
+        ap.error("image exceeds the MBR addressable image size")
+    if total - args.part_start > 0xFFFFFFFF:
+        ap.error("partition exceeds the MBR sector-count limit")
+
     y, m, d = (int(x) for x in args.timestamp.split("-"))
     fat_date = ((y - 1980) << 9) | (m << 5) | d
     fat_time = 0
 
-    total = args.size_mb * 1024 * 1024 // SECTOR
     img = FatImage(total, args.part_start, args.cluster_sectors,
                    int(args.serial, 0), (fat_date, fat_time), args.label,
                    args.fat_bits)
@@ -494,6 +536,7 @@ def main():
     base = os.path.splitext(args.out)[0]
     with open(base + ".layout", "w") as f:
         f.write("image            %s\n" % os.path.basename(args.out))
+        f.write("total bytes      %d\n" % (img.total_sectors * SECTOR))
         f.write("total sectors    %d\n" % img.total_sectors)
         f.write("partition start  %d\n" % img.part_start)
         f.write("fat type         FAT%d\n" % img.fat_bits)

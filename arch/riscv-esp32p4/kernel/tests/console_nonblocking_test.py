@@ -39,6 +39,8 @@ fixture = r'''
 
 #if P4_CONSOLE_USB
 static uint32_t usb_conf, usb_rx_byte;
+static unsigned int usj_wait_remaining;
+static unsigned long exhaust_budget_on_read;
 static unsigned long conf_reads, endpoint_reads, endpoint_writes;
 static unsigned long wr_done_writes, tx_count;
 static unsigned char tx_bytes[256];
@@ -49,6 +51,10 @@ static uint32_t mmio_rd(uint32_t base, uint32_t off)
     if (off == P4_USJ_EP1_CONF)
     {
         conf_reads++;
+        /* Simulate another writer exhausting the shared budget after this
+           caller has taken a larger local snapshot. */
+        if (exhaust_budget_on_read && conf_reads == exhaust_budget_on_read)
+            __atomic_store_n(&usj_wait_remaining, 0, __ATOMIC_RELAXED);
         return usb_conf;
     }
     if (off == P4_USJ_EP1)
@@ -117,6 +123,8 @@ static void reset_usb(void)
     console_runtime = 0;
     console_dropped = 0;
     usj_pending = 0;
+    usj_wait_remaining = ATTACH_SPINS;
+    exhaust_budget_on_read = 0;
     usb_conf = usb_rx_byte = 0;
     conf_reads = endpoint_reads = endpoint_writes = wr_done_writes = 0;
     tx_count = 0;
@@ -215,6 +223,55 @@ static void test_usb_runtime(void)
     assert(conf_reads - reads_before == 1);
     printf("USB console passed: early bounds, runtime poll/drop, flush/input and recovery\n");
 }
+
+static void test_usb_boot_budget(void)
+{
+    unsigned long before;
+    unsigned int i;
+
+    reset_usb();
+    /* Large saturated early report: one allowance, not 2M per byte. */
+    krnP4PutC('x');
+    assert(usj_wait_remaining == 0);
+    before = conf_reads;
+    krnP4PutC('x');
+    assert(conf_reads == before + 1);
+    for (i = 2; i < 65536; i++)
+        krnP4PutC('x');
+    assert(conf_reads == ATTACH_SPINS + 65535UL);
+    assert(usj_wait_remaining == 0 && console_dropped == 65536UL);
+    assert(endpoint_writes == 0);
+    /* SMP startup/fatal diagnostics cannot renew the exhausted budget. */
+    krnP4ConsoleBlocking();
+    before = conf_reads;
+    krnP4PutC('x');
+    assert(conf_reads == before + 1 && usj_wait_remaining == 0);
+    /* Late reader still recovers output; a stalled flush also probes once. */
+    usb_conf = P4_USJ_IN_EP_DATA_FREE;
+    before = conf_reads;
+    krnP4PutC('\n');
+    assert(conf_reads == before + 2);
+    assert(endpoint_writes == 1 && wr_done_writes == 1);
+    assert(usj_pending == 0 && usj_wait_remaining == 0);
+
+    /* Flush and subsequent byte waits consume the SAME allowance. */
+    reset_usb();
+    usb_conf = P4_USJ_IN_EP_DATA_FREE;
+    krnP4PutC('\n');
+    assert(usj_wait_remaining == ATTACH_SPINS - SPIN_LIMIT);
+    before = conf_reads;
+    krnP4PutC('x');
+    assert(conf_reads - before == ATTACH_SPINS - SPIN_LIMIT);
+    assert(usj_wait_remaining == 0);
+    /* An overlapping writer invalidates this caller's local wait limit. */
+    reset_usb();
+    usj_wait_remaining = 10;
+    exhaust_budget_on_read = 2;
+    krnP4PutC('x');
+    assert(conf_reads == 2 && usj_wait_remaining == 0);
+    assert(console_dropped == 1 && endpoint_writes == 0);
+    puts("USB boot budget passed: 64KiB absent reader, shared flush bound, late recovery");
+}
 '''
 
 uart_tests = r'''
@@ -273,20 +330,38 @@ static void test_uart_runtime(void)
 }
 '''
 
-for usb in (1, 0):
-    tests = usb_tests if usb else uart_tests
-    main = ("int main(void) { test_usb_early_bounds(); test_usb_runtime(); return 0; }"
-            if usb else
-            "int main(void) { test_uart_early_bounds(); test_uart_runtime(); return 0; }")
-    with tempfile.TemporaryDirectory(prefix="p4-console-test-") as temporary:
-        binary = str(pathlib.Path(temporary) / "test")
-        subprocess.run(
-            ["clang", "-std=gnu99", "-O1", "-g", "-Wall", "-Wextra",
-             "-Werror", "-Wno-unused-function", "-fsanitize=address,undefined",
-             "-fno-omit-frame-pointer", f"-DP4_CONSOLE_USB={usb}",
-             "-x", "c", "-", "-o", binary],
-            input=fixture + console + tests + main,
-            text=True,
-            check=True,
-        )
-        subprocess.run([binary], check=True)
+for optimization in ("-O0", "-O2"):
+    for usb, waiting, negative in ((1, False, False), (0, False, False),
+                                   (1, True, False), (1, False, True)):
+        tests = usb_tests if usb else uart_tests
+        main = ("int main(void) { test_usb_early_bounds(); test_usb_boot_budget(); test_usb_runtime(); return 0; }"
+                if usb else
+                "int main(void) { test_uart_early_bounds(); test_uart_runtime(); return 0; }")
+        if waiting or negative:
+            main = "int main(void) { test_usb_boot_budget(); return 0; }"
+        body = console
+        if negative:
+            # Reproduce per-call replenishment: the second stalled byte must
+            # fail immediately, rather than executing 64KiB * 2M polls.
+            marker = "unsigned int limit = 1;"
+            assert body.count(marker) == 1
+            body = body.replace(marker, "usj_wait_remaining = ATTACH_SPINS; " + marker)
+        with tempfile.TemporaryDirectory(prefix="p4-console-test-") as temporary:
+            binary = str(pathlib.Path(temporary) / "test")
+            flags = ["-DP4_CONSOLE_WAIT=1"] if waiting else []
+            subprocess.run(
+                ["clang", "-std=gnu99", optimization, "-g", "-Wall", "-Wextra",
+                 "-Werror", "-Wno-unused-function", "-fsanitize=address,undefined",
+                 "-fno-omit-frame-pointer", f"-DP4_CONSOLE_USB={usb}", *flags,
+                 "-x", "c", "-", "-o", binary],
+                input=fixture + body + tests + main,
+                text=True,
+                check=True,
+            )
+            result = subprocess.run([binary], capture_output=True, text=True)
+            if negative:
+                assert result.returncode != 0 and "conf_reads" in result.stderr, result.stderr
+                print(optimization, "per-call wait replenishment rejected")
+            else:
+                assert result.returncode == 0, result.stderr
+                print(optimization, "waiting" if waiting else "normal", result.stdout.strip())

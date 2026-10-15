@@ -328,6 +328,15 @@ int krnP4DsiPhyUp(struct P4DsiState *out)
      * reference does not, so the reference is whatever the hardware fixes and
      * only its gate is ours to open.
      */
+    /* Rev1 DSI consumes PLL_F20M. Its parent output gate is distinct from
+     * the local gates below: IDF startup can leave it disabled across a CPU
+     * reset. Restore that dependency explicitly, preserving all other taps.
+     * Matches esp_clk_tree_enable_src(SOC_MOD_CLK_PLL_F20M, true).
+     */
+    p4_w32(P4_HP_SYS_CLKRST_BASE + P4_HP_REF_CLK_CTRL2,
+           p4_r32(P4_HP_SYS_CLKRST_BASE + P4_HP_REF_CLK_CTRL2)
+           | P4_HP_REF_20M_CLK_EN);
+
     v = p4_r32(P4_CLKRST_PERI_CLK_CTRL02);
     v &= ~P4_DSI_DPHY_CLK_SRC_MASK;         /* 0: the 20 MHz PLL tap */
     p4_w32(P4_CLKRST_PERI_CLK_CTRL02, v);

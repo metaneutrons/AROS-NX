@@ -755,7 +755,10 @@ at about 33 minutes; this is not a 48-minute soak claim.
 The exact production core's synchronized visual/touch check also passed
 on 2026-10-09: Fabian confirmed readiness and reported everything fine
 after the requested pointer, drive-opening and menu check.
-Still open in S8: the dos lists above, PR #70 merge, and the D1001.
+PR #70 merged after required CI on 2026-10-09 as `0c15f90eb3`.
+Still open in S8: the dos lists above and the D1001. Separate port release
+gates include physical cold starts and no-reader/combined-load stability;
+the USB-only cold-start attempt remained black and is under investigation.
 
 Decision (Fabian, 2026-10-09, as proposed): ordinary tasks stay pinned by
 default and migration is opt-in per process. The inverse default is unsafe

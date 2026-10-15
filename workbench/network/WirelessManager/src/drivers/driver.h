@@ -26,6 +26,7 @@
 #define WPA_SUPPLICANT_DRIVER_VERSION 4
 
 #include "common/defs.h"
+#include "common/security_summary.h"
 
 #define HOSTAPD_CHAN_DISABLED 0x00000001
 #define HOSTAPD_CHAN_PASSIVE_SCAN 0x00000002
@@ -145,6 +146,8 @@ struct hostapd_hw_modes {
  */
 struct wpa_scan_res {
 	unsigned int flags;
+	/* Separate from genuine received IEs; zero means legacy IE-only data. */
+	struct wpa_security_summary security_summary;
 	u8 bssid[ETH_ALEN];
 	int freq;
 	u16 beacon_int;
@@ -460,7 +463,22 @@ struct wpa_driver_associate_params {
 	 * association.
 	 */
 	const u8 *prev_bssid;
+
+	/* Separately negotiated FullMAC request. Zero leaves legacy behavior
+	 * unchanged. No SAE secret is put in passphrase/psk or a synthetic IE. */
+	unsigned int fullmac_profile;
+	unsigned int fullmac_allow_diagnostic;
+	unsigned int fullmac_sae_pwe_mode;
+	const u8 *sae_password;
+	size_t sae_password_len;
 };
+
+#define WPA_FULLMAC_PROFILE_OPEN         0x01u
+#define WPA_FULLMAC_PROFILE_WPA2_CCMP    0x02u
+#define WPA_FULLMAC_PROFILE_SAE_CCMP_PMF 0x04u
+#define WPA_FULLMAC_SAE_PWE_HNP  0x01u
+#define WPA_FULLMAC_SAE_PWE_H2E  0x02u
+#define WPA_FULLMAC_SAE_PWE_BOTH 0x04u
 
 /**
  * struct wpa_driver_capa - Driver capability information
@@ -502,6 +520,11 @@ struct wpa_driver_capa {
 #define WPA_DRIVER_FLAGS_AP		0x00000040
 /* Driver needs static WEP key setup after association has been completed */
 #define WPA_DRIVER_FLAGS_SET_KEYS_AFTER_ASSOC_DONE	0x00000080
+#define WPA_DRIVER_FLAGS_SECURITY_SUMMARY 0x00000100
+/* Driver accepts local cancellation even before an AP address is confirmed.
+ * disassociate/deauthenticate must accept a NULL address for this operation. */
+#define WPA_DRIVER_FLAGS_CANCEL_PENDING 0x00000200
+#define WPA_DRIVER_FLAGS_FULLMAC_ASSOCIATION 0x00000400
 	unsigned int flags;
 
 	int max_scan_ssids;
@@ -510,6 +533,28 @@ struct wpa_driver_capa {
 	 * max_remain_on_chan - Maximum remain-on-channel duration in msec
 	 */
 	unsigned int max_remain_on_chan;
+
+	/**
+	 * summary_pairwise_enc - Pairwise ciphers from a validated SANA security
+	 * summary/offload capability profile. Valid only when both
+	 * WPA_DRIVER_FLAGS_SECURITY_SUMMARY and WPA_DRIVER_FLAGS_4WAY_HANDSHAKE
+	 * are set; otherwise zero. Uses WPA_DRIVER_CAPA_ENC_* masks.
+	 */
+	unsigned int summary_pairwise_enc;
+
+	/**
+	 * summary_group_enc - Group ciphers from a validated SANA security
+	 * summary/offload capability profile. Valid only when both
+	 * WPA_DRIVER_FLAGS_SECURITY_SUMMARY and WPA_DRIVER_FLAGS_4WAY_HANDSHAKE
+	 * are set; otherwise zero. Uses WPA_DRIVER_CAPA_ENC_* masks.
+	 */
+	unsigned int summary_group_enc;
+
+	/* Exact negotiated whole profiles/modes. Diagnostic risk is a refusal
+	 * unless the selected network explicitly opts in for this attempt. */
+	unsigned int fullmac_profiles;
+	unsigned int fullmac_sae_pwe_modes;
+	unsigned int fullmac_diagnostic_risk;
 };
 
 
@@ -2068,7 +2113,12 @@ enum wpa_event_type {
 	 * observed in frames received from the current AP if signal strength
 	 * monitoring has been enabled with signal_monitor().
 	 */
-	EVENT_SIGNAL_CHANGE
+	EVENT_SIGNAL_CHANGE,
+
+	/** A current acknowledged association attempt failed without a known
+	 * remote cause. Not AP rejection, timeout, or loss of an accepted link.
+	 * Driver-specific attempt correlation must precede this notification. */
+	EVENT_ASSOC_FAILED
 };
 
 
@@ -2152,6 +2202,10 @@ union wpa_event_data {
 		 * addr - Station address (for AP mode)
 		 */
 		const u8 *addr;
+		/* Only after a negotiated typed FullMAC CONNECT with the current
+		 * opener/cookie fence. Zero is the unchanged legacy event. */
+		unsigned int fullmac_profile;
+		unsigned int fullmac_cookie;
 	} assoc_info;
 
 	/**

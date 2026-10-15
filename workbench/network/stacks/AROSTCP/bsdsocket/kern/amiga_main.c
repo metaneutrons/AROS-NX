@@ -104,25 +104,28 @@ UBYTE dhclient_path[FILENAME_MAX];
 int dhclient_path_changed(void *pt, IPTR new)
 {
     STRPTR newpath = (STRPTR)new;
+    TEXT path[FILENAME_MAX];
 
-    if(newpath == NULL || newpath[0] == '\0')
+    if(newpath == NULL || newpath[0] == '\0' ||
+       strlen(newpath) >= sizeof(path))
         return 0;
 
     /* If it contains a colon it's an absolute Amiga path — use as-is */
     if(strchr(newpath, ':') != NULL) {
-        strncpy(dhclient_path, newpath, FILENAME_MAX - 1);
-        dhclient_path[FILENAME_MAX - 1] = '\0';
+        strcpy(path, newpath);
     } else {
         /* Relative path: resolve against the AROSTCP root (parent of db/) */
-        TEXT root[FILENAME_MAX];
-        strncpy(root, db_path, FILENAME_MAX - 1);
-        root[FILENAME_MAX - 1] = '\0';
+        if(strnlen(db_path, sizeof(db_path)) >= sizeof(path))
+            return 0;
+        strcpy(path, db_path);
         /* db_path points to "<root>/db" — go up one level */
-        PathPart(root)[0] = '\0';
-        strncpy(dhclient_path, root, FILENAME_MAX);
-        AddPart(dhclient_path, newpath, FILENAME_MAX);
+        PathPart(path)[0] = '\0';
+        if(!AddPart(path, newpath, sizeof(path)))
+            return 0;
     }
-    return 0;
+    /* Notify callbacks return nonzero on success. Commit only a full path. */
+    strcpy(dhclient_path, path);
+    return 1;
 }
 
 /*
