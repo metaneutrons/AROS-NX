@@ -23,6 +23,13 @@ affected milestone issues were reconciled; all remain open.
 PR integration preparation merges current AROS-NX main16d40cb012 without
 rewriting feature history. TC0 compiler/SDK changes and both documentation
 histories are preserved; this adds no runtime or hardware acceptance.
+PR91's first product run fails before compilation: released transpiler0.3.19
+rejects WirelessManager's new unconditional diagnostic flag expression. A
+target-guarded source correction keeps the exact audited product form and the
+existing P4 classic-MetaMake opt-in. Three product capability probes and their
+old-form rejection counterprobes pass; fresh RV32 diagnostic WirelessManager
+is unchanged701280B8cb6490f..., with numeric markers intact. Complete CI and
+merge are still pending; nothing is newly installed on the board.
 
 Composite USB candidate (2026-10-14, hardware open): vendor-bulk interface0
 now coexists with CDC control1/data2 for devserial logs. Nine staging/six probe

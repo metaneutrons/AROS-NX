@@ -1,5 +1,14 @@
 # Security-summary host checks
 
+Run `python3 test-build-flags.py` for GNU make branch/flag selection checks.
+Set `AROS_TRANSPILER_TEST` to an explicit released `aros-transpiler` executable
+to also exercise all three audited LLVM product profiles against the actual
+closed capability and reject an isolated copy of the old incompatible form.
+The source-only fixture does not build a complete product. ESP32-P4 retains
+the classic MetaMake path and its opt-in `P4_WIFI_ASSOC_DIAGNOSTICS=1` switch;
+the current transpiler does not admit the P4 target profile. No diagnostics
+are silently dropped to make a product-profile translation pass.
+
 Run `run-security-summary-tests.sh` to compile and execute the actual
 `common/security_summary.h` helpers at `-O0` and `-O2` with AddressSanitizer
 and UndefinedBehaviorSanitizer. Each reported scenario is an independent

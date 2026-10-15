@@ -148,6 +148,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
+| CI-WM | WirelessManager product build-contract integration | `source correction and RV32 build verified; PR91 CI pending` | Initial three product lanes fail AT0004 before compilation. P4-only classic-MetaMake diagnostic branch preserves the switch; ordinary profiles use the unchanged released closed capability. Three real transpiler product probes/counterprobes and twenty GNU make target/switch cells pass. Fresh diagnostic manager701280B8cb6490f... is byte-identical; no tool release, weakened gate or board write. |
 | N2H | Flash-delivered helper entry points | `deployment/readback/headless verified; JC1060 GUI scan observed`: Fabian confirms AROSP4DEV WiFi and corrected transition labels; generation1.3 and compact ESP32Board are installed; canonical FLASHDISK0P0 naming retained | Synchronized native GUI/open association; no full WiFi/SAE/PMF/IP pass |
 | N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `manager diagnosis resumed`: generation1.3 deployed; discovery and GUI Scan now recur successfully; manager lifecycle diagnostics deployed/readback/headless verified; explicit GPIO54 C6 reset and CPU1 owner captured; fresh-readiness600s manager capture running | Attribute manager initialization/stop and then open association; peer admission remains0, no IP/data pass |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
@@ -4575,6 +4576,12 @@ Acceptance gate:
 ## Track RC: independent remote diagnostic access
 
 ### RC0 - USB investigation and diagnostic-MVP slice
+
+2026-10-15 PR91 blocker: all three initial product lanes fail AT0004 during
+WirelessManager capability validation, not runtime. CI-WM now records the
+target-guarded source correction and exact-release regression/counterprobes.
+The P4 diagnostic switch and native artifact remain intact; full product CI
+and protected source integration are required before this blocker is cleared.
 
 2026-10-15 integration preparation: current main16d40cb012 is merged into the
 feature candidate without rebasing. Only README/ROADMAP needed content-conflict
@@ -44682,3 +44689,39 @@ remain open. No partial stage is a complete A/B update system.
 - Next: run source/CI-contract checks, push the merge candidate, open the
   integration PR and require CI Success against the current protected base.
   Full WLAN and HS qualification issues remain open after source integration.
+
+### 2026-10-15 - CI-WM preserves P4 diagnostics and the released product contract
+
+- Fabian requests proceeding through build repair, HS echo, diagnostic USB
+  and subsequent remote WiFi diagnosis, with a fresh readiness stop before
+  board interaction. No hardware/USB/serial/flash action in this correction.
+  Evidence: `ci-wirelessmanager-2026-10-15.408r2x` in the existing evidence root.
+- PR91 run38686160365 fails all three Linux product lanes during configuration:
+  AT0004 rejects extracflags containing WM_DIAGNOSTIC_CFLAGS. Required CI Success
+  is failed; auto-merge stays protected. No blanket retry or gate relaxation.
+- Read-only review of released tool tagv0.3.19/b399c714560e... confirms exact
+  WirelessManager argument allowlist and target-aware ARCH conditional selection.
+  Source invocation is split by AROS_TARGET_ARCH=esp32p4. The P4 classic path
+  retains P4_WIFI_ASSOC_DIAGNOSTICS=1 and numeric lifecycle diagnostics; pc/raspi/
+  opensbi retain the exact audited OPTIMIZATION_CFLAGS plus-MD form. This does
+  not add P4 support to the CMake transpiler, which still excludes that profile.
+- test-build-flags.py passes3 methods:20 actual GNU make profile/switch cells,
+  a mutation detecting removed P4 diagnostics, and three actual released-tool
+  product profile translations plus three old-form AT0004 rejection probes.
+  Input fixture copies the real WirelessManager source into an isolated root;
+  these are source/capability checks, not a product build. Full-source PC
+  translation with Mesa26.0.0/LLVM11 also exits0,985 targets; unresolved-include
+  and file-global-flag warnings remain explicit. Earlier exploratory calls used
+  incomplete or wrong profile/Mesa selectors and are not valid product evidence.
+- Fresh sequential classic setup and quick build with P4_WIFI_ASSOC_DIAGNOSTICS=1
+  exit0 after deleting all manager objects and refreshing source copies.
+  WirelessManager701280B SHA256
+  8cb6490f51885e00634278cccc27eadd7c4b32a2efccc11e723090ee508da963,
+  exactly the retained diagnostic build; WiFiWM100..103 and stage format remain
+  present. No stale-object or silent diagnostic-removal success. build-flags-final
+  log SHA256a4137269a54e1a43fa257640f234b805768776fe8c116c040cdb630883829f67;
+  native log SHA2561070478d5ea5cd5485242dba3b25287c57dd5a91f56c002c930e8a52d42d9682.
+- Actual-source SANA close4 scenarios/55 checks and association88/667 each pass
+  O0/O2 ASan/UBSan exit0; native scheduling/radio and full build remain outside
+  those fixtures. Next: push correction to PR91, qualify the integrated product
+  head and retain pending hardware boundaries. No newly built manager installed.
