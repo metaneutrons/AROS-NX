@@ -4603,6 +4603,12 @@ host IOKit/libusb again find no P4 or CDC port. Hold the remote backend grant.
 Distinguish native controller/PHY state from physical-link failure before any
 new transfer test; the preceding FS-ready marker is not same-boot HS evidence.
 
+The next candidate adds a cached non-destructive snapshot, not PHY tuning:
+owner phases/loop progress, reset/SETUP/mount counts and DWC2/clock fields,
+shown through a read-only USBPortStatus touch dialog. Build verified only.
+Install via synchronized Debug/FS, verify native status there, then compare
+the HS-powered execution. No backend grant is required for this diagnosis.
+
 2026-10-15 HS echo attempt: Fabian confirms the sole-power cable is on HS,
 normal desktop visible, then explicitly starts USBEchoTest and accepts Start.
 Both IOKit and libusb snapshots find no prototype device (only the unrelated
@@ -45026,3 +45032,47 @@ remain open. No partial stage is a complete A/B update system.
   Next: bounded native status/controller/PHY observation before another
   interactive transfer attempt; preserve the single-power arrangement and
   synchronize any next cable move. CDC/Remote-Bulk/update gates stay open.
+
+### 2026-10-15 - RC0 controller/PHY source comparison and status instrument
+
+- Local ESP-IDF6.0.1 comparison (8c19b156...) finds the same UTMI HP/LP clock
+  enables, reset ordering, SUSPENDM and FC06 fields. P4 revision3+ pulldown
+  software control is inapplicable to1.3. No missing power-domain enable was
+  found in usb_new_phy's UTMI path. PHY reference source remains inherited,
+  as in IDF; no evidence establishes it as the defect. DWC2 initialization
+  clears StopPclk and forces BVALID for device mode. No cause assigned.
+- Read-only rendered vendor schematic JC1060P470C_I_W_Y-V1.0.pdf shows USB3
+  HS direct ESP_USB_P/N with CC pull-downs and shared USB5V_IN, not an extra
+  software enable. This is schematic intent, not physical continuity proof.
+  Render/crop retained in hs-phy-diagnosis-2026-10-15.9Knofl evidence directory.
+- Added owner-only non-destructive register sampling,250ms cached publication
+  and loop/reset/SETUP/mount counts. Initial/core/fault phases distinguish
+  admission failure from missing signaling. GUI uses a bounded-copy snapshot
+  hook, no MMIO or remote grant. Reads exclude RX-pop/FIFOs and never clear
+  W1C bits. Callback is optional appended ABI1; review caught sizeof-based
+  client incompatibility and the client now checks only its required prefix.
+  Legacy-prefix success and short-prefix refusal pass actual-client tests.
+- Fresh clean kernel objects and full RV32 SMP core link/image exit0;
+  SRAM-residency passes, Creating image confirmed. Configuration unchanged:
+  jc1060p470c-v2,200MHz PSRAM,C3/C4,XIP,USB_PORT1,lab VID4617/PID1,
+  pinned TinyUSB4c195b7b.... Core226912B SHA256
+  ae814b484c657f66a03502374c78f8c9edfa655dd8779985f1b60e8cc3cc7efb.
+  core-build.log/core-image.log retained; existing RWX LOAD warning remains.
+- Werror USBPortStatus43012B SHA256
+  d02fb1f084b4e230a4f903f7408065f5914c9445f41be835d677fa9e0b9dd083.
+  Final USBRemote/USBRemoteStart remain byte-identical to deployed d983dd43.../
+  ef8e09ed... after prefix compatibility correction. Snapshot accessor/sampler
+  extracted from actual source passes O0/O2 ASan/UBSan: null/size/busy,
+  unchanged output on refusal, no caller MMIO, exact15-register allowlist,
+  pre-clock exclusion, copy independence and current fault-state publication.
+  Existing13 sanitized C suites, resource151/client4450 checks each,
+ 9 staging/6 probe/14 recovery tests pass; final client compatibility rerun
+  exits0 at both optimizations. host-tests.log SHA256
+  6d627564bcfe96583d906e2a620c412c04fc395fc437a2800ec2e99a9d1b3d61.
+- No runtime PHY/controller policy fix claimed. Added bounded instrumentation
+  is not same-boot native evidence yet; counters/phase4 cannot prove bytes.
+  No hardware access/flash in preparation. Fabian subsequently confirms the
+  requested single-power return to Debug/FS for installation. Next verify
+  identity/live layout, install core plus only status tool/icon, independent
+  readback and native return; then synchronize HS observation. All native
+  enumeration/CDC/Remote-Bulk/update gates remain open.

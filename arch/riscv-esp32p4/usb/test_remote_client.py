@@ -532,7 +532,7 @@ static void test_resource_availability_and_abi(void)
     CHECK(bridge_close_count == 1);
 
     fixture_reset();
-    fake_port.size = (uint32_t)sizeof(fake_port) - 1u;
+    fake_port.size = (uint32_t)offsetof(struct P4USBPort, snapshot) - 1u;
     CHECK(extracted_remote_client_main() == RETURN_FAIL);
     CHECK(bridge_open_count == 0);
     CHECK(bridge_close_count == 1);
@@ -582,6 +582,8 @@ static void test_timeout_lifecycle_and_release_contention(void)
     int release_event, close_event;
 
     fixture_reset();
+    /* ABI1 without the optional snapshot tail remains a valid remote port. */
+    fake_port.size = (uint32_t)offsetof(struct P4USBPort, snapshot);
     set_claims(claims, 1);
     set_releases(releases, 3);
     CHECK(extracted_remote_client_main() == RETURN_OK);

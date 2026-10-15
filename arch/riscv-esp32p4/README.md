@@ -20,6 +20,11 @@ confirms the desktop, but IOKit/libusb again find no P4 and no CDC port. Remote
 launch is held; controller/PHY versus physical-link cause is not established. See the
 [port-service plan](../../docs/plans/esp32p4-usb-port-service.md) and ROADMAP RC0.
 
+HS diagnosis follow-up: a cached read-only register/phase snapshot and touch
+USBPortStatus dialog are build verified, awaiting deployment. No remote grant,
+PHY tuning, USB reset, endpoint claim or raw MMIO access from the GUI. Exact
+artifacts, source comparison and still-open enumeration gate are in ROADMAP.
+
 WiFiLink follow-up2026-10-15 (JC1060 installed/readback verified): `u` is the
 per-query RPC UID, not a link-state value. Correlation remains unchanged,
 but this field is omitted from WiFiLink output. A context-local diagnostic

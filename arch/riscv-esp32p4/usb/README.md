@@ -198,6 +198,15 @@ slow/no reader, disconnect/reconnect, watchdog/debug/WLAN coexistence and
 power behavior remain required before generic diagnostic-service integration.
 # Permanent HS port candidate (2026-10-15)
 
+`USBPortStatus` is a read-only touch requester with Refresh/Close. The owner
+publishes a cached snapshot every250ms: phase, loop progress, bus-reset/SETUP/
+mount counters and non-destructive DWC2/PHY/clock registers. The GUI neither
+reads MMIO nor grants remote access. Snapshot support is an optional ABI1
+tail, guarded by resource size; the remote client still accepts the original
+ABI1 prefix. Phase4/ready is software state, not host enumeration evidence.
+The build-port-client script also builds this tool; deploy its normal program
+icon separately. A Refresh photo can diagnose a boot without a USB log channel.
+
 The successor to the bounded experiment is documented in the
 [permanent-port plan](../../../docs/plans/esp32p4-usb-port-service.md).
 `P4_USB_PORT=1` links a permanent `esp32p4usb.resource` into the P4 core;

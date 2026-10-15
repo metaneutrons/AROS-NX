@@ -56,6 +56,7 @@ static uint32_t last_client_ms;
 static struct MsgPort diagnostic_lease;
 static jmp_buf failure;
 static const char *fault_reason;
+static struct P4USBSnapshot observation;
 
 static bool try_lock(void) { return AttemptSemaphore(&lock) != 0; }
 static void unlock(void) { ReleaseSemaphore(&lock); }
@@ -120,6 +121,15 @@ static uint32_t port_write(uint32_t token,const void *bytes,uint32_t length)
 
 static bool rcc_lock(void *ctx) { (void)ctx;return clock_host->acquire(clock_host,0); }
 static void rcc_unlock(void *ctx) { (void)ctx;clock_host->release(clock_host); }
+static int port_snapshot(struct P4USBSnapshot *out,uint32_t bytes)
+{
+    if(!out || bytes!=sizeof(*out))return 0;
+    if(!try_lock())return -1;
+    *out=observation;
+    out->version=P4_USB_SNAPSHOT_VERSION;out->size=sizeof(*out);
+    out->state=port_state();
+    unlock();return 1;
+}
 void p4_usb_owner_check(void)
 {
     if(FindTask(NULL)!=owner)p4_usb_fault("non-owner controller access");
@@ -156,6 +166,26 @@ static void write_mmio(uintptr_t a,uint32_t v)
     *(volatile uint32_t *)a=v;
     __asm__ volatile("fence iorw, iorw" ::: "memory");
 }
+/* Only the owning task samples known, non-destructive registers. Do not read
+ * GRXSTSP/FIFOs or clear W1C status. No native pointer/log payload is exposed. */
+static void observe(uint32_t phase,uint32_t loops,uint32_t irq_seen,
+                    uint32_t resets,uint32_t setups,uint32_t mounts)
+{
+    struct P4USBSnapshot next={0};
+    next.phase=phase;next.loops=loops;next.irq_seen=irq_seen;
+    next.resets=resets;next.setups=setups;next.mounts=mounts;
+    next.hp_clock=mmio(0x500e6018u);next.lp_control=mmio(0x50111048u);
+    next.suspendm=mmio(0x500e515cu);
+    if(controller_touched) {
+        next.id=mmio(0x50000040u);next.hwcfg2=mmio(0x50000048u);
+        next.gotgctl=mmio(0x50000000u);next.gahbcfg=mmio(0x50000008u);
+        next.gusbcfg=mmio(0x5000000cu);next.gintsts=mmio(0x50000014u);
+        next.gintmsk=mmio(0x50000018u);next.dcfg=mmio(0x50000800u);
+        next.dctl=mmio(0x50000804u);next.dsts=mmio(0x50000808u);
+        next.pcgcctl=mmio(0x50000e00u);next.utmi_fc06=mmio(0x5009c018u);
+    }
+    if(try_lock()){observation=next;unlock();}
+}
 static int log_pop(void *ctx,struct p4_console_record *record)
 { (void)ctx;return tap->pop(owner,tap_token,record); }
 static uint32_t log_dropped(void *ctx)
@@ -174,12 +204,15 @@ static void bus_changed(void)
     __atomic_store_n(&invalidate_pending,true,__ATOMIC_RELEASE);
     p4_cdc_log_reset(&logs);
 }
+static uint32_t reset_events,setup_events,mount_events;
 void tud_event_hook_cb(uint8_t port,uint32_t event,bool isr)
 {
     (void)port;(void)isr;
+    if(event==DCD_EVENT_BUS_RESET_START)++reset_events;
+    if(event==DCD_EVENT_SETUP_RECEIVED)++setup_events;
     if(event==DCD_EVENT_BUS_RESET_START || event==DCD_EVENT_UNPLUGGED)bus_changed();
 }
-void tud_mount_cb(void) { bus_changed(); }
+void tud_mount_cb(void) { ++mount_events;bus_changed(); }
 void tud_umount_cb(void) { bus_changed(); }
 
 /* Separate, read-only firmware capability request. No remote grant can
@@ -244,9 +277,12 @@ static void bulk_step(void)
 
 static void port_task(void)
 {
+    /* These survive the bounded controller longjmp fault boundary. */
+    volatile uint32_t loops=0,irq_seen=0,last_observed=0,phase=1;
     struct MsgPort *timer_port=NULL;
     const p4_usb_hs_phy_platform_t platform={NULL,rcc_lock,rcc_unlock};
     owner=FindTask(NULL);
+    observe(phase,0,0,0,0,0);
     clock_host=OpenResource(P4_SDMMC_HOST_NAME);
     tap=OpenResource(P4_CONSOLE_TAP_NAME);
     if(!clock_host || clock_host->abi!=P4_SDMMC_HOST_ABI ||
@@ -277,27 +313,37 @@ static void port_task(void)
         bug("[USBPort] fault: %s; remote admission closed\n",fault_reason);
         goto stop;
     }
+    phase=2;observe(phase,0,0,0,0,0);
     p4_usb_hs_phy_result_t setup=p4_usb_hs_phy_setup(&phy,&platform);
     if(setup!=P4_USB_HS_PHY_OK) {
         phy_active=setup==P4_USB_HS_PHY_RESTORE_ERROR;goto stop;
     }
-    phy_active=true;controller_touched=true;begin_call();
+    phy_active=true;controller_touched=true;phase=3;
+    observe(phase,0,0,0,0,0);begin_call();
     const tusb_rhport_init_t init={.role=TUSB_ROLE_DEVICE,.speed=TUSB_SPEED_HIGH};
     if(!tusb_init(1,&init))p4_usb_fault("TinyUSB init failed");
     set_state(P4_USB_PORT_READY);
+    phase=4;observe(phase,0,0,0,0,0);
     bug("[USBPort] HS device owner ready; CDC logs; remote closed; firmware writes unavailable\n");
     for(;;) {
         begin_call();
+        ++loops;irq_seen|=mmio(0x50000014u);
         if(polling)dcd_int_handler(1);
         tud_task_ext(0,false);bulk_step();
         uint8_t discard[64];uint32_t n=tud_cdc_available();
         if(n>sizeof(discard))n=sizeof(discard);
         if(n)(void)tud_cdc_read(discard,n);
         if(!p4_cdc_log_step(&logs,256))p4_usb_fault("CDC log stream failed");
+        uint32_t now=p4_usb_millis();
+        if((uint32_t)(now-last_observed)>=250u) {
+            observe(phase,loops,irq_seen,reset_events,setup_events,mount_events);
+            last_observed=now;
+        }
         p4_usb_delay(2);
     }
 stop:
     set_state(P4_USB_PORT_FAULTED);
+    observe(9,loops,irq_seen,reset_events,setup_events,mount_events);
     if(controller_touched) {
         write_mmio(0x50000018u,0);
         write_mmio(0x50000008u,mmio(0x50000008u)&~1u);
@@ -313,6 +359,8 @@ stop:
     }
 done:
     set_state(P4_USB_PORT_FAULTED);
+    /* Preserve pre-cleanup controller evidence; early failures have no MMIO. */
+    if(try_lock()){observation.state=P4_USB_PORT_FAULTED;unlock();}
     if(tap && tap_token)tap->release(owner,tap_token);
     if(TimerBase)CloseDevice((struct IORequest *)timer);
     if(timer)DeleteIORequest((struct IORequest *)timer);
@@ -345,6 +393,7 @@ static int port_init(struct P4USBPort *base)
     base->abi=P4_USB_PORT_ABI;base->size=sizeof(*base);
     base->state=port_state;base->claim=port_claim;base->valid=port_valid;
     base->release=port_release;base->read=port_read;base->write=port_write;
+    base->snapshot=port_snapshot;
     return TRUE;
 }
 #if !defined(P4_USB_PORT_KERNEL)

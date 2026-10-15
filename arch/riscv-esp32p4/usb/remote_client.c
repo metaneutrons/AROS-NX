@@ -6,6 +6,7 @@
 #include <proto/dos.h>
 #include <proto/exec.h>
 #include <stdio.h>
+#include <stddef.h>
 #include "port_resource.h"
 #include "../../../workbench/tools/RemoteDiag/bridge.h"
 
@@ -21,7 +22,7 @@ int main(void)
         puts("USBRemote: explicit ENABLE/NONEAUTH, 1..600 seconds, and UNATTENDED for mouse required");goto out;
     }
     port=OpenResource((CONST_STRPTR)P4_USB_PORT_NAME);
-    if(!port || port->abi!=P4_USB_PORT_ABI || port->size<sizeof(*port) ||
+    if(!port || port->abi!=P4_USB_PORT_ABI || port->size<offsetof(struct P4USBPort,snapshot) ||
        !port->state || !port->claim || !port->valid || !port->release || !port->read || !port->write ||
        port->state()!=P4_USB_PORT_READY) {
         puts("USBRemote: permanent HS owner unavailable");goto out;

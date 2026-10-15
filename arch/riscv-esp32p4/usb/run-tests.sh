@@ -17,6 +17,7 @@ export UBSAN_OPTIONS=halt_on_error=1
 TINYUSB_ARCHIVE="$archive" python3 "$src/test_prepare_stack.py"
 python3 "$src/echo_probe.py" --self-test
 python3 "$src/test_hs_recovery.py"
+python3 "$src/test_port_snapshot.py"
 python3 "$src/test_port_resource.py" --evidence-dir "$output/resource-api"
 python3 "$src/test_remote_client.py" --evidence-dir "$output/remote-client-api"
 python3 "$src/prepare_stack.py" "$archive" "$output/tinyusb"

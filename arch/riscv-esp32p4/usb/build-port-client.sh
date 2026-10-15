@@ -32,5 +32,9 @@ done
     -DP4_USB_LAUNCH_PORT -march=rv32imafc_zicsr_zifencei_zaamo_zalrsc -mabi=ilp32f -mcmodel=medany \
     -ffile-prefix-map="$src"=aros-usb-port -isystem "$target/gen/include" \
     -I"$sdk/include" -L"$sdk/lib" "$src/launch_diag.c" -o "$out/USBRemoteStart"
-shasum -a 256 "$out/USBRemote" "$out/USBRemoteStart"
-wc -c "$out/USBRemote" "$out/USBRemoteStart"
+"$cc" --sysroot="$sdk" -std=gnu11 -O2 -Wall -Wextra -Werror \
+    -march=rv32imafc_zicsr_zifencei_zaamo_zalrsc -mabi=ilp32f -mcmodel=medany \
+    -ffile-prefix-map="$src"=aros-usb-port -isystem "$target/gen/include" \
+    -I"$sdk/include" -L"$sdk/lib" "$src/port_status.c" -o "$out/USBPortStatus"
+shasum -a 256 "$out/USBRemote" "$out/USBRemoteStart" "$out/USBPortStatus"
+wc -c "$out/USBRemote" "$out/USBRemoteStart" "$out/USBPortStatus"
