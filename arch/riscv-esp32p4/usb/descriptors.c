@@ -61,7 +61,13 @@ uint8_t const *tud_descriptor_other_speed_configuration_cb(uint8_t index)
 uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
 {
     static uint16_t str[32];
-    static const char *const strings[] = { "", "AROS", "P4 USB echo prototype" };
+    static const char *const strings[] = { "", "AROS",
+#ifdef P4_USB_PORT
+        "AROS P4 USB port"
+#else
+        "P4 USB echo prototype"
+#endif
+    };
     size_t n, i;
     if (index == 0) { str[0] = (TUSB_DESC_STRING << 8) | 4; str[1] = 0x0409; return str; }
     if (langid != 0x0409 || index >= sizeof(strings)/sizeof(strings[0])) return NULL;

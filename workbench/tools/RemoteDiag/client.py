@@ -24,6 +24,7 @@ SNAPSHOT_MAX = 4 * 1024 * 1024
 PATH_MAX = 512
 FILE_ENUM_MAX = 128
 PRODUCT_NAME = "P4 USB echo prototype"
+PORT_PRODUCT_NAME = "AROS P4 USB port"
 VENDOR_INTERFACE = 0
 CDC_CONTROL_INTERFACE = 1
 CDC_DATA_INTERFACE = 2
@@ -449,6 +450,13 @@ class USBBulkTransport:
     def read(self, maximum: int, timeout_ms: int) -> bytes:
         return bytes(self.device.read(self.in_endpoint, maximum, timeout=timeout_ms))
 
+    def firmware_status(self, timeout_ms: int) -> dict[str, Any]:
+        """Read-only capability query; never submits an update or RDG request."""
+        reply = bytes(self.device.ctrl_transfer(0xC0, 0x50, 0, 0, 16, timeout=timeout_ms))
+        if reply != b"P4UP\x01\x00\x01\x00" + bytes(8):
+            raise DiagError("unsupported firmware capability response; no update is authorized")
+        return {"protocol": 1, "updates": "unavailable", "reason": "no qualified P4 flash backend"}
+
     def close(self) -> None:
         try:
             if self.claimed:
@@ -603,7 +611,7 @@ def open_usb_transport(vid: int, pid: int, bus: int, address: int) -> USBBulkTra
     device = matches[0]
     try:
         product = usb.util.get_string(device, device.iProduct)
-        if product != PRODUCT_NAME:
+        if product not in (PRODUCT_NAME, PORT_PRODUCT_NAME):
             raise DiagError("unexpected USB product descriptor; refusing interface claim")
         if (device.bDeviceClass != 0xEF or device.bDeviceSubClass != 0x02 or
                 device.bDeviceProtocol != 0x01 or device.bNumConfigurations != 1):
@@ -648,6 +656,7 @@ def make_parser() -> argparse.ArgumentParser:
                         help="explicitly permit move/click operations; server must also enable input")
     commands = parser.add_subparsers(dest="command")
     commands.add_parser("status", help="show server capabilities")
+    commands.add_parser("firmware-status", help="query the permanent port's update gate without remote access")
     screenshot = commands.add_parser("screenshot", help="capture a PPM image without replacing output")
     screenshot.add_argument("output")
     screenshot.add_argument("--crop", nargs=4, type=int, metavar=("X", "Y", "WIDTH", "HEIGHT"),
@@ -673,6 +682,9 @@ def make_parser() -> argparse.ArgumentParser:
 
 
 def _run_command(args: argparse.Namespace, transport: Any) -> int:
+    if args.command == "firmware-status":
+        _print_json(transport.firmware_status(max(1, int(args.seconds * 1000))))
+        return 0
     client = ProtocolClient(transport, timeout=args.seconds, allow_input=args.allow_input)
     hello = client.hello()
     if args.command == "status":

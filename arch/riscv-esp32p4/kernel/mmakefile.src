@@ -1168,9 +1168,48 @@ AFILES += secondary_smp
 # what slips through, such as struct copies).
 USER_CFLAGS += $(KERNEL_OPTIMIZATION_CFLAGS) -fno-tree-loop-distribute-patterns
 
+# A permanent HS owner, linked into the core rather than the nearly full
+# legacy BSP. No remote backend or firmware writer is linked into the kernel.
+# The separately buildable resource remains useful for loader qualification.
+ifeq ($(P4_USB_PORT),1)
+P4_USB_CORE_SRC := $(SRCDIR)/arch/riscv-esp32p4/usb
+P4_USB_CORE_STACK := $(GENDIR)/arch/riscv-esp32p4/usb/tinyusb
+P4_USB_STACK_ARCHIVE ?=
+P4_USB_CORE_STACK_FILES := tusb common/tusb_fifo device/usbd \
+    class/vendor/vendor_device class/cdc/cdc_device \
+    portable/synopsys/dwc2/dwc2_common portable/synopsys/dwc2/dcd_dwc2
+$(addprefix $(P4_USB_CORE_STACK)/src/,$(addsuffix .c,$(P4_USB_CORE_STACK_FILES))) : $(P4_USB_CORE_STACK)/.prepared
+	@$(TEST) -f $@
+$(P4_USB_CORE_STACK)/.prepared : $(P4_USB_CORE_SRC)/prepare_stack.py $(P4_USB_STACK_ARCHIVE)
+	@$(TEST) -n "$(P4_USB_STACK_ARCHIVE)" || { $(ECHO) "P4_USB_STACK_ARCHIVE required"; exit 1; }
+	@python3 $(P4_USB_CORE_SRC)/prepare_stack.py $(P4_USB_STACK_ARCHIVE) $(P4_USB_CORE_STACK)
+	@touch $@
+P4_USB_VID ?= 0
+P4_USB_PID ?= 0
+USER_CPPFLAGS += -DP4_USB_PORT=1 -DP4_USB_PORT_KERNEL=1 \
+    -DP4_USB_VID=$(P4_USB_VID) -DP4_USB_PID=$(P4_USB_PID) \
+    -I$(P4_USB_CORE_SRC) -I$(P4_USB_CORE_STACK)/src
+CFILES += port_resource port_broker firmware_gate hs_phy descriptors cdc_log \
+    $(notdir $(P4_USB_CORE_STACK_FILES))
+#MM- kernel-kernel-kobj : kernel-esp32p4usb-stack
+#MM- kernel-kernel-kobj-quick : kernel-esp32p4usb-stack
+endif
+
 %build_archspecific \
   mainmmake=kernel-kernel modname=kernel maindir=rom/kernel arch=esp32p4-riscv \
   files="$(CFILES) $(PLATFILES)" asmfiles="$(AFILES)" compiler=kernel
+
+ifeq ($(P4_USB_PORT),1)
+# build_archspecific only emits kernel-local compilation rules. Give every
+# outside source an explicit prerequisite/recipe; a vpath alone would leave
+# recipe-less object targets and silently omit the driver from the core.
+define p4_usb_core_object
+$(GENDIR)/rom/kernel/kernel/arch/$(notdir $(1)).o : $(1).c
+	@$(ECHO) "Compiling USB core $(notdir $(1)).c"
+	$(Q)$$(TMP_CMD) $$(TMP_CFLAGS) $$(TMP_CPPFLAGS) -c $$< -o $$@
+endef
+$(foreach src,$(addprefix $(P4_USB_CORE_SRC)/,port_resource port_broker firmware_gate hs_phy descriptors cdc_log) $(addprefix $(P4_USB_CORE_STACK)/src/,$(P4_USB_CORE_STACK_FILES)),$(eval $(call p4_usb_core_object,$(src))))
+endif
 
 #
 # The kickstart holds only what has to exist before anything can be
@@ -1196,6 +1235,9 @@ BSP_KOBJS := \
 # satisfies libautoinit's error path.
 ELFCORELIBS := -L$(AROS_LIB) -lexec -larossupport -lautoinit -llibinit \
                -lamiga -lstdc.static
+ifeq ($(P4_USB_PORT),1)
+ELFCORELIBS += -lromhack
+endif
 ifeq ("$(AROS_TOOLCHAIN)","gnu")
 ELFCORELIBS += -L$(CROSSTOOLSDIR)/lib/gcc/$(AROS_TARGET_CPU)-aros/$(TARGET_GCC_VER) -lgcc
 endif

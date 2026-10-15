@@ -492,6 +492,39 @@ class ClientTests(unittest.TestCase):
         self.assertNotIn("set_configuration", device.actions)
         self.assertNotIn("detach_kernel_driver", device.actions)
 
+        permanent = FakeUSBDevice(product=client.PORT_PRODUCT_NAME)
+        permanent.bus, permanent.address = 0, 2
+        core.find = lambda **_kwargs: [permanent]
+        with patch.dict("sys.modules", {"usb": usb, "usb.core": core, "usb.util": util}):
+            with client.open_usb_transport(0x1111, 0x2222, 0, 2):
+                pass
+        self.assertIn("claim:0", permanent.actions)
+        self.assertNotIn("claim:1", permanent.actions)
+        self.assertNotIn("claim:2", permanent.actions)
+
+    def test_firmware_query_is_read_only_and_rejects_unknown_capabilities(self):
+        class Device:
+            calls = []
+            reply = b"P4UP\x01\x00\x01\x00" + bytes(8)
+            def ctrl_transfer(self, *args, **kwargs):
+                self.calls.append((args, kwargs))
+                return self.reply
+        device = Device()
+        transport = client.USBBulkTransport(device, None, 0, 1, 0x81)
+        self.assertEqual(transport.firmware_status(1234)["updates"], "unavailable")
+        self.assertEqual(device.calls, [((0xC0, 0x50, 0, 0, 16), {"timeout": 1234})])
+        for bad in (b"", device.reply[:-1], b"P4UP\x01\x00\x00\x00" + bytes(8), device.reply[:-1]+b"x"):
+            device.reply = bad
+            with self.assertRaises(client.DiagError):
+                transport.firmware_status(1234)
+
+    def test_usb_rejects_unrelated_product(self):
+        core = types.ModuleType("usb.core")
+        util = types.ModuleType("usb.util")
+        util.get_string = lambda target, _index: target.product
+        util.dispose_resources = lambda target: target.actions.append("dispose")
+        usb = types.ModuleType("usb")
+        usb.core, usb.util = core, util
         wrong = FakeUSBDevice(product="unrelated adapter")
         core.find = lambda **_kwargs: [wrong]
         with patch.dict("sys.modules", {"usb": usb, "usb.core": core, "usb.util": util}):

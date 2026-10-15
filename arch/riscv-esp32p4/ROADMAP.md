@@ -195,7 +195,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C1P | Graphical boot/update performance | `hardware partial; runtime hang gate open` | Rotation/mirror: 140 sanitizer cases; actual producer: 400 submissions/1,677 guarded IRQs. CPU90 synchronous full update 2.776 s; CPU360 synchronous 0.617 s; v2 coalesced submission 0.296 s. Paired v2 core/HIDD initially passes headless Wanderer and flash checks. Fabian observes speedup then slowdown/hang. Console-only nonblocking runtime fix now sanitizer-tested, flashed and verified; explanation of the observed hang remains unconfirmed. On 2026-10-01 Fabian reports drawing is fine so far after requester-free RAM Disk opening; duration unspecified. Sustained no-reader/stress and complete interactive regression gates remain open. |
 | CQ1 | Bounded queued SMP debug console | `hardware partial (JC1060); default-plain deployed/readback/headless; D1001 open` | 2026-10-13 framed core showed both harts/108 consecutive records and reader recovery. 2026-10-14: P4_CONSOLE_RECORD_PREFIX defaults0, optional1 keeps framing; overflow warnings always active. Clean native193024Ba68ca519.../independent readback and111.929s fresh218-row headless export show no normal prefix,22 touch heartbeats and CPU1 WLAN owner. Twelve sanitized USB/UART default/0/1 host runs pass; old-header mutation rejected. Plain logs cannot prove sequence continuity. Native overload/physical disconnect and fresh interactive gates remain open. Early/fatal direct output and timer-failure backlog loss remain explicit limits. |
-| RC0 | Independent USB remote diagnostic MVP | `FS deployment/readback and return boot verified; offline safeguards extended; HS gates unresolved` | 2026-10-15: installed USBDiag261164Bd821f026..., unchanged kernel194384B03f997b1..., updated helper4194304B8cfa7b66... retain FS readback/return evidence, not HS acceptance. Installed launchers52244Bb7706abb.../52052B28f384c1... classify numeric failures; no autostart. Nine O0/O2 sanitized USB C suites, nine stager/six probe, fourteen recovery and fifteen client tests pass. Real portable composition uses fake endpoints/worker. Legacy-core recovery plan preserves sector tail; HS recovery tool remains offline-only. HS flash, CDC, echo, screenshots/files/input still need actual hardware evidence. Epic77/affected issues reconciled, open; full remote plan deferred. |
+| RC0 | Permanent HS port and USB remote diagnostic MVP | `kernel/client build verified; not deployed; native HS enumeration unresolved; firmware writer open` | 2026-10-15: permanent kernel resource, AFTERDOS PIO owner and independent CDC; separate task/session-bound bulk grant with2s lease. Opt-in226080B core72b6eeda... fits legacy/512KiB core limits without BSP changes; rejected BSP-module preview exceeded its allocation. USBRemote98800Bd983dd43.../touch launcher52796Bef8e09ed... build. Sanitized broker/API/owner/client, descriptor, control-gate and composition tests pass with fake hardware; no new hardware pass. Update query returns NO_BACKEND, mutation stalls: signed P4 writer/commit remains required. Debug/FS is retained recovery, HS ROM recovery no longer required by the narrowed MVP. Installed older core/helper remain unchanged; HS/CDC/remote/update and D1001 gates open. |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware verified` | Complete GB0 evidence: correctly oriented persistent Wanderer with title/icons/four edges, bounded graphical recovery without SD, 20/20 controlled EN-reset boots, a 30-minute desktop soak explicitly composed with B5's active concurrent SD/scanout stress, and an exact raw-card gate.  The latter used hardware-locked first host insertions around one normal D1001 boot; prepared image, pre-run readback and post-run readback are byte-identical at SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Two earlier comparisons remain documented as macOS `.fseventsd` contamination, not hidden as passes |
 | C4 | Touch as an absolute mouse HIDD | `hardware partial` | Since 2026-10-04 the touch path is the portable stack of D3 (`touchscreen.hidd`, `gsl3670.hidd`, `esp32p4board.resource`); the D1001 has not run it yet, so everything below describes the former kernel GSL driver and `p4touch.hidd`. D1001 identification, bounded firmware load/status and contact transport are hardware verified. The absolute mouse HIDD and nearest-contact continuity pass synchronized one-/two-contact tests; hardware IDs are not stable. A stationary pointer recovered after USB reset; its prior cause remains unknown. The tap policy defaults to button-free motion, tap-to-click and 400-ms hold-drag, preserving selectable direct mode and the right-button latch. Fabian confirms movement, tap and hold-drag with zero errors and clean release. A consented perimeter trace measures X=16..1638/Y=15..874; board-specific calibration now maps that range to the full surface. Its 3,863 host checks, build and package audit pass. A fresh synchronized run confirms four-edge reachability and menu-dropdown opening, with zero I2C errors and clean release at Y=5. Rapid double-tap reliability is reported poor; first-empty short-tap release (50-ms idle gap restored after renewed graphics slowdown) now pass 3,892 sanitizer checks and are a flashed candidate, not interactive acceptance; a volume requester precedes successful RAM Disk opening (name reported as TENEME, possibly THEME; unconfirmed). Theme assignments, Ice assets and PNG registration now pass a 167-entry host image verification; SD image now written/readback-verified/ejected; visible gate fails with missing png.library>=52; 171-entry runtime-library closure correction is now SD written/readback-verified/ejected (2026-10-01); synchronized 55-second boot reaches Wanderer and attempts the new runtime libraries; Fabian confirms requester-free RAM Disk opening and one visible toolbar symbol; complete toolbar and sustained performance are not yet accepted. Menu-item execution, bounded recovery, intermittent startup reliability and the 1,000-cycle gates remain open |
@@ -4584,6 +4584,19 @@ Acceptance gate:
 ## Track RC: independent remote diagnostic access
 
 ### RC0 - USB investigation and diagnostic-MVP slice
+
+2026-10-15 permanent-port decision supersedes temporary controller takeover
+for the next candidate: kernel-registered resource, one AFTERDOS owner,
+independent CDC and copied, leased Remote-Bulk. The generic backend remains
+a separate explicitly enabled process. Debug/FS is the accepted independent
+recovery architecture; HS ROM enumeration is no longer a diagnostic-MVP
+recovery gate. Normal firmware update over HS is still required, not supplied
+by this waiver: P4 writer, signed admission, selection/readback/rollback remain
+open. The current control capability returns NO_BACKEND and mutation stalls.
+The versioned USB slice plan is docs/plans/esp32p4-usb-port-service.md.
+Kernel integration avoids the measured oversized BSP-module alternative; no
+layout/helper/bootloader change or deployment is performed. Native enumeration
+failure is still unresolved; a successful build cannot close that gate.
 
 2026-10-15 HS echo attempt: Fabian confirms the sole-power cable is on HS,
 normal desktop visible, then explicitly starts USBEchoTest and accepts Start.
@@ -44855,3 +44868,81 @@ remain open. No partial stage is a complete A/B update system.
   to distinguish startup rejection, PHY/controller failure and no attachment;
   no cause inferred from absent enumeration alone. Await Fabian's observation
   before a new run or cable/button action.
+
+### 2026-10-15 - RC0 permanent HS owner, build verified; native gates open
+
+- Fabian requests permanent kernel ownership with independent CDC logs,
+  service-gated Remote-Bulk and normal firmware updates; Debug/FS remains
+  recovery. The narrower design/acceptance snapshot is
+  `docs/plans/esp32p4-usb-port-service.md`, not a replacement for RC-v5.
+  PR91 is merged as b9170e281437c0bb5289db0d89bc3848b2b0e600.
+  This implementation follows on feature/esp32p4-usb-port-manager.
+- `P4_USB_PORT=1` links the minimal controller stack and
+  esp32p4usb.resource into the core: COLDSTART registration, one AFTERDOS
+  owner task, bounded polled PIO, no USB ISR/DMA. Private ABI1 exposes bounded
+  copies only. Existing diagnostic ownership is refused/retained on fault;
+  bus reset/detach closes admission immediately. A task-bound generation and
+  2000ms renewable lease retire stale clients without task-pointer access.
+  RX/TX rings total2048B. No running USBRemote means no remote backend access;
+  CDC lifetime is independent. Overflow warnings remain unconditional.
+- The separate USBRemote/USBRemoteStart executables use existing generic
+  capture/input/read-only DOS backends and explicit consent/policy. Client
+  release precedes potentially blocked worker shutdown; already-running native
+  operations cannot be retracted. The GUI is still a synchronous launcher,
+  not a new live service-status window. Fabian's earlier observation that
+  USBEchoTest closed, with no keyboard available, does not identify a cause.
+- Firmware support is NOT complete: exact read-only vendor request0xc0/0x50,
+  value/index0,length16 reports P4UP/version1/NO_BACKEND. Other vendor control
+  requests stall; CDC/control lines cannot authorize reset or writing. The
+  host firmware-status command needs no remote grant. There is no native P4
+  writer/verified publisher consumer/selection journal/boot-confirm rollback;
+  current legacy layout has no inactive pair. Keep paired-update P1..P4 and
+  signed-release contracts open; no raw/in-place fallback is enabled.
+- Evidence root: /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/
+  usb-port-2026-10-15.GlNngi. Fresh core object invalidation before enabled
+  and disabled builds; full RV32 SMP core link/image exits0, SRAM-residency
+  check passes, Creating aros-esp32p4.bin confirmed. Final clean repeat is
+  byte-identical:226080B SHA256
+  72b6eeda34f82e5926d934180c4f46842702a215fc926b83e9e40dffc42107a1.
+  Configuration: jc1060p470c-v2, C3_GRAPHICAL_BOOT=1,C4_TOUCH_HIDD=1,
+  PSRAM_MHZ=200,LDSCRIPT=ldscript-xip.lds,USB_PORT=1, explicit lab
+  VID4617/PID1 (all switches P4_ prefixed), pinned TinyUSB archive
+  /tmp/aros-usb-prototype.WZe9jM/tinyusb.tar.gz. This identity is not a public
+  product allocation. core-enabled-final.log/core-image-final.log exit0;
+  enabled-symbols.txt proves both residents and port_task in linked core.
+  core-disabled.log exits0; disabled-symbols.txt contains none of those
+  symbols. Defaults remain off pending native qualification.
+- Client Werror builds exit0: client-final/USBRemote98800B SHA256
+  d983dd432200f173becafce30b8d0372f5a60fd00a793165a8d924d72d9b96be;
+  USBRemoteStart52796B SHA256
+  ef8e09ed689bdff1d6fde8da63196b8a53e9ed4240b321b173fe043fc2a1edcf.
+  No BSP/helper/partition-table changes are needed for core integration.
+- Failed approaches retained: ordinary aggregate targets stop on unrelated
+  cached Chromium zlib size mismatch (expected2337668,actual620531); no
+  whole-tree build is claimed. Initial external-source make rules omitted
+  USB objects, caught by linked-symbol inspection; explicit prerequisites
+  corrected that. Initial standalone module needed romhack setjmp linkage;
+  full module then linked/loader-audited with0 rejected members. Appending
+  its measured196656B module to live42-member BSP yields4249064B,185832B
+  beyond legacy limit4063232. This rejected preview was never deployed;
+  kernel linking solves that packaging constraint. Existing RWX LOAD warning
+  remains. Failed logs and fixes are preserved, not counted as successful builds.
+- Offline tests exit0:13 C suites at O0/O2 ASan/UBSan; source-bound resource
+  tests151 checks each and actual client-main tests4450 checks each;
+  9 staging/6 echo-probe/14 recovery tests. Includes stale token/owner,
+  reset/lease boundary, partial I/O, no-service drop, release/reclaim faults
+  and exhaustive firmware-query shape counterprobes. host-complete.log SHA256
+  ec6cf3019eb0787e3d67fc67e758e4a9092064dce2bdb7ee7e1efc66b43e2e9a;
+  final-current-source repetition session65674 exits0 in host-final-current/.
+  Generic RemoteDiag runner exits0:17 Python tests,4 sanitized C suites and
+  fragmented Python/C pipeline, remote-tests.log SHA256
+  e946b6d8ce11498ace7c6992312800d1671115f4ada741ba3c8a63dce338da04.
+- Safety/limits: all new artifacts remain unflashed. No USB/serial device
+  opened, no reset, flash, SD/C6 write or new hardware test in this follow-up.
+  Fixtures do not prove native scheduling/PHY/enumeration/CDC/input/files.
+  AFTERDOS excludes ordinary initial display setup, not concurrent RCC writes
+  during display/GDMA reinit; SD/radio semaphore is not universal ownership.
+  CDC starts after DOS, not ROM; retention is finite. Next: fresh readiness,
+  install through verified Debug/FS range/readback, coordinate HS cable move,
+  qualify enumeration and CDC before granting Remote-Bulk. Actual firmware
+  updates and full RC-M1..M9 remain open, as does the WLAN goal.

@@ -225,7 +225,13 @@ static void test_string_indices_and_language(void)
 
     product = tud_descriptor_string_cb(2, 0x0409);
     CHECK(product != NULL);
-    CHECK(product[0] == (uint16_t)((TUSB_DESC_STRING << 8) | (2 + 2 * 21)));
+#ifdef P4_USB_PORT
+    const char *expected="AROS P4 USB port";
+#else
+    const char *expected="P4 USB echo prototype";
+#endif
+    CHECK(product[0] == (uint16_t)((TUSB_DESC_STRING << 8) | (2 + 2 * strlen(expected))));
+    for(size_t i=0;i<strlen(expected);++i)CHECK(product[i+1]==(uint16_t)expected[i]);
 
     CHECK(tud_descriptor_string_cb(3, 0x0409) == NULL);
     CHECK(tud_descriptor_string_cb(1, 0x0407) == NULL);

@@ -169,7 +169,21 @@ The client validates that composite descriptor tree and claims vendor interface0
 only; it never claims CDC or changes USB configuration. See the port's
 [USB instructions](../../../arch/riscv-esp32p4/usb/README.md) for the matched
 kernel tap, explicit NOLOGS fallback and runtime-only log/overflow limits.
-Native enumeration, CDC coexistence and ROM recovery remain hardware gates.
+Native enumeration and CDC coexistence remain hardware gates. Recovery is
+the independent Debug/FS path; HS ROM recovery is not required for this slice.
+
+The opt-in permanent P4 owner uses product string `AROS P4 USB port`; the
+client also accepts the exact earlier prototype identity, with the same full
+descriptor validation. The separate `USBRemote` process grants access only
+while running and renewing its task-bound lease. `USBRemoteStart` provides
+the explicit touch consent launcher. CDC does not depend on either process.
+See [the permanent-port plan](../../../docs/plans/esp32p4-usb-port-service.md)
+for bounded queues, reset/revocation and native qualification limits.
+
+The client command `firmware-status` makes a read-only vendor control query
+without RDG1 HELLO or a remote grant. The current reply is `NO_BACKEND`.
+There is no firmware write command: a signed, layout-aware paired-update
+backend and its native recovery/rollback qualification are still missing.
 
 Host tests use actual parser/dispatch/backend source with fake AROS API layers;
 a fragmented Python-to-C pipe also tests wire compatibility. They do not

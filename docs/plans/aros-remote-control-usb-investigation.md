@@ -1,5 +1,14 @@
 # AROS remote control: USB diagnostic-MVP investigation
 
+Permanent-owner decision2026-10-15: the new
+[HS port service plan](esp32p4-usb-port-service.md) supersedes the one-shot
+application ownership below. It is opt-in core/client build verified only,
+not installed or HS-qualified. CDC is independent of the service grant;
+firmware discovery reports NO_BACKEND, not successful update support.
+Debug/FS remains recovery; HS ROM recovery is no longer a slice prerequisite.
+The following investigation/history remains evidence, not current execution
+order. Full transport-neutral RC-v5 requirements remain unchanged.
+
 Implementation follow-up2026-10-14: Fabian explicitly requested preparing
 screenshot/mouse/read-only backends before the later board test. The isolated
 echo and separate USBDiag candidates are now host/native-build verified,

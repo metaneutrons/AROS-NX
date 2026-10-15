@@ -35,14 +35,25 @@ static const char consent_text[] =
 static const char failed_title[] = "FAILED: USBEcho";
 static const char finished_title[] = "FINISHED: USBEcho";
 #else
+#if defined(P4_USB_LAUNCH_PORT)
+static const char diag_command[] =
+    "FLASHDISK0P0:USBRemote ENABLE NONEAUTH SCREEN Workbench ROOT SYS:Prefs "
+    "ALLOWMOUSE UNATTENDED SECONDS 600";
+#else
 static const char diag_command[] =
     "FLASHDISK0P0:USBDiag ENABLE VID 4617 PID 1 SECONDS 600 "
     "STEADYCLOCKS NONEAUTH SCREEN Workbench ROOT SYS:Prefs "
     "ALLOWMOUSE UNATTENDED";
+#endif
 static const char log_path[] = "RAM:USBDiag.log";
 static const char consent_title[] = "START: USBDiag";
 static const char consent_text[] =
+#if defined(P4_USB_LAUNCH_PORT)
+    "Enables remote access for 10 minutes on permanent USBPort.\n"
+    "CDC logging remains active after remote access ends.\n"
+#else
     "Starts USBDiag for 10 minutes on P4 high-speed USB.\n"
+#endif
     "Private VID/PID 1209:0001 (pid.codes); do not\n"
     "redistribute this in-house identity.\n\n"
     "USB access has no authentication or encryption.\n"
@@ -95,7 +106,8 @@ enum log_status
     LOG_STATUS_PHY_SETUP_FAILED,
     LOG_STATUS_HS_POLLING_READY,
     LOG_STATUS_USB_RUNTIME_FAULT,
-    LOG_STATUS_PHY_RESTORE_QUARANTINED
+    LOG_STATUS_PHY_RESTORE_QUARANTINED,
+    LOG_STATUS_PORT_UNAVAILABLE, LOG_STATUS_REMOTE_CLOSED
 };
 
 struct launch_outcome
@@ -118,6 +130,10 @@ struct known_log_marker
 };
 
 static const struct known_log_marker known_log_markers[] = {
+    {"USBRemote: permanent HS owner unavailable", LOG_STATUS_PORT_UNAVAILABLE},
+    {"USBRemote: remote endpoint unavailable/busy", LOG_STATUS_PORT_UNAVAILABLE},
+    {"USBRemote: service enabled; CDC lifetime independent; firmware writes not granted", LOG_STATUS_DIAG_WORKER_ENABLED},
+    {"USBRemote: remote grant closed; CDC remains active", LOG_STATUS_REMOTE_CLOSED},
     {"USBEcho: explicit ENABLE and authorized laboratory VID/PID required",
      LOG_STATUS_ARGUMENTS_REJECTED},
     {"USBEcho: SECONDS must be 1..600", LOG_STATUS_DURATION_REJECTED},
@@ -391,6 +407,8 @@ static const char *status_name(enum log_status status)
     case LOG_STATUS_USB_RUNTIME_FAULT: return "USB_RUNTIME_FAULT";
     case LOG_STATUS_PHY_RESTORE_QUARANTINED:
         return "PHY_RESTORE_QUARANTINED";
+    case LOG_STATUS_PORT_UNAVAILABLE: return "PORT_UNAVAILABLE";
+    case LOG_STATUS_REMOTE_CLOSED: return "REMOTE_CLOSED_CDC_ACTIVE";
     default: return "NOT_READ";
     }
 }
@@ -412,6 +430,7 @@ static int status_is_failure(enum log_status status)
     case LOG_STATUS_PHY_SETUP_FAILED:
     case LOG_STATUS_USB_RUNTIME_FAULT:
     case LOG_STATUS_PHY_RESTORE_QUARANTINED:
+    case LOG_STATUS_PORT_UNAVAILABLE:
         return 1;
     default:
         return 0;

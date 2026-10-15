@@ -15,6 +15,7 @@
 #include "device/dcd.h"
 #include "../sdmmc/host.h"
 #include "../kernel/console_tap.h"
+#include "port_resource.h"
 #endif
 #include <setjmp.h>
 #include <stdio.h>
@@ -232,6 +233,11 @@ int main(void)
     rd=ReadArgs((CONST_STRPTR)"ENABLE/S,VID/N/A,PID/N/A,SECONDS/N,STEADYCLOCKS/S",args,NULL);
 #endif
     if (!rd) { PrintFault(IoErr(),(CONST_STRPTR)"USBEcho"); return RETURN_FAIL; }
+#if !defined(P4_USB_ECHO_HOST_TEST)
+    if(OpenResource((CONST_STRPTR)P4_USB_PORT_NAME)) {
+        puts("USBEcho: permanent USBPort installed; controller takeover refused");goto out;
+    }
+#endif
     if (!args[0] || *(LONG *)args[1] <= 0 || *(LONG *)args[1]>65534 ||
         *(LONG *)args[2]<=0 || *(LONG *)args[2]>65534 ||
         !p4_usb_set_identity(*(LONG *)args[1],*(LONG *)args[2])) {

@@ -1,5 +1,20 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Permanent HS-port candidate2026-10-15: kernel-registered esp32p4usb.resource,
+one AFTERDOS owner task, independent CDC mirror and copied/session-bound
+Remote-Bulk. No backend access at boot: a separate USBRemote/USBRemoteStart
+process supplies the explicit read-only-file/screen/unattended-mouse grant.
+Bus reset, service exit and a2s inactive-client lease retire stale sessions.
+Debug/FS stays ROM recovery; HS ROM recovery is no longer required for this
+diagnostic MVP. Normal HS firmware updates remain required but are NOT
+implemented: the separate capability request reports NO_BACKEND and all
+mutation requests stall, pending the signed paired-image/native writer gates.
+The opt-in core is226080B72b6eeda..., within both legacy and512KiB A/B
+kernel limits, with no BSP/table/helper-boundary change. The rejected BSP-module
+preview exceeded the live BSP allocation by185832B. Neither candidate is
+flashed or HS-qualified. Native enumeration remains unresolved. See the
+[port-service plan](../../docs/plans/esp32p4-usb-port-service.md) and ROADMAP RC0.
+
 WiFiLink follow-up2026-10-15 (JC1060 installed/readback verified): `u` is the
 per-query RPC UID, not a link-state value. Correlation remains unchanged,
 but this field is omitted from WiFiLink output. A context-local diagnostic
@@ -43,8 +58,8 @@ rejects WirelessManager's new unconditional diagnostic flag expression. A
 target-guarded source correction keeps the exact audited product form and the
 existing P4 classic-MetaMake opt-in. Three product capability probes and their
 old-form rejection counterprobes pass; fresh RV32 diagnostic WirelessManager
-is unchanged701280B8cb6490f..., with numeric markers intact. Complete CI and
-merge are still pending; the separate FS deployment changes only the WiFi
+is unchanged701280B8cb6490f..., with numeric markers intact. PR91 is now merged
+as b9170e2814; this is not hardware qualification. The separate FS deployment changes only the WiFi
 resource and the two consent launchers, not the kernel or C6 firmware.
 
 Composite USB candidate (2026-10-14, hardware open): vendor-bulk interface0

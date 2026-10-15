@@ -1,0 +1,38 @@
+include $(SRCDIR)/config/aros.cfg
+
+# Permanent BSP module, independently of DOS/SD helper files. Explicit build
+# identity is required until a production VID/PID has been allocated. The
+# in-house test identity is never a distributable product default.
+P4_USB_STACK_ARCHIVE ?=
+P4_USB_VID ?= 0
+P4_USB_PID ?= 0
+P4_USB_STACK := $(GENDIR)/$(CURDIR)/tinyusb
+USER_LDFLAGS := -static
+USER_CPPFLAGS := -I$(SRCDIR)/$(CURDIR) -I$(P4_USB_STACK)/src \
+    -DP4_USB_PORT=1 -DP4_USB_VID=$(P4_USB_VID) -DP4_USB_PID=$(P4_USB_PID)
+
+#MM- kernel-esp32p4usb : kernel-esp32p4usb-stack
+#MM- kernel-esp32p4usb-quick : kernel-esp32p4usb-stack
+P4_USB_STACK_FILES := tusb common/tusb_fifo device/usbd \
+    class/vendor/vendor_device class/cdc/cdc_device \
+    portable/synopsys/dwc2/dwc2_common portable/synopsys/dwc2/dcd_dwc2
+$(addprefix $(P4_USB_STACK)/src/,$(addsuffix .c,$(P4_USB_STACK_FILES))) : $(P4_USB_STACK)/.prepared
+	@$(TEST) -f $@
+kernel-esp32p4usb-stack : $(P4_USB_STACK)/.prepared
+$(P4_USB_STACK)/.prepared : $(SRCDIR)/$(CURDIR)/prepare_stack.py $(P4_USB_STACK_ARCHIVE)
+	@$(TEST) -n "$(P4_USB_STACK_ARCHIVE)" || { $(ECHO) "P4_USB_STACK_ARCHIVE required"; exit 1; }
+	@$(TEST) "$(P4_USB_VID)" != 0 -a "$(P4_USB_PID)" != 0 || { $(ECHO) "Explicit authorized USB identity required"; exit 1; }
+	@python3 $(SRCDIR)/$(CURDIR)/prepare_stack.py $(P4_USB_STACK_ARCHIVE) $(P4_USB_STACK)
+	@touch $@
+
+%build_module mmake=kernel-esp32p4usb \
+    modname=esp32p4usb modtype=resource version=$(AROS_TARGET_PLATFORM) \
+    uselibs="romhack" \
+    files="port_resource port_broker firmware_gate hs_phy descriptors cdc_log \
+        $(P4_USB_STACK)/src/tusb $(P4_USB_STACK)/src/common/tusb_fifo \
+        $(P4_USB_STACK)/src/device/usbd \
+        $(P4_USB_STACK)/src/class/vendor/vendor_device \
+        $(P4_USB_STACK)/src/class/cdc/cdc_device \
+        $(P4_USB_STACK)/src/portable/synopsys/dwc2/dwc2_common \
+        $(P4_USB_STACK)/src/portable/synopsys/dwc2/dcd_dwc2"
+%common

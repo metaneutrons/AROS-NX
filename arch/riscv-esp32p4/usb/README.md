@@ -196,3 +196,44 @@ ambiguous failed write. Its bounded byte-exact echo is not a throughput or RC
 session/authentication test. Actual enumeration/control requests, transfer,
 slow/no reader, disconnect/reconnect, watchdog/debug/WLAN coexistence and
 power behavior remain required before generic diagnostic-service integration.
+# Permanent HS port candidate (2026-10-15)
+
+The successor to the bounded experiment is documented in the
+[permanent-port plan](../../../docs/plans/esp32p4-usb-port-service.md).
+`P4_USB_PORT=1` links a permanent `esp32p4usb.resource` into the P4 core;
+its owner starts AFTERDOS without a helper launch. CDC logs are independent
+of the separate `USBRemote` process. No remote backend runs at boot.
+Debug/FS stays the independent ROM recovery path; HS ROM recovery is no
+longer the diagnostic-MVP recovery requirement. Normal HS updates remain
+required but unavailable pending the qualified P4 writer/commit backend.
+The current read-only firmware capability gate reports NO_BACKEND; every
+vendor-control mutation is refused, irrespective of remote consent.
+
+The port remains opt-in and device-only while physical HS enumeration and
+clock/power coexistence are unqualified. It is not automatic role switching.
+Use the pinned TinyUSB archive and explicit authorized `P4_USB_VID`/`PID`;
+invalidate kernel objects on changes. 1209:0001 remains private lab-only.
+The independently buildable BSP-module alternative passes loader auditing,
+but exceeds the current live BSP allocation; never deploy that oversized
+preview. Do not install both the kernel and BSP forms.
+
+Build the separate client and touch launcher without modifying an image:
+
+```sh
+sh arch/riscv-esp32p4/usb/build-port-client.sh AROS_BUILD NEW_OUTPUT
+```
+
+Deploy `USBRemote` and `USBRemoteStart` to FLASHDISK0P0 only after validating
+the image and actual flash range. Start the latter by touch and accept its
+explicit grant. It uses the existing generic RemoteDiag worker, with Workbench
+capture, read-only SYS:Prefs and unattended mouse input, nominal600-second
+lifetime. CDC remains active when that client exits. Native handlers can
+delay worker shutdown; no hard deadline or physical-input arbitration claimed.
+Bus reset/lease expiry retires the client token and forces a new protocol
+session. No callback or borrowed client buffer survives shutdown.
+
+The host RemoteDiag CLI accepts the separately named permanent-port product
+descriptor. `firmware-status` performs only the exact read-only control query,
+not a remote HELLO or update. These are build/offline candidates, not a native
+USB/remote/firmware-update acceptance claim. Older standalone diagnostics
+refuse controller takeover when the permanent resource is installed.
