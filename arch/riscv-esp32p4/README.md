@@ -43,7 +43,9 @@ artifacts, source comparison and still-open enumeration gate are in ROADMAP.
 The next HS photograph shows poll1, Reset-end33 and SETUP0/mounts0, with
 EP0 OUT size0. This late snapshot does not prove what was written at reset.
 A new DCD-path trace candidate227248B57d90f44... and status43196Bbc3a5d97...
-are offline/native-build verified, not installed. They distinguish immediate
+are now installed over Debug/FS with independent full readbacks. Fresh boot
+IDs30914..31117 shows both CPUs, USBPort ready/remote closed and graphics/touch.
+Native v3 HS observation is pending. They distinguish immediate
 reset/enum readback from RX-FIFO/SETUP branch counts without additional FIFO
 pops or endpoint/PHY writes. The enumeration root cause remains open.
 
