@@ -125,7 +125,12 @@ by the present tests.
 Before deployment identify the
 board/table again, verify the full live scratch preimage and preserve app erase
 tails. Never write generated metadata. For an approved HS run wait at least35
-seconds, return to Debug/FS, retain/read the sector before any overwrite, then
+seconds, then hold BOOT before reconnecting Debug/FS power, enter ROM without
+an intervening application boot, and retain/read the sector before any overwrite. An
+unrestricted FS return can create the first trace if HS never did; preservation
+of existing captures alone does not prove connector provenance. The first
+staged HS run recovered a complete trace but remains ambiguous for this reason.
+Then
 decode the saved file with `python3 decode-journal.py SECTOR`. Restore the
 entire original AROS0x38000-byte span, including the journal sector, and verify
 it independently. No valid record is a failed/inconclusive measurement, not a

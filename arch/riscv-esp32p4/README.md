@@ -97,10 +97,14 @@ Tested normal artifact196688B1bc7eef7... is retained. Removal gate RC0-TW is ope
 AROS is now restored including scratch, independently byte-verified; fresh FS
 return shows ROM/PSRAM, graphics/touch, USBPort remote closed and CPU1 WiFi owner.
 For the next synchronized HS run, the retained normal artifact1bc7eef7... is
-now reinstalled/readback verified with pristine scratch. The board waits in
-ROM on Debug/FS; no FS application boot was issued, so it has no new FS trace.
-AROS is temporarily replaced, with exact recovery retained. HS cable action
-and acceptance are pending; this is not the injected self-test.
+reinstalled/readback verified with pristine scratch and no FS application boot.
+Fabian confirms a10s sole-power interruption and35s+ HS connection; host IOKit
+and serial inventory still show no P4/CDC. A complete10-record trace was
+retrieved, but its HS/FS provenance is ambiguous: an unrestricted FS return
+can create a first capture if HS never did. It cannot exclude pre-USB HS
+failure. AROS is restored/readback verified and fresh FS startup observed.
+Next retrieval must hold BOOT before FS reconnection to prevent an intervening
+app boot. HS acceptance remains open; this is not the injected self-test.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
