@@ -25,7 +25,14 @@ register/phase snapshot and USBPortStatus43012Bd02fb1f0... are installed with
 independent exact readback. Fresh FS return shows USBPort ready, two CPUs,
 touch and CPU1 WLAN startup. Two FS-connected photos show the native dialog
 working and loop progress22322->25136 at state1/phase4, with zero bus-reset/
-SETUP/mount counters. Same-boot HS observations remain pending. No remote grant,
+SETUP/mount counters. HS photos IMG_1272/1273 now show owner progress and
+controller reset/enumeration flags, but no SETUP/mount or host enumeration.
+Correction: the original reset counter observed only optional RESET_START;
+this DWC2 emits RESET_END, so its zero was not evidence of absent resets.
+An offline-tested correction counts completed resets and invalidates remote
+leases at either edge. Snapshot v2 adds safe EP0 OUT/configuration reads and
+poll-enable state; core226976B8f8c1a01... and status43100Bef177224... are
+build verified only, not installed. No remote grant,
 PHY tuning, USB reset, endpoint claim or raw MMIO access from the GUI. Exact
 artifacts, source comparison and still-open enumeration gate are in ROADMAP.
 

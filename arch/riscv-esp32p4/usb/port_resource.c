@@ -173,6 +173,7 @@ static void observe(uint32_t phase,uint32_t loops,uint32_t irq_seen,
 {
     struct P4USBSnapshot next={0};
     next.phase=phase;next.loops=loops;next.irq_seen=irq_seen;
+    next.polling=polling;
     next.resets=resets;next.setups=setups;next.mounts=mounts;
     next.hp_clock=mmio(0x500e6018u);next.lp_control=mmio(0x50111048u);
     next.suspendm=mmio(0x500e515cu);
@@ -183,6 +184,10 @@ static void observe(uint32_t phase,uint32_t loops,uint32_t irq_seen,
         next.gintmsk=mmio(0x50000018u);next.dcfg=mmio(0x50000800u);
         next.dctl=mmio(0x50000804u);next.dsts=mmio(0x50000808u);
         next.pcgcctl=mmio(0x50000e00u);next.utmi_fc06=mmio(0x5009c018u);
+        /* Read-only configuration/status. Never sample GRXSTSP (FIFO pop)
+         * or acknowledge the W1C endpoint interrupt register here. */
+        next.hwcfg4=mmio(0x50000050u);next.doepctl0=mmio(0x50000b00u);
+        next.doeptsiz0=mmio(0x50000b10u);next.doepint0=mmio(0x50000b08u);
     }
     if(try_lock()){observation=next;unlock();}
 }
@@ -208,9 +213,12 @@ static uint32_t reset_events,setup_events,mount_events;
 void tud_event_hook_cb(uint8_t port,uint32_t event,bool isr)
 {
     (void)port;(void)isr;
-    if(event==DCD_EVENT_BUS_RESET_START)++reset_events;
+    /* START is optional (DWC2 reports END only). Count completed resets,
+     * and invalidate at either edge so END-only DCDs cannot retain a lease. */
+    if(event==DCD_EVENT_BUS_RESET_END)++reset_events;
     if(event==DCD_EVENT_SETUP_RECEIVED)++setup_events;
-    if(event==DCD_EVENT_BUS_RESET_START || event==DCD_EVENT_UNPLUGGED)bus_changed();
+    if(event==DCD_EVENT_BUS_RESET_START || event==DCD_EVENT_BUS_RESET_END ||
+       event==DCD_EVENT_UNPLUGGED)bus_changed();
 }
 void tud_mount_cb(void) { ++mount_events;bus_changed(); }
 void tud_umount_cb(void) { bus_changed(); }

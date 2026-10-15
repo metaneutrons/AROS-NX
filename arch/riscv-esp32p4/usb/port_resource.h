@@ -10,12 +10,13 @@ enum p4_usb_port_state {
     P4_USB_PORT_STARTING, P4_USB_PORT_READY, P4_USB_PORT_FAULTED
 };
 /* Cached by the owning task. Clients never read MMIO or alter hardware. */
-#define P4_USB_SNAPSHOT_VERSION 1u
+#define P4_USB_SNAPSHOT_VERSION 2u
 struct P4USBSnapshot {
     uint32_t version, size, state, phase, loops, resets, setups, mounts;
     uint32_t irq_seen, id, hwcfg2, gotgctl, gahbcfg, gusbcfg;
     uint32_t gintsts, gintmsk, dcfg, dctl, dsts, pcgcctl;
     uint32_t hp_clock, lp_control, suspendm, utmi_fc06;
+    uint32_t hwcfg4, doepctl0, doeptsiz0, doepint0, polling;
 };
 /* Private permanent BSP resource. No caller enters TinyUSB or supplies a
  * callback. All operations are task-bound, bounded copies, with nonblocking
