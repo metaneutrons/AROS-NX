@@ -91,11 +91,14 @@ The replacement HST2 staged trace is build/host-test verified, but its first
 native FS test failed before USB: IDF aborts an erase anywhere in the running
 app partition, including the reserved sector. A diagnostic-only narrow range
 exception is now built/tested offline; corrected native tests remain pending.
-The failed reference is currently installed and needs coordinated manual
-BOOT/RESET recovery; AROS has NOT yet been restored after this test.
+Manual BOOT/RESET recovery succeeded; corrected candidate is now installed and
+readback verified. A subsequent USB reset returned DOWNLOAD; a watchdog-reset
+command has not yielded an app-start capture. Await a synchronized RESET-only
+press before continuing. AROS has NOT yet been restored after these tests.
 Current corrected candidate196688B1bc7eef7... confines the SDK exception to
 the preflight-checked caller task, operation kind and retained sector; other
-tasks/ISRs and all other regions keep normal protection. Native retest pending.
+tasks/ISRs and all other regions keep normal protection. Native storage retest
+is still pending; installed image identity is not a successful execution.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
