@@ -104,10 +104,14 @@ retrieved, but its HS/FS provenance is ambiguous: an unrestricted FS return
 can create a first capture if HS never did. It cannot exclude pre-USB HS
 failure. AROS is restored/readback verified and fresh FS startup observed.
 The corrected repeat is now installed/readback verified using the same normal
-artifact and pristine scratch; it waits in download mode without an FS app
-boot. AROS is temporarily replaced, exact recovery retained. Next retrieval
-must hold BOOT before FS reconnection to prevent an intervening app boot.
-HS acceptance remains open; this is not the injected self-test.
+artifact and pristine scratch without an intervening FS app boot. Its confirmed
+10s sole-power interruption/35s+ HS run again yields no host P4/CDC. AROS is
+now restored/readback verified after BOOT-held FS reconnection and a no-reset
+ROM read. Complete10-record trace87916acb... proves HS app entry, USB installer
+success and sample6/mounted0 without an intervening FS app boot. Host still
+has no P4/CDC; successful install is not enumeration or PHY-health proof.
+AROS has not restarted yet: USB reset retains DOWNLOAD, manual RESET-only
+pending. HS acceptance remains open; this is not the injected self-test.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual

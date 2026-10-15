@@ -130,6 +130,9 @@ an intervening application boot, and retain/read the sector before any overwrite
 unrestricted FS return can create the first trace if HS never did; preservation
 of existing captures alone does not prove connector provenance. The first
 staged HS run recovered a complete trace but remains ambiguous for this reason.
+The corrected BOOT-held/no-reset ROM retrieval recovers10 valid records proving
+HS app entry, successful install and sample6/mounted0; host enumeration still
+fails. It does not establish PHY health or successful CDC transfers.
 Then
 decode the saved file with `python3 decode-journal.py SECTOR`. Restore the
 entire original AROS0x38000-byte span, including the journal sector, and verify
