@@ -148,6 +148,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
+| WL0 | Change-only WiFiLink observation logging | `host/native build verified; not deployed` | Omit printed per-query UID but retain internal RPC correlation. First and changed g/st/rb/ra/ev/lastid/k/reason emit; UID-only/identical repeats do not. Per-context diagnostic-only cache; no link/query policy change. Four O0/O2 sanitized configurations pass; fresh JC1060 CPU1 resource363160Bfe8edbdb... awaits approved deployment/observation. |
 | CI-WM | WirelessManager product build-contract integration | `source correction and RV32 build verified; PR91 CI pending` | Initial three product lanes fail AT0004 before compilation. P4-only classic-MetaMake diagnostic branch preserves the switch; ordinary profiles use the unchanged released closed capability. Three real transpiler product probes/counterprobes and twenty GNU make target/switch cells pass. Fresh diagnostic manager701280B8cb6490f... is byte-identical; no tool release, weakened gate or board write. |
 | N2H | Flash-delivered helper entry points | `deployment/readback/headless verified; JC1060 GUI scan observed`: Fabian confirms AROSP4DEV WiFi and corrected transition labels; generation1.3 and compact ESP32Board are installed; canonical FLASHDISK0P0 naming retained | Synchronized native GUI/open association; no full WiFi/SAE/PMF/IP pass |
 | N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `manager diagnosis resumed`: generation1.3 deployed; discovery and GUI Scan now recur successfully; manager lifecycle diagnostics deployed/readback/headless verified; explicit GPIO54 C6 reset and CPU1 owner captured; fresh-readiness600s manager capture running | Attribute manager initialization/stop and then open association; peer admission remains0, no IP/data pass |
@@ -1705,6 +1706,10 @@ The opt-in resource query/event-reason observer is native-build verified:
 WiFiLink logs the UID-correlated AP-info status/revisions/event delta; WiFiEvent
 logs accepted lifecycle/link hints; WiFiHint logs generic event ID/status before
 existing rejection. No stale-UP adoption, timeout extension or new authority.
+The2026-10-15 WL0 candidate removes only the displayed UID and suppresses
+unchanged observations per owner context. All other logged values remain in
+the change comparison; internal UID validation and query cadence are unchanged.
+Host/native builds pass, but the new resource is not installed or observed.
 Eight diagnostic-off/on O0/O2 sanitized callback/AP-info runs pass; observer
 and quiet touch deployed/readback in preserved BSP2212f70a... . Fresh authorized
 attempt reports Could not connect: token1 commits, event776/reason8 follows,
@@ -44725,3 +44730,39 @@ remain open. No partial stage is a complete A/B update system.
   O0/O2 ASan/UBSan exit0; native scheduling/radio and full build remain outside
   those fixtures. Next: push correction to PR91, qualify the integrated product
   head and retain pending hardware boundaries. No newly built manager installed.
+
+### 2026-10-15 - WL0 change-only WiFiLink logging, UID correlation retained
+
+- Fabian asks whether u=728 is needed in the recurring WiFiLink record and
+  requests output only when the other values change. It is control->uid, the
+  correlated AP-info query identity; advancing it is not link-state change.
+  No UID allocation, correlation, radio transaction or query timing is removed.
+- Logger omits the UID and compares every remaining value: g, st, rb, ra, ev,
+  lastid, k and reason. First observation always emits; unchanged/UID-only
+  results do not. Cache is private to the zero-initialized wifi_probe_context
+  and compiled only with P4_WIFI_ASSOC_DIAGNOSTICS. Logging remains before
+  existing stale-snapshot rejection; it cannot authorize publication/traffic.
+  RPC282/283 diagnostics and unconditional console overflow warnings unchanged.
+- Independent source review finds no blocker. Actual extracted-production
+  AP-info fixture passes diagnostics0/O0 and0/O2 at1300 checks each,1/O0 and
+  1/O2 at1339 each under ASan/UBSan, exit0. Includes first/same/UID-only,
+  field-by-field changes, fresh context and stale result logging without
+  publication. Context/API layers remain fakes, not native scheduler/radio proof.
+  Evidence `ci-wirelessmanager-2026-10-15.408r2x/wifilink-final.log`, SHA256
+  37950b99e2f468a8d7157e7f957b7373a5b9a16d80eed5872e3f5d6850c27b00.
+- Initial native invocations use incomplete/incompatible gate combinations
+  and correctly fail compile-time owner checks; no artifact from those runs is
+  accepted. Correct final config: JC1060-v2/legacy, setup+INIT+reply+owner1,
+  owner CPU1, one-shot MAC/scan0, scan/association diagnostics1, accepted-risk
+  association1; privacy/recovery/peer qualification assertions remain default0,
+  WiFiIO remains off. All resource objects under network/esp32p4wifi are deleted
+  before the final sequential quick build. Actual successful module link exit0,
+  no captured error:/warning:,363160B SHA256
+  fe8edbdb858b5ad3fe971b67aaf9aea4187e0e45d9bee06e9b6b893df64e6b19;
+  nm -u empty, compiled WiFiLink format contains no u field. Final clean log
+  SHA256b50e6c4226dc8c747ccdfd2853c650da8470da0fe2e115481fcbb7fc4e9a03be.
+- Nothing is flashed or installed; the board still emits the old format until
+  a separately verified BSP replacement. No user input, serial access or new
+  hardware test. Next: integrate source through PR91, then freshly confirmed
+  installation/HS gate and subsequent WLAN diagnosis. Do not infer link health
+  from fewer log rows or absence of a message.

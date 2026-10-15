@@ -1,5 +1,13 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+WiFiLink follow-up2026-10-15 (build verified, not installed): `u` is the
+per-query RPC UID, not a link-state value. Correlation remains unchanged,
+but this field is omitted from WiFiLink output. A context-local diagnostic
+cache emits the first observation and then only changes to g/st/rb/ra/ev/
+lastid/k/reason. Existing stale-snapshot rejection and radio timing/policy
+remain unchanged. Diagnostics on/off O0/O2 ASan/UBSan and a fresh complete
+JC1060 CPU1 resource build pass; resource363160Bfe8edbdb... is not deployed.
+
 2026-10-15 USB-MVP scope confirmed: screenshots, mouse/click, read-only files,
 CDC logs and HS firmware flashing; larger remote-control features deferred.
 Echo-only and diagnostic launchers now permit separate transport/backend gates.

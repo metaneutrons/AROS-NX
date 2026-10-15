@@ -84,6 +84,17 @@ struct wifi_probe_context {
     ULONG owner_events;
     ULONG owner_last_event;
     struct p4_hosted_link_observation link_observation;
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+    BOOL link_diagnostic_valid;
+    ULONG link_diagnostic_generation;
+    LONG link_diagnostic_status;
+    ULONG link_diagnostic_revision_before;
+    ULONG link_diagnostic_revision_after;
+    ULONG link_diagnostic_events;
+    ULONG link_diagnostic_last_event;
+    ULONG link_diagnostic_kind;
+    ULONG link_diagnostic_reason;
+#endif
     struct p4_hosted_sta_ap_info link_snapshot;
     ULONG link_query_revision;
     ULONG link_query_started;
@@ -169,7 +180,7 @@ void bug(const char *format, ...)
         "[WiFiEvent] id=%u g=%u rev=%u k=%u st=%ld reason=%u\n";
     static const char hint_format[] = "[WiFiHint] id=%u g=%u st=%ld\n";
     static const char link_format[] =
-        "[WiFiLink] g=%u u=%u st=%ld rb=%u ra=%u ev=%u lastid=%u k=%u reason=%u\n";
+        "[WiFiLink] g=%u st=%ld rb=%u ra=%u ev=%u lastid=%u k=%u reason=%u\n";
     static const char rpc_start_format[] =
         "[WiFiRPC] p=1 id=%u u=%u us=%u\n";
     static const char rpc_finish_format[] =
@@ -1346,7 +1357,7 @@ static void test_numeric_diagnostics_preserve_query_decisions(void)
     CHECK(query());
     expect_match();
     check_diagnostics(
-        "[WiFiLink] g=305419888 u=1 st=0 rb=1 ra=1 ev=0 lastid=0 k=1 reason=0\n");
+        "[WiFiLink] g=305419888 st=0 rb=1 ra=1 ev=0 lastid=0 k=1 reason=0\n");
     check_no_ap_identity_output();
 
     fixture_init();
@@ -1365,7 +1376,7 @@ static void test_numeric_diagnostics_preserve_query_decisions(void)
     CHECK(!fixture.owner.poisoned && !fixture.fifo.poisoned);
     check_diagnostics(
         "[WiFiEvent] id=776 g=305419888 rev=2 k=2 st=0 reason=8\n"
-        "[WiFiLink] g=305419888 u=1 st=0 rb=1 ra=2 ev=1 lastid=776 k=2 reason=8\n");
+        "[WiFiLink] g=305419888 st=0 rb=1 ra=2 ev=1 lastid=776 k=2 reason=8\n");
     check_no_ap_identity_output();
 
     fixture_init();
@@ -1379,7 +1390,7 @@ static void test_numeric_diagnostics_preserve_query_decisions(void)
                          sizeof test_resource.observed_ap));
     CHECK(!fixture.owner.poisoned && !fixture.fifo.poisoned);
     check_diagnostics(
-        "[WiFiLink] g=305419888 u=1 st=12303 rb=1 ra=1 ev=0 lastid=0 k=1 reason=0\n");
+        "[WiFiLink] g=305419888 st=12303 rb=1 ra=1 ev=0 lastid=0 k=1 reason=0\n");
     check_no_ap_identity_output();
 
     fixture_init();
@@ -1388,7 +1399,7 @@ static void test_numeric_diagnostics_preserve_query_decisions(void)
     diagnostic_reset();
     CHECK(!query());
     check_diagnostics(
-        "[WiFiLink] g=305419888 u=1 st=5 rb=1 ra=1 ev=0 lastid=0 k=1 reason=0\n");
+        "[WiFiLink] g=305419888 st=5 rb=1 ra=1 ev=0 lastid=0 k=1 reason=0\n");
     CHECK(fixture.owner.poisoned == 1u && fixture.fifo.poisoned == 1u);
     CHECK(fixture.owner.ids.retired == 1u);
     expect_link_unknown();
@@ -1403,6 +1414,118 @@ static void test_numeric_diagnostics_preserve_query_decisions(void)
     CHECK(fixture.owner.poisoned == 1u && fixture.fifo.poisoned == 1u);
     CHECK(fixture.owner.ids.retired == 1u);
     expect_link_unknown();
+    check_no_ap_identity_output();
+}
+
+static void test_wifi_link_diagnostic_change_suppression(void)
+{
+    fixture_init();
+    prepare_secret_hint();
+    diagnostic_reset();
+    CHECK(query());
+    CHECK(fixture.last_request_uid == 1u);
+    check_diagnostics(
+        "[WiFiLink] g=305419888 st=0 rb=1 ra=1 ev=0 lastid=0 k=1 reason=0\n");
+
+    /* Force the periodic refresh while leaving all reported fields stable.
+     * The RPC UID advances, but it must not produce another WiFiLink line. */
+    fixture.now += 1000001u;
+    diagnostic_reset();
+    CHECK(query());
+    CHECK(fixture.exchange_calls == 2u);
+    CHECK(fixture.last_request_uid == 2u);
+    check_diagnostics("");
+
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+    fixture_init();
+    fixture.context.owner_events = 10u;
+    fixture.context.owner_last_event = 773u;
+    fixture.context.link_observation.revision = 2u;
+    fixture.context.link_observation.kind = 3u;
+    fixture.control.uid = 728u;
+    fixture.control.ap_info.status = 12303;
+
+    diagnostic_reset();
+    wifi_owner_log_link_snapshot(&fixture.context, &fixture.control,
+                                 2u, 2u, 10u);
+    check_diagnostics(
+        "[WiFiLink] g=2 st=12303 rb=2 ra=2 ev=0 lastid=773 k=3 reason=0\n");
+
+    /* UID is RPC correlation state, not a WiFiLink diagnostic field. */
+    fixture.control.uid = 729u;
+    diagnostic_reset();
+    wifi_owner_log_link_snapshot(&fixture.context, &fixture.control,
+                                 2u, 2u, 10u);
+    check_diagnostics("");
+
+    diagnostic_reset();
+    wifi_owner_log_link_snapshot(&fixture.context, &fixture.control,
+                                 3u, 2u, 10u);
+    check_diagnostics(
+        "[WiFiLink] g=3 st=12303 rb=2 ra=2 ev=0 lastid=773 k=3 reason=0\n");
+
+    fixture.control.ap_info.status = 12304;
+    diagnostic_reset();
+    wifi_owner_log_link_snapshot(&fixture.context, &fixture.control,
+                                 3u, 2u, 10u);
+    check_diagnostics(
+        "[WiFiLink] g=3 st=12304 rb=2 ra=2 ev=0 lastid=773 k=3 reason=0\n");
+
+    diagnostic_reset();
+    wifi_owner_log_link_snapshot(&fixture.context, &fixture.control,
+                                 3u, 4u, 10u);
+    check_diagnostics(
+        "[WiFiLink] g=3 st=12304 rb=4 ra=2 ev=0 lastid=773 k=3 reason=0\n");
+
+    fixture.context.link_observation.revision = 4u;
+    diagnostic_reset();
+    wifi_owner_log_link_snapshot(&fixture.context, &fixture.control,
+                                 3u, 4u, 10u);
+    check_diagnostics(
+        "[WiFiLink] g=3 st=12304 rb=4 ra=4 ev=0 lastid=773 k=3 reason=0\n");
+
+    fixture.context.owner_events = 11u;
+    diagnostic_reset();
+    wifi_owner_log_link_snapshot(&fixture.context, &fixture.control,
+                                 3u, 4u, 10u);
+    check_diagnostics(
+        "[WiFiLink] g=3 st=12304 rb=4 ra=4 ev=1 lastid=773 k=3 reason=0\n");
+
+    fixture.context.owner_last_event = 774u;
+    diagnostic_reset();
+    wifi_owner_log_link_snapshot(&fixture.context, &fixture.control,
+                                 3u, 4u, 10u);
+    check_diagnostics(
+        "[WiFiLink] g=3 st=12304 rb=4 ra=4 ev=1 lastid=774 k=3 reason=0\n");
+
+    fixture.context.link_observation.kind = 4u;
+    diagnostic_reset();
+    wifi_owner_log_link_snapshot(&fixture.context, &fixture.control,
+                                 3u, 4u, 10u);
+    check_diagnostics(
+        "[WiFiLink] g=3 st=12304 rb=4 ra=4 ev=1 lastid=774 k=4 reason=0\n");
+
+    fixture.context.link_observation.reason = 9u;
+    diagnostic_reset();
+    wifi_owner_log_link_snapshot(&fixture.context, &fixture.control,
+                                 3u, 4u, 10u);
+    check_diagnostics(
+        "[WiFiLink] g=3 st=12304 rb=4 ra=4 ev=1 lastid=774 k=4 reason=9\n");
+
+    /* A fresh owner context logs its first observation again. */
+    fixture_init();
+    fixture.context.owner_events = 10u;
+    fixture.context.owner_last_event = 773u;
+    fixture.context.link_observation.revision = 2u;
+    fixture.context.link_observation.kind = 3u;
+    fixture.control.uid = 730u;
+    fixture.control.ap_info.status = 12303;
+    diagnostic_reset();
+    wifi_owner_log_link_snapshot(&fixture.context, &fixture.control,
+                                 2u, 2u, 10u);
+    check_diagnostics(
+        "[WiFiLink] g=2 st=12303 rb=2 ra=2 ev=0 lastid=773 k=3 reason=0\n");
+#endif
     check_no_ap_identity_output();
 }
 
@@ -1655,11 +1778,11 @@ static void test_recheck_during_query_cannot_publish_stale_snapshot(void)
         if (modes[i] == FAKE_INTERLEAVE_BEACON)
             check_diagnostics(
                 "[WiFiHint] id=21 g=305419888 st=0\n"
-                "[WiFiLink] g=305419888 u=1 st=0 rb=1 ra=1 ev=1 lastid=773 k=1 reason=0\n");
+                "[WiFiLink] g=305419888 st=0 rb=1 ra=1 ev=1 lastid=773 k=1 reason=0\n");
         else
             check_diagnostics(
                 "[WiFiHint] id=43 g=305419888 st=0\n"
-                "[WiFiLink] g=305419888 u=1 st=0 rb=1 ra=1 ev=1 lastid=773 k=1 reason=0\n");
+                "[WiFiLink] g=305419888 st=0 rb=1 ra=1 ev=1 lastid=773 k=1 reason=0\n");
         check_no_ap_identity_output();
         fixture.mode = FAKE_AP_SUCCESS;
         CHECK(query());
@@ -1674,6 +1797,7 @@ int main(void)
     test_wifi_rpc_diagnostics();
     test_wifi_rpc_failures_and_suppression();
     test_numeric_diagnostics_preserve_query_decisions();
+    test_wifi_link_diagnostic_change_suppression();
     test_remote_statuses_down_or_quarantine();
     test_unsubmitted_and_poisoned_timeout();
     test_malformed_and_wrong_uid_retire();

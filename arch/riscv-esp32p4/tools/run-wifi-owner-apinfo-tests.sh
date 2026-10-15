@@ -155,6 +155,10 @@ extract_function wifi_owner_request \
 	'static int wifi_owner_request(struct wifi_probe_context *context, struct p4_hosted_owner *owner, struct wifi_owner_control *control, struct p4_hosted_fifo *fifo, unsigned checksum, uint32_t id, ULONG remaining)'
 extract_function wifi_owner_remaining \
 	'static ULONG wifi_owner_remaining(struct wifi_probe_context *context, ULONG started, ULONG limit)'
+printf '%s\n' '#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS' >> "$extract"
+extract_function wifi_owner_log_link_snapshot \
+	'static void wifi_owner_log_link_snapshot(struct wifi_probe_context *context, struct wifi_owner_control *control, ULONG generation, ULONG revision, ULONG events_before)'
+printf '%s\n' '#endif' >> "$extract"
 extract_function wifi_owner_refresh_link_snapshot \
 	'static int wifi_owner_refresh_link_snapshot(struct wifi_probe_context *context, struct p4_hosted_owner *owner, struct wifi_owner_control *control, struct p4_hosted_fifo *fifo, unsigned checksum)'
 

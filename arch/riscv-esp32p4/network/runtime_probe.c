@@ -227,6 +227,17 @@ struct wifi_probe_context
     BOOL first_join_pending;
     ULONG first_join_revision;
     struct p4_hosted_link_observation link_observation;
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+    BOOL link_diagnostic_valid;
+    ULONG link_diagnostic_generation;
+    LONG link_diagnostic_status;
+    ULONG link_diagnostic_revision_before;
+    ULONG link_diagnostic_revision_after;
+    ULONG link_diagnostic_events;
+    ULONG link_diagnostic_last_event;
+    ULONG link_diagnostic_kind;
+    ULONG link_diagnostic_reason;
+#endif
     /* A current-AP snapshot is not authorization. Only the active association
      * workflow may combine it with policy/event/lifecycle acceptance. */
     struct p4_hosted_sta_ap_info link_snapshot;
@@ -1156,6 +1167,45 @@ static int wifi_owner_request(struct wifi_probe_context *context,
     return control->status == 0;
 }
 
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+static void wifi_owner_log_link_snapshot(struct wifi_probe_context *context,
+    struct wifi_owner_control *control, ULONG generation, ULONG revision,
+    ULONG events_before)
+{
+    LONG status = (LONG)control->ap_info.status;
+    ULONG revision_after = context->link_observation.revision;
+    ULONG events = context->owner_events - events_before;
+    ULONG last_event = context->owner_last_event;
+    ULONG kind = context->link_observation.kind;
+    ULONG reason = context->link_observation.reason;
+
+    if (context->link_diagnostic_valid &&
+        context->link_diagnostic_generation == generation &&
+        context->link_diagnostic_status == status &&
+        context->link_diagnostic_revision_before == revision &&
+        context->link_diagnostic_revision_after == revision_after &&
+        context->link_diagnostic_events == events &&
+        context->link_diagnostic_last_event == last_event &&
+        context->link_diagnostic_kind == kind &&
+        context->link_diagnostic_reason == reason)
+        return;
+
+    bug("[WiFiLink] g=%u st=%ld rb=%u ra=%u ev=%u lastid=%u k=%u reason=%u\n",
+        (unsigned)generation, (long)status, (unsigned)revision,
+        (unsigned)revision_after, (unsigned)events, (unsigned)last_event,
+        (unsigned)kind, (unsigned)reason);
+    context->link_diagnostic_valid = TRUE;
+    context->link_diagnostic_generation = generation;
+    context->link_diagnostic_status = status;
+    context->link_diagnostic_revision_before = revision;
+    context->link_diagnostic_revision_after = revision_after;
+    context->link_diagnostic_events = events;
+    context->link_diagnostic_last_event = last_event;
+    context->link_diagnostic_kind = kind;
+    context->link_diagnostic_reason = reason;
+}
+#endif
+
 /* Query a new event revision immediately; when association is enabled, also
  * refresh at most once per second to detect loss without an event hint.
  * The query runs outside client/controller locks, on the serialized owner.
@@ -1204,14 +1254,8 @@ static int wifi_owner_refresh_link_snapshot(struct wifi_probe_context *context,
     /* Numeric metadata only, after the UID-correlated response decoder.
      * This is an observation, not permission to publish a stale snapshot.
      * Record changed revisions before the existing rejection below. */
-    bug("[WiFiLink] g=%u u=%u st=%ld rb=%u ra=%u ev=%u lastid=%u k=%u reason=%u\n",
-        (unsigned)generation, (unsigned)control->uid,
-        (long)control->ap_info.status, (unsigned)revision,
-        (unsigned)context->link_observation.revision,
-        (unsigned)(context->owner_events - events_before),
-        (unsigned)context->owner_last_event,
-        (unsigned)context->link_observation.kind,
-        (unsigned)context->link_observation.reason);
+    wifi_owner_log_link_snapshot(context, control, generation, revision,
+                                 events_before);
 #endif
     if (context->generation != generation ||
         context->link_observation.generation != generation ||
