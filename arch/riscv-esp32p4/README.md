@@ -11,8 +11,11 @@ implemented: the separate capability request reports NO_BACKEND and all
 mutation requests stall, pending the signed paired-image/native writer gates.
 The opt-in core is226080B72b6eeda..., within both legacy and512KiB A/B
 kernel limits, with no BSP/table/helper-boundary change. The rejected BSP-module
-preview exceeded the live BSP allocation by185832B. Neither candidate is
-flashed or HS-qualified. Native enumeration remains unresolved. See the
+preview exceeded the live BSP allocation by185832B. The kernel and new
+Remote client/launcher are now installed on JC1060 through Debug/FS with
+independent exact readback; fresh two-hart return boot reports USBPort ready,
+remote closed, graphics/touch and CPU1 WLAN startup. This is not HS
+enumeration or CDC/Remote-Bulk acceptance; native enumeration remains open. See the
 [port-service plan](../../docs/plans/esp32p4-usb-port-service.md) and ROADMAP RC0.
 
 WiFiLink follow-up2026-10-15 (JC1060 installed/readback verified): `u` is the

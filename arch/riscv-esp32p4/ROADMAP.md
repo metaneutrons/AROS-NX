@@ -195,7 +195,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C1P | Graphical boot/update performance | `hardware partial; runtime hang gate open` | Rotation/mirror: 140 sanitizer cases; actual producer: 400 submissions/1,677 guarded IRQs. CPU90 synchronous full update 2.776 s; CPU360 synchronous 0.617 s; v2 coalesced submission 0.296 s. Paired v2 core/HIDD initially passes headless Wanderer and flash checks. Fabian observes speedup then slowdown/hang. Console-only nonblocking runtime fix now sanitizer-tested, flashed and verified; explanation of the observed hang remains unconfirmed. On 2026-10-01 Fabian reports drawing is fine so far after requester-free RAM Disk opening; duration unspecified. Sustained no-reader/stress and complete interactive regression gates remain open. |
 | CQ1 | Bounded queued SMP debug console | `hardware partial (JC1060); default-plain deployed/readback/headless; D1001 open` | 2026-10-13 framed core showed both harts/108 consecutive records and reader recovery. 2026-10-14: P4_CONSOLE_RECORD_PREFIX defaults0, optional1 keeps framing; overflow warnings always active. Clean native193024Ba68ca519.../independent readback and111.929s fresh218-row headless export show no normal prefix,22 touch heartbeats and CPU1 WLAN owner. Twelve sanitized USB/UART default/0/1 host runs pass; old-header mutation rejected. Plain logs cannot prove sequence continuity. Native overload/physical disconnect and fresh interactive gates remain open. Early/fatal direct output and timer-failure backlog loss remain explicit limits. |
-| RC0 | Permanent HS port and USB remote diagnostic MVP | `kernel/client build verified; not deployed; native HS enumeration unresolved; firmware writer open` | 2026-10-15: permanent kernel resource, AFTERDOS PIO owner and independent CDC; separate task/session-bound bulk grant with2s lease. Opt-in226080B core72b6eeda... fits legacy/512KiB core limits without BSP changes; rejected BSP-module preview exceeded its allocation. USBRemote98800Bd983dd43.../touch launcher52796Bef8e09ed... build. Sanitized broker/API/owner/client, descriptor, control-gate and composition tests pass with fake hardware; no new hardware pass. Update query returns NO_BACKEND, mutation stalls: signed P4 writer/commit remains required. Debug/FS is retained recovery, HS ROM recovery no longer required by the narrowed MVP. Installed older core/helper remain unchanged; HS/CDC/remote/update and D1001 gates open. |
+| RC0 | Permanent HS port and USB remote diagnostic MVP | `JC1060 kernel/helper installed and return boot captured; native HS/CDC/bulk open; firmware writer open` | 2026-10-15: permanent kernel resource, AFTERDOS PIO owner and independent CDC; separate task/session-bound bulk grant with2s lease. Opt-in226080B core72b6eeda... and helperca5612f4... installed via Debug/FS with independent exact readbacks; BSP/table/SD/C6 unchanged. Fresh boot IDs30291..30490 reports two CPUs, watchdog, USBPort ready/remote closed, graphics/touch and CPU1 WLAN startup. USBRemote98800Bd983dd43.../touch launcher52796Bef8e09ed... await native launch. Sanitized broker/API/owner/client, descriptor, control-gate and composition tests pass with fake hardware. Update query returns NO_BACKEND, mutation stalls: signed P4 writer/commit remains required. Debug/FS is retained recovery; HS ROM recovery no longer required by the narrowed MVP. HS/CDC/remote/update and D1001 gates remain open. |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware verified` | Complete GB0 evidence: correctly oriented persistent Wanderer with title/icons/four edges, bounded graphical recovery without SD, 20/20 controlled EN-reset boots, a 30-minute desktop soak explicitly composed with B5's active concurrent SD/scanout stress, and an exact raw-card gate.  The latter used hardware-locked first host insertions around one normal D1001 boot; prepared image, pre-run readback and post-run readback are byte-identical at SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Two earlier comparisons remain documented as macOS `.fseventsd` contamination, not hidden as passes |
 | C4 | Touch as an absolute mouse HIDD | `hardware partial` | Since 2026-10-04 the touch path is the portable stack of D3 (`touchscreen.hidd`, `gsl3670.hidd`, `esp32p4board.resource`); the D1001 has not run it yet, so everything below describes the former kernel GSL driver and `p4touch.hidd`. D1001 identification, bounded firmware load/status and contact transport are hardware verified. The absolute mouse HIDD and nearest-contact continuity pass synchronized one-/two-contact tests; hardware IDs are not stable. A stationary pointer recovered after USB reset; its prior cause remains unknown. The tap policy defaults to button-free motion, tap-to-click and 400-ms hold-drag, preserving selectable direct mode and the right-button latch. Fabian confirms movement, tap and hold-drag with zero errors and clean release. A consented perimeter trace measures X=16..1638/Y=15..874; board-specific calibration now maps that range to the full surface. Its 3,863 host checks, build and package audit pass. A fresh synchronized run confirms four-edge reachability and menu-dropdown opening, with zero I2C errors and clean release at Y=5. Rapid double-tap reliability is reported poor; first-empty short-tap release (50-ms idle gap restored after renewed graphics slowdown) now pass 3,892 sanitizer checks and are a flashed candidate, not interactive acceptance; a volume requester precedes successful RAM Disk opening (name reported as TENEME, possibly THEME; unconfirmed). Theme assignments, Ice assets and PNG registration now pass a 167-entry host image verification; SD image now written/readback-verified/ejected; visible gate fails with missing png.library>=52; 171-entry runtime-library closure correction is now SD written/readback-verified/ejected (2026-10-01); synchronized 55-second boot reaches Wanderer and attempts the new runtime libraries; Fabian confirms requester-free RAM Disk opening and one visible toolbar symbol; complete toolbar and sustained performance are not yet accepted. Menu-item execution, bounded recovery, intermittent startup reliability and the 1,000-cycle gates remain open |
@@ -4594,9 +4594,12 @@ recovery gate. Normal firmware update over HS is still required, not supplied
 by this waiver: P4 writer, signed admission, selection/readback/rollback remain
 open. The current control capability returns NO_BACKEND and mutation stalls.
 The versioned USB slice plan is docs/plans/esp32p4-usb-port-service.md.
-Kernel integration avoids the measured oversized BSP-module alternative; no
-layout/helper/bootloader change or deployment is performed. Native enumeration
-failure is still unresolved; a successful build cannot close that gate.
+Kernel integration avoids the measured oversized BSP-module alternative.
+The226080B core and helperca5612f4... are installed/readback verified via
+Debug/FS without BSP/layout/bootloader/SD/C6 changes. Fresh return boot reports
+USBPort ready/remote closed, two CPUs, graphics/touch and CPU1 WLAN startup.
+Native enumeration, actual CDC bytes and service-granted bulk remain open;
+prepare the freshly authorized coordinated HS move before a backend test.
 
 2026-10-15 HS echo attempt: Fabian confirms the sole-power cable is on HS,
 normal desktop visible, then explicitly starts USBEchoTest and accepts Start.
@@ -44946,3 +44949,52 @@ remain open. No partial stage is a complete A/B update system.
   install through verified Debug/FS range/readback, coordinate HS cable move,
   qualify enumeration and CDC before granting Remote-Bulk. Actual firmware
   updates and full RC-M1..M9 remain open, as does the WLAN goal.
+
+### 2026-10-15 - RC0 approved permanent-owner Debug/FS installation
+
+- Fabian freshly confirms readiness and requests installation over Debug/FS,
+  followed by HS CDC/Remote-Bulk tests. Evidence directory:
+  usb-port-install-2026-10-15.NyYAMR under the established evidence root.
+  Only /dev/cu.usbmodem1101 is released from devserial; history, daemon and
+  Bluetooth port remain untouched. CLI0.2.12/daemon0.2.13 mismatch is reported,
+  not resolved by restarting the daemon. Prior capture ends at ID30260.
+- Generic enter_bootloader macro followed by no-reset security query fails
+  with no data (exit2), before any write. One explicit usb-reset query then
+  exits0: ESP32-P4v1.3, USB-Serial/JTAG, MAC80:f1:b2:d3:3b:a6, flags0,
+  secure boot/encryption disabled. Flash-id exits0,16MiB. Live table read
+  validates checksum/unencrypted single legacy ota_0 at0x20000/8MiB.
+- Source6f172ebdfe core226080B72b6eeda... matches the build-verified artifact.
+  Read229376B at0x20000; offline plan validates image checksum/appended digest
+  and preserves the last erase-sector tail. Payload SHA256
+  ca2525d76c7ca17926582ee5ebcac48f6b1f4bee21b48af00452ceedfc07549a.
+  Helper live pre-read matches retained8cfa7b66... exactly. New copied stage
+  adds only USBRemote98800Bd983dd43..., USBRemoteStart52796Bef8e09ed... and
+  its existing-style icon; all previous files unchanged, no autostart.
+  FAT16 image4194304B SHA256
+  ca5612f4654a6a642b416a24b360b7748b39d72a11d96d3c19ae0894b56061e2;
+  readonly attach/fsck/detach exits0,42 files/189KiB free.
+- Pending write ranges are exactly0x20000/0x38000 and0xc00000/0x400000.
+  Pinned esptool5.5.0 whole-write attempts1; before/after no-reset. BSP,
+  bootloader/table/NVS, SD and C6 remain unchanged. Independent full readback
+  and devserial-first return boot are required before the coordinated HS move.
+  This preparation is not a successful deployment or native USB acceptance.
+
+- Completion: writer session14818 exits0, both hashes verified. Independent
+  readback session66114 exits0 and both full cmp checks pass. Core span
+  229376B SHA256ca2525d76c7ca17926582ee5ebcac48f6b1f4bee21b48af00452ceedfc07549a;
+  helper4194304B SHA256ca5612f4654a6a642b416a24b360b7748b39d72a11d96d3c19ae0894b56061e2.
+  devserial is reopened before one explicit reset macro. Rows30261..30289
+  are the earlier pre-write boot, not return evidence. Fresh ROM/image and
+  boot excerpt is IDs30291..30490,200 rows, return-boot.jsonl SHA256
+  b39f4549f9222131a22dbd9b5bcac14ab26472a434f24175d56204cc43205cfb.
+- New image's XIP segment218948B is captured. Watchdog6000ms, PSRAM200MHz,
+  hart1 online/cpus2, queued sender, normal AddDisplayDriver, SD detection,
+  GT911/touch and C6 GPIO54 reset/CPU1 WLAN owner are present. USBPort reports
+  HS owner ready, remote closed and firmware writes unavailable at ID30462.
+  Graphics frames/swaps advance with faults0/rejects0. No captured USB owner
+  fault, trap/Guru/alert or subsequent ROM boot in this fresh excerpt. Early
+  resident rows still coalesce/truncate; no lossless-early-log or reset-cause
+  proof is inferred. No visual desktop pass inferred from this capture.
+- Next: release only Debug/FS capture for the authorized single-power cable
+  move; connect HS normally without BOOT/RESET. Inspect actual enumeration and
+  CDC before starting USBRemoteStart. Firmware writes remain unavailable.
