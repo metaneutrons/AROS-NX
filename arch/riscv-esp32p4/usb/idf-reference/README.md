@@ -37,3 +37,42 @@ unchanged. A reference build larger than the prior AROS erase span needs a
 larger pre-read, including the tail that must be restored. Scope/record every
 write and restore; do not count application recovery as a USB firmware updater.
 Fresh physical readiness is required for each cable/recovery interaction.
+
+## Optional single-cable diagnostic journal (default OFF)
+
+The JC1060 vendor tree at `~/Downloads/JC1060P470C_I_W_Y` contains generic
+`bsp_usb_host_start()` implementations but no invoked HS USB-device startup
+in the inspected IDF/Arduino demos. Those host helpers are not a known-good
+CDC reference. The unmodified official CDC example remains the comparison.
+
+When native CDC is absent, an explicit development build can retain one
+pre-write register snapshot after sample6 (about30 seconds). This is NOT a
+read-only-flash reference: `HS_REFERENCE_PERSIST=ON` permits one4096-byte
+erase/write at app-relative0x37000, absolute0x57000. It is restricted to
+JC1060 MAC80:f1:b2:d3:3b:a6 and the existing ota_0 at0x20000/0x800000.
+The complete original sector must already be retained for exact restoration;
+pass its CRC32 as `HS_REFERENCE_PREIMAGE_CRC32=0x85539a44` only for the
+documented A6knoc preimage, not as a reusable board constant.
+
+The unsigned image including checksum padding and SHA must end before that
+sector. Signed-image configurations fail compilation; hardware secure boot,
+encrypted app partitions, an attached Debug/FS host, unknown/partial sector
+contents and image overlap refuse new writes. A valid old record is retained,
+not replaced. Failed/uncertain operations are not retried. CRC is a corruption
+guard, not authentication. Debug/FS absence alone does not prove an HS cable
+connection: synchronize the physical run and label the execution explicitly.
+
+The current candidate is build verified only. Before deployment identify the
+board/table again, verify the full live scratch preimage and preserve app erase
+tails. Never write generated metadata. For an approved HS run wait at least35
+seconds, return to Debug/FS, retain/read the sector before any overwrite, then
+decode the saved file with `python3 decode-journal.py SECTOR`. Restore the
+entire original AROS0x38000-byte span, including the journal sector, and verify
+it independently. No valid record is a failed/inconclusive measurement, not a
+reason for an automatic retry. The snapshot precedes its flash operation;
+later USB behavior is not an undisturbed reference measurement.
+
+Offline checks: compile `main/journal.c` and `tests/test_journal.c` with the
+`main` include directory, C11, `-Wall -Wextra -Werror`, O0/O2 and ASan/UBSan;
+run both executables. Run `python3 decode-journal.py --self-test` separately.
+These checks do not establish HS enumeration or native flash-write safety.

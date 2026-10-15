@@ -1,5 +1,6 @@
 /* Copyright (C) 2026, The AROS Development Team.
- * Reference only: unmodified official CDC example plus read-only observation.
+ * Reference only: unmodified official CDC example plus read-only USB observation.
+ * Explicit development option adds one backed-up flash-sector journal.
  * Not linked into AROS. Never flash IDF's generated bootloader/table.
  */
 #include <stdint.h>
@@ -21,6 +22,9 @@
 #endif
 _Static_assert(TINYUSB_PORT_DEFAULT_HS==TINYUSB_PORT_HIGH_SPEED_0,
                "Reference must use native HS, not the Debug/FS connector");
+#if defined(HS_REFERENCE_PERSIST)
+void hs_journal_observe(const char *,size_t);
+#endif
 
 static uint32_t reg(uintptr_t address)
 {
@@ -59,6 +63,11 @@ static void observer(void *argument)
             (unsigned long)reg(0x50000b00),(unsigned long)reg(0x50000b10),
             (unsigned long)reg(0x50000b08));
         if(n<=0 || (size_t)n>=sizeof(text))continue;
+#if defined(HS_REFERENCE_PERSIST)
+        /* Capture before writing flash/logging; never reclassify a later FS
+         * boot as the preceding HS execution. Wrapper attempts once only. */
+        if(sample>=6)hs_journal_observe(text,(size_t)n);
+#endif
         ESP_LOGI("HSReference","%s",text);
         if(tud_cdc_n_connected(0)) {
             /* Bounded/nonblocking; partial observation is not a complete dump. */
@@ -79,7 +88,8 @@ static esp_err_t observed_install(const tinyusb_config_t *config)
 }
 
 /* Preserve the official example's descriptors, PHY, task and echo path.
- * The install wrapper adds only a low-priority read-only observer task. */
+ * The install wrapper adds a low-priority observer task; optional persistence
+ * is separate from the USB register sampling and disabled by default. */
 #define tinyusb_driver_install observed_install
 #define app_main reference_app_main
 #include "tusb_serial_device_main.c"
