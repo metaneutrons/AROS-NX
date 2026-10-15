@@ -29,6 +29,9 @@
       "candidates": [
         {
           "url": "https://archive.mesa3d.org/mesa-26.0.0.tar.xz"
+        },
+        {
+          "url": "https://sources.buildroot.net/mesa3d/mesa-26.0.0.tar.xz"
         }
       ],
       "representation": "archive",
