@@ -60,14 +60,18 @@ connection, neither IOKit nor devserial sees the reference/CDC. After the FS
 return, fresh register samples prove the DMA app executes, but early startup
 was not captured and these are FS-connected values, not the preceding HS run.
 The inspected vendor demos contain no invoked HS USB-device startup. An
-optional, default-off one-shot register journal is now installed with exact
-readback, awaiting its first synchronized HS execution in one already
-backed-up app sector. It is board/layout/preimage bounded and refuses signed
-or encrypted configurations; see usb/idf-reference/README.md. No reference
+optional, default-off one-shot journal was installed/readback verified and
+tested after a synchronized cold HS move, but its sector remained identical
+to the preimage: no saved sample and no host USB/CDC. Reference startup on HS
+is therefore still unproven; this is not a PHY fault diagnosis. The complete
+original AROS app span is now restored/readback verified, and fresh FS logs
+show graphics, touch, USBPort ready/remote closed and CPU1 WiFi owner startup.
+Investigate reference startup/install/observer reachability before another
+HS experiment; see usb/idf-reference/README.md. No reference
 is known-good on this board until it actually enumerates and yields a complete
-dump. AROS is temporarily replaced in the application slot; the exact prior
-229376B is retained as aros-restore-exact.bin (see ROADMAP for the actual path).
-No AROS return boot is claimed until restoration. Temporary application-only test and
+dump. The exact prior229376B, retained as aros-restore-exact.bin, has been
+restored including the scratch sector (see ROADMAP for path and hashes).
+Early boot was not captured; do not claim full boot-log continuity. Temporary application-only test and
 exact AROS restoration require synchronized cable access; no IDF bootloader,
 partition table or generated flash_args may be flashed.
 
