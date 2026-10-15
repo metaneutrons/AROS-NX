@@ -34,7 +34,9 @@ leases at either edge. Snapshot v2 adds safe EP0 OUT/configuration reads and
 poll-enable state; core226976B8f8c1a01... and status43100Bef177224... are
 now installed over Debug/FS with independent full readbacks. Fresh boot
 IDs30712..30912 show both CPUs, watchdog and USBPort ready/remote closed.
-Native v2 dialog/HS enumeration remain unverified. No remote grant,
+Fabian confirms the HS desktop and status-dialog loop progress after Refresh;
+IOKit still shows no P4 and no CDC port. The v2 register photograph remains
+pending; owner progress is not enumeration. No remote grant,
 PHY tuning, USB reset, endpoint claim or raw MMIO access from the GUI. Exact
 artifacts, source comparison and still-open enumeration gate are in ROADMAP.
 

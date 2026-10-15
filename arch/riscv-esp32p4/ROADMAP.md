@@ -4618,7 +4618,9 @@ END counts completed resets. Snapshot v2 adds polling and non-destructive
 EP0 OUT/configuration reads. Core226976B8f8c1a01... and status43100Bef177224...
 pass offline tests/native builds and are now installed/readback verified via
 Debug/FS; helper4e05c962..., fresh boot30712..30912 with USBPort ready and
-remote closed. Next synchronize an HS observation; no blind PHY/EP0 tuning and no
+remote closed. Fabian now confirms HS desktop/status-dialog loop progress;
+IOKit/devserial still expose no P4/CDC. Await the v2 register photograph;
+no blind PHY/EP0 tuning and no
 backend grant. Reset-accounting repair is not an enumeration root fix.
 
 2026-10-15 HS echo attempt: Fabian confirms the sole-power cable is on HS,
@@ -45235,3 +45237,16 @@ remain open. No partial stage is a complete A/B update system.
   Next release only target1101 for the agreed sole-power HS move, then request
   USBPortStatus Refresh and a photograph. Do not launch USBRemoteStart or any
   older takeover executable; no remote grant is needed for the status view.
+
+### 2026-10-15 - RC0 EP0 candidate HS owner progress, host still absent
+
+- After the coordinated sole-power move Fabian confirms HS connected,
+  desktop visible and USBPortStatus loops advancing after Refresh. Installed
+  source2b646de718/core226976B8f8c1a01... and helper4e05c962... unchanged.
+- Fresh passive ioreg IOUSB inventory shows only YubiKey, no P4; devserial
+  hardware inventory has no JC1060/CDC serial port. Only Bluetooth remains
+  managed. No USB endpoint opened, no reset/write or remote grant performed.
+  This confirms user-observed owner progress, not enumeration or transport.
+- Await a current v2 status photograph containing Reset-end, polling and EP0
+  OUT registers before selecting the next controller/PHY experiment. Native
+  CDC/Remote-Bulk/update gates remain open; no physical action requested.
