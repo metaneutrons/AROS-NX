@@ -195,7 +195,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C1P | Graphical boot/update performance | `hardware partial; runtime hang gate open` | Rotation/mirror: 140 sanitizer cases; actual producer: 400 submissions/1,677 guarded IRQs. CPU90 synchronous full update 2.776 s; CPU360 synchronous 0.617 s; v2 coalesced submission 0.296 s. Paired v2 core/HIDD initially passes headless Wanderer and flash checks. Fabian observes speedup then slowdown/hang. Console-only nonblocking runtime fix now sanitizer-tested, flashed and verified; explanation of the observed hang remains unconfirmed. On 2026-10-01 Fabian reports drawing is fine so far after requester-free RAM Disk opening; duration unspecified. Sustained no-reader/stress and complete interactive regression gates remain open. |
 | CQ1 | Bounded queued SMP debug console | `hardware partial (JC1060); default-plain deployed/readback/headless; D1001 open` | 2026-10-13 framed core showed both harts/108 consecutive records and reader recovery. 2026-10-14: P4_CONSOLE_RECORD_PREFIX defaults0, optional1 keeps framing; overflow warnings always active. Clean native193024Ba68ca519.../independent readback and111.929s fresh218-row headless export show no normal prefix,22 touch heartbeats and CPU1 WLAN owner. Twelve sanitized USB/UART default/0/1 host runs pass; old-header mutation rejected. Plain logs cannot prove sequence continuity. Native overload/physical disconnect and fresh interactive gates remain open. Early/fatal direct output and timer-failure backlog loss remain explicit limits. |
-| RC0 | Permanent HS port and USB remote diagnostic MVP | `HS reset/enum flags observed; SETUP/host enumeration blocked; reset-accounting fix and EP0 snapshot v2 build verified, not installed; firmware writer open` | 2026-10-15: permanent kernel resource, AFTERDOS PIO owner and independent CDC; separate task/session-bound bulk grant with2s lease. Installed core226912Bae814b48.../helper6b76fe2a... unchanged. HS photos1272/1273 show loops14104->15247, IRQ seen4400bc20/mask80143014 and SETUP0/mounts0. Original reset counter incorrectly required optional START; DWC2 emits END. Offline-tested fix invalidates at both edges and counts END; core226976B8f8c1a01... plus status43100Bef177224... add safe EP0 reads/poll state, not deployed. No PHY tuning or physical-link root cause proven. IOKit still has no P4/CDC. Update query remains NO_BACKEND; signed writer required. Debug/FS recovery and all native transfer/update gates remain open. |
+| RC0 | Permanent HS port and USB remote diagnostic MVP | `HS reset/enum flags observed; SETUP/host enumeration blocked; reset-accounting fix and EP0 snapshot v2 installed/readback verified; native v2 observation pending; firmware writer open` | 2026-10-15: permanent kernel resource, AFTERDOS PIO owner and independent CDC; separate task/session-bound bulk grant with2s lease. Prior HS photos1272/1273 show loops14104->15247, IRQ seen4400bc20/mask80143014 and SETUP0/mounts0. Original reset counter incorrectly required optional START; DWC2 emits END. Offline-tested fix invalidates at both edges and counts END; core226976B8f8c1a01... plus status43100Bef177224... add safe EP0 reads/poll state. Core payload2a5da078.../helper4e05c962... installed via Debug/FS with full independent readbacks; fresh boot30712..30912 reports USBPort ready/remote closed, two CPUs, watchdog, graphics/touch and CPU1 WLAN. No PHY tuning or root cause proven. HS v2 enumeration/CDC/bulk/update gates remain open; Debug/FS recovery retained. |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware verified` | Complete GB0 evidence: correctly oriented persistent Wanderer with title/icons/four edges, bounded graphical recovery without SD, 20/20 controlled EN-reset boots, a 30-minute desktop soak explicitly composed with B5's active concurrent SD/scanout stress, and an exact raw-card gate.  The latter used hardware-locked first host insertions around one normal D1001 boot; prepared image, pre-run readback and post-run readback are byte-identical at SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Two earlier comparisons remain documented as macOS `.fseventsd` contamination, not hidden as passes |
 | C4 | Touch as an absolute mouse HIDD | `hardware partial` | Since 2026-10-04 the touch path is the portable stack of D3 (`touchscreen.hidd`, `gsl3670.hidd`, `esp32p4board.resource`); the D1001 has not run it yet, so everything below describes the former kernel GSL driver and `p4touch.hidd`. D1001 identification, bounded firmware load/status and contact transport are hardware verified. The absolute mouse HIDD and nearest-contact continuity pass synchronized one-/two-contact tests; hardware IDs are not stable. A stationary pointer recovered after USB reset; its prior cause remains unknown. The tap policy defaults to button-free motion, tap-to-click and 400-ms hold-drag, preserving selectable direct mode and the right-button latch. Fabian confirms movement, tap and hold-drag with zero errors and clean release. A consented perimeter trace measures X=16..1638/Y=15..874; board-specific calibration now maps that range to the full surface. Its 3,863 host checks, build and package audit pass. A fresh synchronized run confirms four-edge reachability and menu-dropdown opening, with zero I2C errors and clean release at Y=5. Rapid double-tap reliability is reported poor; first-empty short-tap release (50-ms idle gap restored after renewed graphics slowdown) now pass 3,892 sanitizer checks and are a flashed candidate, not interactive acceptance; a volume requester precedes successful RAM Disk opening (name reported as TENEME, possibly THEME; unconfirmed). Theme assignments, Ice assets and PNG registration now pass a 167-entry host image verification; SD image now written/readback-verified/ejected; visible gate fails with missing png.library>=52; 171-entry runtime-library closure correction is now SD written/readback-verified/ejected (2026-10-01); synchronized 55-second boot reaches Wanderer and attempts the new runtime libraries; Fabian confirms requester-free RAM Disk opening and one visible toolbar symbol; complete toolbar and sustained performance are not yet accepted. Menu-item execution, bounded recovery, intermittent startup reliability and the 1,000-cycle gates remain open |
@@ -4616,8 +4616,9 @@ interpretation of resets0: only optional RESET_START was counted, whereas
 the pinned DWC2 emits RESET_END. Both reset edges now invalidate leases;
 END counts completed resets. Snapshot v2 adds polling and non-destructive
 EP0 OUT/configuration reads. Core226976B8f8c1a01... and status43100Bef177224...
-pass offline tests/native builds, not yet installed. Next synchronize a
-Debug/FS installation and HS observation; no blind PHY/EP0 tuning and no
+pass offline tests/native builds and are now installed/readback verified via
+Debug/FS; helper4e05c962..., fresh boot30712..30912 with USBPort ready and
+remote closed. Next synchronize an HS observation; no blind PHY/EP0 tuning and no
 backend grant. Reset-accounting repair is not an enumeration root fix.
 
 2026-10-15 HS echo attempt: Fabian confirms the sole-power cable is on HS,
@@ -45190,3 +45191,47 @@ remain open. No partial stage is a complete A/B update system.
   Reference: https://www.st.com/resource/en/reference_manual/rm0390-stm32f446xx-advanced-armbased-32bit-mcus-stmicroelectronics.pdf.
   Next
   request fresh readiness for Debug/FS installation and subsequent HS view.
+
+### 2026-10-15 - RC0 EP0 diagnostic installation over Debug/FS
+
+- Fabian explicitly confirms readiness for installation and subsequent HS
+  examination, USB-C sole power, then Debug/FS connected without BOOT/RESET.
+  Source2b646de718; artifacts and logs remain in
+  hs-ep0-diagnosis-2026-10-15.LsrAb7 under the established evidence root.
+  devserial reports target1101 unmanaged (only Bluetooth managed); no capture
+  history/other port/daemon is modified. CLI0.2.12/daemon0.2.13 mismatch remains.
+- Single explicit usb-reset security query exits0: exact authorized
+  MAC80:f1:b2:d3:3b:a6, P4v1.3, USB-Serial/JTAG, flags0, secure boot and
+  encryption disabled. Flash-id exits0,16MiB. Live table checksum/layout
+  validates in offline plan; installed core-sector preimage matches
+  7e233e7f... and helper preimage matches6b76fe2a... exactly.
+- Candidate core226976B8f8c1a01... is image-checksum/digest verified and its
+  229376B payload preserves the existing last-sector tail; payload SHA256
+  2a5da07878ca7faa80fd4c9f9ae252f87a3f6f84885c2b725ce25431dd14c9a6.
+  A copied retained helper stage replaces only USBPortStatus43012B with
+  43100Bef177224...; directory comparison finds no other content difference.
+  New FAT16 helper4194304B SHA256
+  4e05c9620dd2ebb27fee1fb36715813ad33be5d196892bba85c8bf0a7e626826.
+  Read-only attach/fsck/detach succeeds,44 files/135KiB free.
+- Write ranges only0x20000/0x38000 and0xc00000/0x400000, pinned esptool5.5.0
+  with whole-write attempts1, no-reset before/after. No bootloader/table/NVS,
+  BSP, SD or C6 changes. Writer/readback and fresh return boot remain pending
+  at this preparation point; no HS/CDC/bulk/update acceptance is implied.
+
+- Completion: writer62669 exits0 with both hashes verified. Independent core
+  read exits0 and helper read84828 exits0; full cmp checks pass. Core span
+  229376B SHA2562a5da07878ca7faa80fd4c9f9ae252f87a3f6f84885c2b725ce25431dd14c9a6;
+  helper4194304B SHA2564e05c9620dd2ebb27fee1fb36715813ad33be5d196892bba85c8bf0a7e626826.
+  devserial opens before one explicit reset macro. Prior rows through30710
+  are not return evidence;30711 is the macro marker. Fresh ROM/image/boot
+  IDs30712..30912,201 rows, return-boot.jsonl SHA256
+  4eb507e5d8f98a7381d76afd1bd303aed9d5d8fa6c5dba11f3ba38228d62353a.
+- New XIP segment219844B, watchdog6000ms, PSRAM200MHz, hart1 online/cpus2,
+  USBPort ready/remote closed at30884, AddDisplayDriver result0, GT911 and
+  touch initialization, CPU1 WLAN owner and graphics frames/swaps with
+  faults0/rejects0 are captured. No USB owner fault/trap/Guru/alert or further
+  ROM reset in this excerpt; early resident rows still coalesce/truncate.
+  This is a Debug/FS return boot, not native HS enumeration or a v2 GUI pass.
+  Next release only target1101 for the agreed sole-power HS move, then request
+  USBPortStatus Refresh and a photograph. Do not launch USBRemoteStart or any
+  older takeover executable; no remote grant is needed for the status view.
