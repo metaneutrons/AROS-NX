@@ -45,9 +45,19 @@ EP0 OUT size0. This late snapshot does not prove what was written at reset.
 A new DCD-path trace candidate227248B57d90f44... and status43196Bbc3a5d97...
 are now installed over Debug/FS with independent full readbacks. Fresh boot
 IDs30914..31117 shows both CPUs, USBPort ready/remote closed and graphics/touch.
-Native v3 HS observation is pending. They distinguish immediate
+Native v3 photo IMG_1276 now shows reset/enum size60000000 but RX IRQ/SETUP
+RX/DONE all0; programming STUPCNT is observed, reception still fails. They distinguish immediate
 reset/enum readback from RX-FIFO/SETUP branch counts without additional FIFO
 pops or endpoint/PHY writes. The enumeration root cause remains open.
+
+Next gate is a measured reference, not another unproven endpoint adjustment.
+usb/idf-reference builds the official IDF6.0.1 CDC example with a read-only
+register observer and pinned esp_tinyusb2.2.1/tinyusb0.19.0~3. Rev1.x DMA and
+PIO candidates are build/image verified only, not installed. No reference
+is known-good on this board until it actually enumerates and yields a complete
+dump. The active AROS image is unchanged. Temporary application-only test and
+exact AROS restoration require synchronized cable access; no IDF bootloader,
+partition table or generated flash_args may be flashed.
 
 WiFiLink follow-up2026-10-15 (JC1060 installed/readback verified): `u` is the
 per-query RPC UID, not a link-state value. Correlation remains unchanged,

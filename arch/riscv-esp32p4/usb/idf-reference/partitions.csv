@@ -1,0 +1,8 @@
+# Build-time mirror only. NEVER flash this table or the generated bootloader.
+# Name, Type, SubType, Offset, Size
+nvs,data,nvs,0x9000,0x6000
+nvs_key,data,nvs_keys,0xf000,0x1000
+otadata,data,ota,0x10000,0x2000
+phy_init,data,phy,0x12000,0x1000
+ota_0,app,ota_0,0x20000,0x800000
+arosbsp,0x40,0x00,0x820000,0x7e0000
