@@ -17,11 +17,14 @@ if(HS_REFERENCE_PERSIST)
     if(NOT crc_length EQUAL 10 OR NOT HS_REFERENCE_PREIMAGE_CRC32 MATCHES "^0x[0-9A-Fa-f]+$")
         message(FATAL_ERROR "Persistent reference needs CRC32 of retained app scratch preimage")
     endif()
-    list(APPEND reference_sources "journal.c" "trace.c" "journal_idf.c")
+    list(APPEND reference_sources "journal.c" "trace.c" "journal_idf.c" "flash_window.c")
 endif()
 idf_component_register(SRCS ${reference_sources} INCLUDE_DIRS "." "${reference}"
                        REQUIRES esp_partition esp_hw_support esp_driver_usb_serial_jtag bootloader_support esp_timer)
 if(HS_REFERENCE_PERSIST)
+    target_link_options(${COMPONENT_LIB} INTERFACE
+        "LINKER:--wrap=esp_partition_main_flash_region_safe"
+        "LINKER:-u,__wrap_esp_partition_main_flash_region_safe")
     target_compile_definitions(${COMPONENT_LIB} PRIVATE HS_REFERENCE_PERSIST=1
                                HS_REFERENCE_PREIMAGE_CRC32=${HS_REFERENCE_PREIMAGE_CRC32}u)
     # Explicit IDF size profile, not altered flash bounds or weakened checks.

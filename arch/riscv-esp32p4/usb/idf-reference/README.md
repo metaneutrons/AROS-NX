@@ -94,6 +94,25 @@ expected injection, never evidence of an actual USB controller failure.
 Decoder labels a clean partial trace `valid_prefix_only`; a verified terminal
 marker labels `sample6_complete`. Neither means USB enumeration or boot passed.
 
+IDF protects the whole running app partition, not only the linked image. The
+first native HST2 control exposed an abort on the scratch-sector erase before
+USB. The diagnostic now uses a narrowly scoped linker wrapper for
+esp_partition_main_flash_region_safe: only while the preflight-checked adapter
+is synchronously erasing exactly0x57000/4096 or writing an aligned256B record
+inside0x57000..0x57fff can that operation pass the app-partition veto. All other
+requests delegate to the real SDK decision. Its separate read-only-partition
+check, cache/lock handling and dangerous-write protection stay enabled. No
+CONFIG_SPI_FLASH_DANGEROUS_WRITE_ALLOWED and no global protection toggle.
+This is a development-only scoped exception, not a production flash API.
+Host tests and linked-call disassembly are checked; corrected native storage
+tests are pending. The failed board needs synchronized manual BOOT/RESET
+recovery before the saved AROS image can be restored or testing can continue.
+The exception is additionally bound to the synchronous caller task; interrupt
+context returns no owner. A competing task cannot borrow or clear the token.
+The first global operation-only draft failed independent review on that point
+and was corrected before flashing. Task/ISR isolation tests pass. Current
+corrected candidate196688B1bc7eef7... is build verified only, not installed.
+
 Before deployment identify the
 board/table again, verify the full live scratch preimage and preserve app erase
 tails. Never write generated metadata. For an approved HS run wait at least35

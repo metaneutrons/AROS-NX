@@ -1,6 +1,7 @@
 /* Development-only trace in one retained app sector, not an updater.
  * Fresh trace before USB init; later boots never alter an earlier capture. */
 #include "trace.h"
+#include "flash_window.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include "esp_log.h"
@@ -17,24 +18,37 @@
 #if defined(CONFIG_SECURE_BOOT) || defined(CONFIG_SECURE_SIGNED_APPS)
 #error Persistent reference does not support secure padding or signed images
 #endif
+#if defined(CONFIG_SPI_FLASH_DANGEROUS_WRITE_ALLOWED)
+#error Staged reference must retain SDK dangerous-write protection
+#endif
 
 static struct hs_journal_store store;
 static struct hs_trace_state state;
 static uint8_t *work;
 static SemaphoreHandle_t trace_lock;
+uintptr_t hs_flash_current_owner(void)
+{
+    return xPortInIsrContext()?0:(uintptr_t)xTaskGetCurrentTaskHandle();
+}
 static bool rd(void *ctx,uint32_t off,void *p,size_t n)
 { return esp_partition_read(ctx,off,p,n)==ESP_OK; }
 static bool erase(void *ctx,uint32_t off,size_t n)
 {
-    return off==HS_JOURNAL_OFFSET && n==HS_JOURNAL_SECTOR &&
-        esp_partition_erase_range(ctx,off,n)==ESP_OK;
+    if(off!=HS_JOURNAL_OFFSET || n!=HS_JOURNAL_SECTOR ||
+       !hs_flash_window_begin(HS_FLASH_ERASE))return false;
+    esp_err_t result=esp_partition_erase_range(ctx,off,n);
+    hs_flash_window_end();
+    return result==ESP_OK;
 }
 static bool wr(void *ctx,uint32_t off,const void *p,size_t n)
 {
-    return off>=HS_JOURNAL_OFFSET && n==HS_TRACE_RECORD &&
-        off-HS_JOURNAL_OFFSET<=HS_JOURNAL_SECTOR-HS_TRACE_RECORD &&
-        (off-HS_JOURNAL_OFFSET)%HS_TRACE_RECORD==0 &&
-        esp_partition_write(ctx,off,p,n)==ESP_OK;
+    if(off<HS_JOURNAL_OFFSET || n!=HS_TRACE_RECORD ||
+       off-HS_JOURNAL_OFFSET>HS_JOURNAL_SECTOR-HS_TRACE_RECORD ||
+       (off-HS_JOURNAL_OFFSET)%HS_TRACE_RECORD!=0 ||
+       !hs_flash_window_begin(HS_FLASH_WRITE))return false;
+    esp_err_t result=esp_partition_write(ctx,off,p,n);
+    hs_flash_window_end();
+    return result==ESP_OK;
 }
 static void report(int result)
 {

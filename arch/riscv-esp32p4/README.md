@@ -87,8 +87,16 @@ Next instrumentation must record pre-install progress and explicit failure/
 refusal reasons, independently of successful TinyUSB installation. Do not
 repeat PHY changes based on the absent late snapshot.
 
-The replacement HST2 staged trace is now build/host-test verified, native test
-pending. It writes app_main entry before USB initialization and appends checked
+The replacement HST2 staged trace is build/host-test verified, but its first
+native FS test failed before USB: IDF aborts an erase anywhere in the running
+app partition, including the reserved sector. A diagnostic-only narrow range
+exception is now built/tested offline; corrected native tests remain pending.
+The failed reference is currently installed and needs coordinated manual
+BOOT/RESET recovery; AROS has NOT yet been restored after this test.
+Current corrected candidate196688B1bc7eef7... confines the SDK exception to
+the preflight-checked caller task, operation kind and retained sector; other
+tasks/ISRs and all other regions keep normal protection. Native retest pending.
+The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
 headless write/readback tests; link state is data, not a write-denial gate.

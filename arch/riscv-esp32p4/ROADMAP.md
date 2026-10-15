@@ -195,7 +195,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C1P | Graphical boot/update performance | `hardware partial; runtime hang gate open` | Rotation/mirror: 140 sanitizer cases; actual producer: 400 submissions/1,677 guarded IRQs. CPU90 synchronous full update 2.776 s; CPU360 synchronous 0.617 s; v2 coalesced submission 0.296 s. Paired v2 core/HIDD initially passes headless Wanderer and flash checks. Fabian observes speedup then slowdown/hang. Console-only nonblocking runtime fix now sanitizer-tested, flashed and verified; explanation of the observed hang remains unconfirmed. On 2026-10-01 Fabian reports drawing is fine so far after requester-free RAM Disk opening; duration unspecified. Sustained no-reader/stress and complete interactive regression gates remain open. |
 | CQ1 | Bounded queued SMP debug console | `hardware partial (JC1060); default-plain deployed/readback/headless; D1001 open` | 2026-10-13 framed core showed both harts/108 consecutive records and reader recovery. 2026-10-14: P4_CONSOLE_RECORD_PREFIX defaults0, optional1 keeps framing; overflow warnings always active. Clean native193024Ba68ca519.../independent readback and111.929s fresh218-row headless export show no normal prefix,22 touch heartbeats and CPU1 WLAN owner. Twelve sanitized USB/UART default/0/1 host runs pass; old-header mutation rejected. Plain logs cannot prove sequence continuity. Native overload/physical disconnect and fresh interactive gates remain open. Early/fatal direct output and timer-failure backlog loss remain explicit limits. |
-| RC0 | Permanent HS port and USB remote diagnostic MVP | `HS blocked; staged pre-install/error trace build verified; native FS tests pending; AROS currently restored` | 2026-10-15: HST2 candidate196304Bb4df9c4c... records before USB install with independently checked appends in retained4KiB; actual-core O0/O2 sanitizer and decoder tests pass. FS write/readback/preservation and explicit error injection remain next. Earlier HSJ1 absent HS sample is inconclusive; DTR-only reset corrected to RTS pulse. AROS restoreb19d6cea... retained. PIO/native HS transfers/updater unqualified. |
+| RC0 | Permanent HS port and USB remote diagnostic MVP | `HS blocked; first staged FS write aborts on SDK app-partition protection; caller-bound correction build verified only; manual ROM recovery/AROS restore pending` | 2026-10-15: HST2b4df9c4c... installed/readback verified; pre-USB erase at0x57000 aborts through SDK running-partition guard. No injected-error/native trace-write pass. Corrected196688B1bc7eef7... binds exception to task/operation/range; O0/O2 isolation tests and linked call checks pass, global protection unchanged. Three controlled ROM connections failed; awaiting manual BOOT/RESET. AROS restoreb19d6cea... retained. Native HS transfers/updater unqualified. |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware verified` | Complete GB0 evidence: correctly oriented persistent Wanderer with title/icons/four edges, bounded graphical recovery without SD, 20/20 controlled EN-reset boots, a 30-minute desktop soak explicitly composed with B5's active concurrent SD/scanout stress, and an exact raw-card gate.  The latter used hardware-locked first host insertions around one normal D1001 boot; prepared image, pre-run readback and post-run readback are byte-identical at SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Two earlier comparisons remain documented as macOS `.fseventsd` contamination, not hidden as passes |
 | C4 | Touch as an absolute mouse HIDD | `hardware partial` | Since 2026-10-04 the touch path is the portable stack of D3 (`touchscreen.hidd`, `gsl3670.hidd`, `esp32p4board.resource`); the D1001 has not run it yet, so everything below describes the former kernel GSL driver and `p4touch.hidd`. D1001 identification, bounded firmware load/status and contact transport are hardware verified. The absolute mouse HIDD and nearest-contact continuity pass synchronized one-/two-contact tests; hardware IDs are not stable. A stationary pointer recovered after USB reset; its prior cause remains unknown. The tap policy defaults to button-free motion, tap-to-click and 400-ms hold-drag, preserving selectable direct mode and the right-button latch. Fabian confirms movement, tap and hold-drag with zero errors and clean release. A consented perimeter trace measures X=16..1638/Y=15..874; board-specific calibration now maps that range to the full surface. Its 3,863 host checks, build and package audit pass. A fresh synchronized run confirms four-edge reachability and menu-dropdown opening, with zero I2C errors and clean release at Y=5. Rapid double-tap reliability is reported poor; first-empty short-tap release (50-ms idle gap restored after renewed graphics slowdown) now pass 3,892 sanitizer checks and are a flashed candidate, not interactive acceptance; a volume requester precedes successful RAM Disk opening (name reported as TENEME, possibly THEME; unconfirmed). Theme assignments, Ice assets and PNG registration now pass a 167-entry host image verification; SD image now written/readback-verified/ejected; visible gate fails with missing png.library>=52; 171-entry runtime-library closure correction is now SD written/readback-verified/ejected (2026-10-01); synchronized 55-second boot reaches Wanderer and attempts the new runtime libraries; Fabian confirms requester-free RAM Disk opening and one visible toolbar symbol; complete toolbar and sustained performance are not yet accepted. Menu-item execution, bounded recovery, intermittent startup reliability and the 1,000-cycle gates remain open |
@@ -4664,6 +4664,14 @@ O0/O2 host tests pass; actual FS write/readback/preservation/error controls are
 pending. FS is permitted for a real storage test, link status is recorded;
 older captures are never updated by a later boot. General panic and unsafe
 pre-write refusal are not promised persistent records. See dated evidence.
+
+First native FS control aborts in SDK dangerous-write protection before the
+scratch erase: the complete running8MiB app partition is protected. This is
+not injected and no successful native trace exists. A narrowly scoped adapter
+exception is build/host-test verified; all other ranges keep the real SDK
+decision and read-only/cache/lock checks remain intact. The first candidate
+is still installed; three controlled ROM connections failed. Await manual
+BOOT/RESET readiness and exact AROS restoration before continued tests.
 
 2026-10-15 HS echo attempt: Fabian confirms the sole-power cable is on HS,
 normal desktop visible, then explicitly starts USBEchoTest and accepts Start.
@@ -45710,3 +45718,59 @@ remain open. No partial stage is a complete A/B update system.
   and keeps configured abort behavior. This tests persistent errors, not USB
   hardware. Native FS write/readback, reboot-preservation and error tests are
   next; no HS cable interaction without freshly coordinated readiness.
+
+### 2026-10-15 - RC0 native trace exposes SDK protection; recovery required
+
+- Source314ba9ab56 normal candidate196304Bb4df9c4c..., injectionOFF. Inventory
+ 1101,managed:null; exact MAC80:f1:b2:d3:3b:a6/P4v1.3/flags0. Fresh table and
+  full AROS0x38000 pre-read match retained evidence. Offline plan preserves live
+  tail; sole write0x20000/0x30000, payload196608B SHA256
+  7946c77bedbdc617773b2d3b78549daaf4cd4b0323cba988303e5323907351e8.
+  Writer/read exit0, independent full cmp passes. No metadata/BSP/helper/SD/C6
+  writes. Open devserial before explicit DTR=false/200ms RTS pulse.
+- Fresh ROM/app rows31462.. show normal reference boot, app_main entry then
+  abort at PC4ff0975f before USB. normal-failed.jsonl retains received bytes.
+  The error is NOT injected (that alternate build was never installed). Pinned
+  SDK source esp_flash_api.c CHECK_WRITE_ADDRESS at658 calls region_protected;
+  partition_target.c esp_partition_main_flash_region_safe denies any address
+  inside the entire running ota_0. Config SPI_FLASH_DANGEROUS_WRITE_ABORTS=y.
+  Current normal ELF maps the same shared SDK PC to the abort check at658.
+  normal-failed.jsonl SHA256
+  43f66bf58f15c2595434093a31979097c37b4c94ab22a9e56173734f98454beb.
+  Earlier address translation using the injection ELF was not exact and is
+  not used for the final source attribution. No native trace-write pass.
+- Scope-close1101, retain history. One usb-reset identity connection fails with
+  packet0x32; no-reset confirmation fails0x61; deliberate alternate reviewed
+  default-reset connection fails0x0d. No write attempted on these failures;
+  no further retries. Reference remains installed/rebooting, AROS NOT restored.
+  Exact229376B b19d6cea... recovery file remains retained. Ask fresh manual
+  BOOT/RESET readiness, keeping Debug/FS cable. This is not an HS test request.
+- Corrected candidate adds diagnostic-only GNUld wrapper for
+  esp_partition_main_flash_region_safe. Adapter sets an atomic operation token
+  only after pure-core preflight; only exact absolute0x57000/4096 erase or
+  aligned256B record writes within that sector are exempt while the call runs.
+  Token clears after every API return; all other addresses/sizes/idle calls
+  delegate the real SDK decision. No global disable/CONFIG_DANGEROUS_WRITE_ALLOWED.
+  Linked disassembly proves separate read-only-partition check precedes wrapper,
+  and wrapper's default jumps to real SDK function. Native cache/lock APIs remain.
+- flash_window strict O0/O2 ASan/UBSan tests pass for idle/nested tokens, exact
+  erase, all16 valid writes, under/overflow, unaligned/zero/oversized requests,
+  metadata/unrelated ranges and real-SDK decision delegation. Rebuilt normal
+  candidate196512B SHA256
+  872d23b6ba65cbaa70fe1b761f15bdd512107265d0ea6a876949df483931486d,
+  build-window.log exit0, injectionOFF. It is NOT installed. An additional
+  compile guard forbids global dangerous-write allowance. Corrected native
+  write/readback/preservation/error-injection controls remain required after
+  manual recovery; no HS cycle or success claim from the offline correction.
+- Independent review rejects an operation-only global exception: a competing
+  task could pass the same-range check before the flash lock was acquired.
+  Correct before any deployment: atomic owner task plus operation, ISR returns
+  owner0, only owner may end its window, all non-owner calls delegate SDK.
+  Tests additionally simulate task2 and ISR0 trying to use/clear/reenter task1's
+  window; O0/O2 strict sanitizer runs pass. Final linked-call/owner disassemblies
+  retained as window-linked-call.txt and window-owner-disassembly.txt.
+  Final build-window-owner.log exit0, normal injectionOFF,196688B SHA256
+  1bc7eef7e83dbc7a4cba6ddae63d648488e55ad55b76e939f1c39df8ae6aae2b.
+  This now needs49 app erase sectors, not the earlier48-sector plan. Do NOT
+  reuse old plan/hash; generate a fresh verified plan after manual recovery.
+  Candidate remains unflashed; native write/error/preservation tests still open.
