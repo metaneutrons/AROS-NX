@@ -76,3 +76,14 @@ Offline checks: compile `main/journal.c` and `tests/test_journal.c` with the
 `main` include directory, C11, `-Wall -Wextra -Werror`, O0/O2 and ASan/UBSan;
 run both executables. Run `python3 decode-journal.py --self-test` separately.
 These checks do not establish HS enumeration or native flash-write safety.
+
+Reachability limit: observer creation follows successful tinyusb_driver_install.
+The official example aborts on install errors; none of those paths can reach
+sample6. An unchanged scratch sector therefore does not establish that app_main
+was never reached, and the current journal does not persist refusal reasons.
+The35s cable wait is not a deadline measured from observer creation. The exact
+journal binary reaches sample6 at30220ms in the FS control, with result=-1
+(expected with an FS host). There is still no HS runtime result. For a commanded
+Debug/FS boot, do not rely on the generic DTR-only devserial reset macro:
+set DTR=false, pulse RTS=true for200ms, then RTS=false with capture open.
+Keep this control-line correction separate from the unresolved HS cold-start.

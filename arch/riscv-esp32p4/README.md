@@ -75,6 +75,18 @@ Early boot was not captured; do not claim full boot-log continuity. Temporary ap
 exact AROS restoration require synchronized cable access; no IDF bootloader,
 partition table or generated flash_args may be flashed.
 
+Reference reachability follow-up: the exact journal binary passes a headless
+Debug/FS control through USB install at120ms and sample6/journal at30220ms.
+The journal refuses a write on FS as expected. Host replay of the actual image
+and scratch accepts a write when debug_connected=false. Neither proves HS
+startup or identifies the reason for its missing journal. The generic devserial
+reset macro is DTR-only and produced no fresh boot in this control; use DTR=false
+and an RTS=true/false pulse instead. That sequence produced a fresh ROM/app
+boot and, after exact restoration, fresh AROS ROM/PSRAM/graphics startup.
+Next instrumentation must record pre-install progress and explicit failure/
+refusal reasons, independently of successful TinyUSB installation. Do not
+repeat PHY changes based on the absent late snapshot.
+
 WiFiLink follow-up2026-10-15 (JC1060 installed/readback verified): `u` is the
 per-query RPC UID, not a link-state value. Correlation remains unchanged,
 but this field is omitted from WiFiLink output. A context-local diagnostic
