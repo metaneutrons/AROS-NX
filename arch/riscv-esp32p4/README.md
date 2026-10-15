@@ -110,8 +110,10 @@ now restored/readback verified after BOOT-held FS reconnection and a no-reset
 ROM read. Complete10-record trace87916acb... proves HS app entry, USB installer
 success and sample6/mounted0 without an intervening FS app boot. Host still
 has no P4/CDC; successful install is not enumeration or PHY-health proof.
-AROS has not restarted yet: USB reset retains DOWNLOAD, manual RESET-only
-pending. HS acceptance remains open; this is not the injected self-test.
+After manual RESET-only clears DOWNLOAD, a subsequent captured FS boot reaches
+PSRAM200MHz, graphics/touch, USB owner remote closed and CPU1 WiFi ready.
+AROS is running again; this is headless boot evidence, not visual acceptance.
+HS acceptance remains open; this is not the injected self-test.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
