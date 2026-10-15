@@ -87,18 +87,17 @@ Next instrumentation must record pre-install progress and explicit failure/
 refusal reasons, independently of successful TinyUSB installation. Do not
 repeat PHY changes based on the absent late snapshot.
 
-The replacement HST2 staged trace is build/host-test verified, but its first
-native FS test failed before USB: IDF aborts an erase anywhere in the running
-app partition, including the reserved sector. A diagnostic-only narrow range
-exception is now built/tested offline; corrected native tests remain pending.
-Manual BOOT/RESET recovery succeeded; corrected candidate is now installed and
-readback verified. A subsequent USB reset returned DOWNLOAD; a watchdog-reset
-command has not yielded an app-start capture. Await a synchronized RESET-only
-press before continuing. AROS has NOT yet been restored after these tests.
-Current corrected candidate196688B1bc7eef7... confines the SDK exception to
-the preflight-checked caller task, operation kind and retained sector; other
-tasks/ISRs and all other regions keep normal protection. Native storage retest
-is still pending; installed image identity is not a successful execution.
+The replacement HST2 staged trace now passes native Debug/FS storage controls:
+normal10-record pre-install/complete-sample trace, byte-exact retention across
+a reboot and a separate6-record injected error/checked-outcome trace. The first
+test exposed SDK running-app protection; the diagnostic-only caller/operation/
+sector-bound workaround compensates it without global protection disable.
+This verifies that workaround, not HS enumeration or a production writer.
+Tested normal artifact196688B1bc7eef7... is retained. Removal gate RC0-TW is open.
+AROS is now restored including scratch, independently byte-verified; fresh FS
+return shows ROM/PSRAM, graphics/touch, USBPort remote closed and CPU1 WiFi owner.
+Next synchronize a fresh HS run using the retained normal artifact, not the
+injected self-test. No HS cable action or visual acceptance occurred here.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual

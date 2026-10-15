@@ -195,7 +195,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C1P | Graphical boot/update performance | `hardware partial; runtime hang gate open` | Rotation/mirror: 140 sanitizer cases; actual producer: 400 submissions/1,677 guarded IRQs. CPU90 synchronous full update 2.776 s; CPU360 synchronous 0.617 s; v2 coalesced submission 0.296 s. Paired v2 core/HIDD initially passes headless Wanderer and flash checks. Fabian observes speedup then slowdown/hang. Console-only nonblocking runtime fix now sanitizer-tested, flashed and verified; explanation of the observed hang remains unconfirmed. On 2026-10-01 Fabian reports drawing is fine so far after requester-free RAM Disk opening; duration unspecified. Sustained no-reader/stress and complete interactive regression gates remain open. |
 | CQ1 | Bounded queued SMP debug console | `hardware partial (JC1060); default-plain deployed/readback/headless; D1001 open` | 2026-10-13 framed core showed both harts/108 consecutive records and reader recovery. 2026-10-14: P4_CONSOLE_RECORD_PREFIX defaults0, optional1 keeps framing; overflow warnings always active. Clean native193024Ba68ca519.../independent readback and111.929s fresh218-row headless export show no normal prefix,22 touch heartbeats and CPU1 WLAN owner. Twelve sanitized USB/UART default/0/1 host runs pass; old-header mutation rejected. Plain logs cannot prove sequence continuity. Native overload/physical disconnect and fresh interactive gates remain open. Early/fatal direct output and timer-failure backlog loss remain explicit limits. |
-| RC0 | Permanent HS port and USB remote diagnostic MVP | `HS blocked; manual recovery succeeded; caller-bound trace installed/readback verified; confirmed app start/storage test and AROS restore pending` | 2026-10-15: First HST2b4df9c4c... aborts on SDK running-partition protection. Corrected196688B1bc7eef7... confines exception to task/operation/sector and passes offline checks. After manual ROM recovery, fresh49-sector payload87fa910e... writes/reads exactly. USB pulse returns DOWNLOAD; watchdog command yields no new app capture. Await synchronized RESET-only, then persistent-write/error/preservation tests. AROS restoreb19d6cea... retained, not restored. Native HS transfers/updater unqualified. |
+| RC0 | Permanent HS port and USB remote diagnostic MVP | `HS still blocked; native staged-trace storage/error/preservation controls pass using diagnostic workaround; AROS restored; fresh HS run next` | 2026-10-15: Normal196688B1bc7eef7... saves10 CRC-checked pre-install/sample records; subsequent boot reports PRESERVED and sector remains byte-identical. Separate explicit error-injection build saves6 checked records then parks (not a panic test). Caller/operation/sector-bound SDK exception is a diagnostic workaround, removal gate RC0-TW OPEN. Full AROS0x38000 restore/readbackb19d6cea... and partial FS return verified. No HS enumeration/transfer/updater pass; synchronize next HS run. |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware verified` | Complete GB0 evidence: correctly oriented persistent Wanderer with title/icons/four edges, bounded graphical recovery without SD, 20/20 controlled EN-reset boots, a 30-minute desktop soak explicitly composed with B5's active concurrent SD/scanout stress, and an exact raw-card gate.  The latter used hardware-locked first host insertions around one normal D1001 boot; prepared image, pre-run readback and post-run readback are byte-identical at SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Two earlier comparisons remain documented as macOS `.fseventsd` contamination, not hidden as passes |
 | C4 | Touch as an absolute mouse HIDD | `hardware partial` | Since 2026-10-04 the touch path is the portable stack of D3 (`touchscreen.hidd`, `gsl3670.hidd`, `esp32p4board.resource`); the D1001 has not run it yet, so everything below describes the former kernel GSL driver and `p4touch.hidd`. D1001 identification, bounded firmware load/status and contact transport are hardware verified. The absolute mouse HIDD and nearest-contact continuity pass synchronized one-/two-contact tests; hardware IDs are not stable. A stationary pointer recovered after USB reset; its prior cause remains unknown. The tap policy defaults to button-free motion, tap-to-click and 400-ms hold-drag, preserving selectable direct mode and the right-button latch. Fabian confirms movement, tap and hold-drag with zero errors and clean release. A consented perimeter trace measures X=16..1638/Y=15..874; board-specific calibration now maps that range to the full surface. Its 3,863 host checks, build and package audit pass. A fresh synchronized run confirms four-edge reachability and menu-dropdown opening, with zero I2C errors and clean release at Y=5. Rapid double-tap reliability is reported poor; first-empty short-tap release (50-ms idle gap restored after renewed graphics slowdown) now pass 3,892 sanitizer checks and are a flashed candidate, not interactive acceptance; a volume requester precedes successful RAM Disk opening (name reported as TENEME, possibly THEME; unconfirmed). Theme assignments, Ice assets and PNG registration now pass a 167-entry host image verification; SD image now written/readback-verified/ejected; visible gate fails with missing png.library>=52; 171-entry runtime-library closure correction is now SD written/readback-verified/ejected (2026-10-01); synchronized 55-second boot reaches Wanderer and attempts the new runtime libraries; Fabian confirms requester-free RAM Disk opening and one visible toolbar symbol; complete toolbar and sustained performance are not yet accepted. Menu-item execution, bounded recovery, intermittent startup reliability and the 1,000-cycle gates remain open |
@@ -4658,24 +4658,25 @@ an RTS pulse with DTR released did. That corrects commanded-reset measurement,
 not the physical HS cold-start. Record independent pre-install stages/failure
 and refusal reasons before another HS run; restoration remains exact/verified.
 
-HST2 replacement now records before USB installation and checked errors through
-bounded append-only slots in the same sector. Native image196304Bb4df9c4c... and
-O0/O2 host tests pass; actual FS write/readback/preservation/error controls are
-pending. FS is permitted for a real storage test, link status is recorded;
-older captures are never updated by a later boot. General panic and unsafe
-pre-write refusal are not promised persistent records. See dated evidence.
+HST2 replacement records before USB installation and checked errors through
+bounded append-only slots in the same retained sector. After the first native
+control exposed SDK running-app erase protection, a caller/operation/range-bound
+diagnostic workaround now passes native FS storage controls: normal196688B
+1bc7eef7... yields10 verified records/complete sample; reboot reports PRESERVED
+and the entire sector stays identical. A separate explicit injected error yields
+six verified records and a scheduler-friendly test park, not a panic test.
+Readonly/cache/lock behavior and global protection remain in the SDK. General
+panic/ROM/bootloader and unsafe initial refusal are not promised persistent data.
+All AROS app/scratch bytes are restored/readback verified; fresh FS return reaches
+graphics/touch, USBPort remote closed and CPU1 WiFi startup. Next synchronize a
+new HS execution using the retained normal artifact, not the injection build.
 
-First native FS control aborts in SDK dangerous-write protection before the
-scratch erase: the complete running8MiB app partition is protected. This is
-not injected and no successful native trace exists. A narrowly scoped adapter
-exception is build/host-test verified; all other ranges keep the real SDK
-decision and read-only/cache/lock checks remain intact. The first candidate
-is still installed; three controlled ROM connections failed. Await manual
-BOOT/RESET readiness and exact AROS restoration before continued tests.
-That manual ROM recovery has now succeeded and the corrected image is
-installed/readback verified. Its first control-line restart returns DOWNLOAD,
-not an app; watchdog command likewise has no captured app start. Await fresh
-RESET-only readiness before native storage tests. AROS is still not restored.
+RC0-TW - diagnostic storage workaround removal: OPEN. The wrapper compensates
+the SDK's whole-running-partition veto, not a USB hardware defect. Remove it
+when a separately authorized layout supplies an explicit diagnostic data
+partition, then repeat native write/readback/reboot-preservation controls with
+ordinary SDK protection and no wrapper. The current uncompensated app-sector
+attempt aborts; compensated storage acceptance does not close this root item.
 
 2026-10-15 HS echo attempt: Fabian confirms the sole-power cable is on HS,
 normal desktop visible, then explicitly starts USBEchoTest and accepts Start.
@@ -45806,3 +45807,63 @@ remain open. No partial stage is a complete A/B update system.
   counted as a tested error path. Continue normal persistent-write/readback/
   preservation tests only after confirmed app start, then error control and
   exact AROS restoration. No HS cable action has been requested or performed.
+
+### 2026-10-15 - RC0 staged trace native FS controls pass; AROS restored
+
+- Fabian confirms RESET-only press on Debug/FS. Inventory initially managed:null;
+  reopen1101 using devserial (installed skill0.2.14). Early UART bytes are not
+  captured. Fresh later rows32571..32633 show progressing DMA sample11+; this
+  establishes reference execution, not full boot-log continuity. Scoped reader
+  release and pinned5.5.0 usb-reset identity query succeeds with exact expected
+  MAC/P4v1.3/flags0, then no-reset raw read of0x57000/4096 exits0.
+- Retained normal artifact196688B1bc7eef7..., installed/readback in preceding
+  entry with payload87fa910e..., now stores window-normal-trace.bin SHA256
+  dca5dcafef373c1b32517bdb394baf30a8b4249c0c560151ad62bc118f5ad70c.
+  Decoder exits0 with sample6_complete/10 records. Record0 app_main_enter
+  us13929/reset1 precedes install_enter us49005, install_return0 us51137,
+  observer_create0 us52180 and three checked-success outcomes. Two sequenced
+  sample chunks reassemble the complete six-line FS register dump; final marker
+  is sample6_complete. Times are firmware esp_timer values, not cable timing.
+  Early debug_sof=0 is not proof of connector identity; the synchronized FS
+  procedure identifies the test. No native HS cable or bus acceptance.
+- Reopen reader before corrected RTS pulse. Fresh ROM32635.. shows
+  CHIP_USB_UART_RESET/SPI_FAST_FLASH_BOOT; row32718 HSTrace result2 PRESERVED,
+  next0/active0. Subsequent independent raw sector read exits0 and cmp is exact
+  against normal trace, same dca5dcaf... hash. This verifies prior-capture retention,
+  not a fresh second capture. Some UART output is coalesced/missing; do not infer
+  lossless narration or a full sustained run. Files window-normal-runtime.jsonl
+  SHA25679e7a65f3da117d0cd3e0ad33d5653bb3fcc1ed5335af64760cde53c4d5bfb66
+  and window-reboot-runtime-final.jsonl
+  SHA25677ee9e1bd35089cca261a8746d6049e9adf1db504207c817cad29627614b0094.
+- Exactly restore/readback the retained229376B AROS span at0x20000/0x38000
+  between controls to restore the pristine scratch preimage. No app boot needed
+  at this intermediate point. Prepare separate injected-park.bin163840B
+  SHA256ff7c0323a5d19cd3f2090128114a2b167422fc3f7381432e1144e42453afce33,
+  injectionON. Fresh exact-prefix plan, sole0x20000/0x28000 write/read exits0 and
+  cmp passes (payload hash identical to image). No metadata/BSP/helper/SD/C6 write.
+- Self-test explicitly parks after recording instead of reproducing a recovery-
+  hostile abort loop. Only injectionON does this; defaultOFF keeps configured
+  IDF error-check behavior. Record usb_install_injected(error259), return259,
+  example_error259 and injected_error_park259 before a scheduler-friendly wait.
+  Raw injected-park-trace.bin4096B SHA256
+  9ffa208749806c04edc644b0c1ed47982fa1a45d40a15602a4677aac6072ac5f;
+  decoder exits0 with valid_prefix_only/6 records, no sample-complete marker.
+  This verifies persisted checked errors, not a real USB fault/panic handler.
+  UART32836..32843 confirms entry and six WRITTEN reports. Runtime JSONL SHA256
+  78dae1a4f3bbf8d6992bde232210d30db91cdfeb4aed67a26f331861d692e244.
+- Final restore0x20000/0x38000 writer/read exit0; full cmp and SHA256
+  b19d6ceab198f6c3c7e4ff839a40b8abfd516c0cf078767eab2fcc96f47dc051
+  include scratch. Independently read partition-table sector is unchanged.
+  Fresh corrected-RTS return32844..32950 shows ROM, PSRAM200MHz, graphics/touch,
+  USBPort remote closed and CPU1 WiFi owner. Partial console, no user visual pass.
+  final-aros-runtime.jsonl SHA256
+  9cc5d57ad8b2bb2d9b31383cccd3fc157e8580a9946c21f56bc6cce21a6ad792.
+  verify-native-controls.log separately checks record order/CRC/complete sample,
+  preserved byte equality, explicit injected codes and exact restore/table;
+  SHA2564d1deb1f4341ae834c1febe30ba433f17dc372f6ce294d48d145712066dd79fe.
+- Evidence remains hs-early-trace-2026-10-15.N4AH2N. Build cache is returned to
+  injectionOFF; rebuilt normal196688Bf818e772... is build-only, not silently
+  substituted for native-tested retained normal-window-owner.bin1bc7eef7....
+  RC0-TW storage workaround removal stays OPEN. Next fresh HS readiness, exact
+  verified normal artifact installation with pristine scratch, coordinated HS
+  run and later raw read/AROS restoration. No HS cycle was started here.

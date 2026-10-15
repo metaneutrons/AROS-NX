@@ -121,6 +121,12 @@ static void observed_check(esp_err_t error,const char *file,int line,
     hs_reference_trace_event(error==ESP_OK?"example_check_ok":"example_error",error,line);
     (void)file;(void)function;(void)expression;
     if(error==ESP_OK)return;
+#if defined(HS_REFERENCE_INJECT_INSTALL_ERROR)
+    /* Keep the deliberately failing self-test recoverable without a panic
+     * loop. Normal builds retain the exact configured IDF error behavior. */
+    hs_reference_trace_event("injected_error_park",error,line);
+    for(;;)vTaskDelay(pdMS_TO_TICKS(1000));
+#endif
 #if defined(NDEBUG)
     /* Match IDF's evaluate-and-ignore configuration. */
     return;

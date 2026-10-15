@@ -88,8 +88,10 @@ or USB fix. The normal configuration must have
 `HS_REFERENCE_INJECT_INSTALL_ERROR=OFF`. A separate explicit ON build is a
 headless self-test: it deliberately returns ESP_ERR_INVALID_STATE instead of
 calling the USB installer, records usb_install_injected/return and example_error,
-then retains IDF's configured error-check behavior. Its resulting abort is
-expected injection, never evidence of an actual USB controller failure.
+then records injected_error_park and waits with the scheduler running. Only this
+explicit injected self-test parks instead of aborting, avoiding a recovery-
+hostile reboot loop. Normal builds retain IDF's configured error-check behavior.
+This is not a panic-handler test or an actual USB controller failure.
 
 Decoder labels a clean partial trace `valid_prefix_only`; a verified terminal
 marker labels `sample6_complete`. Neither means USB enumeration or boot passed.
@@ -103,15 +105,22 @@ inside0x57000..0x57fff can that operation pass the app-partition veto. All other
 requests delegate to the real SDK decision. Its separate read-only-partition
 check, cache/lock handling and dangerous-write protection stay enabled. No
 CONFIG_SPI_FLASH_DANGEROUS_WRITE_ALLOWED and no global protection toggle.
-This is a development-only scoped exception, not a production flash API.
-Host tests and linked-call disassembly are checked; corrected native storage
-tests are pending. The failed board needs synchronized manual BOOT/RESET
-recovery before the saved AROS image can be restored or testing can continue.
+This is a development-only scoped workaround, not a production flash API.
+Native Debug/FS tests now verify the normal10-record complete trace, byte-exact
+preservation across a reboot and a separate6-record controlled error trace.
+Full original AROS image/scratch is restored and readback verified afterward.
+This verifies the diagnostic storage workaround only, not HS enumeration.
 The exception is additionally bound to the synchronous caller task; interrupt
 context returns no owner. A competing task cannot borrow or clear the token.
 The first global operation-only draft failed independent review on that point
 and was corrected before flashing. Task/ISR isolation tests pass. Current
-corrected candidate196688B1bc7eef7... is build verified only, not installed.
+corrected candidate196688B1bc7eef7... is the native-tested normal artifact,
+retained as normal-window-owner.bin. The mutable build directory was returned
+to injectionOFF; do not substitute another hash for the retained tested image.
+Removal gate RC0-TW stays open: move storage to an explicitly provisioned data
+partition under separate layout authorization and repeat native write/readback/
+preservation controls without this wrapper. No layout mutation is authorized
+by the present tests.
 
 Before deployment identify the
 board/table again, verify the full live scratch preimage and preserve app erase

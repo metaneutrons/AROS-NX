@@ -1,4 +1,4 @@
-/* Diagnostic-only exception to the SDK's whole-running-partition veto.
+/* Diagnostic-only workaround for the SDK's whole-running-partition veto.
  * Does NOT disable flash protection: only an adapter-authorized exact erase
  * or aligned record write in the retained sector is exempt. All other calls
  * retain the real SDK decision; read-only checks and locking remain in IDF. */
