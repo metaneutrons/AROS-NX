@@ -256,6 +256,24 @@ change any board's hardware acceptance state.
   retained checksum inputs if a mismatch remains; complete three-host compiler
   and SDK release qualification stays open. TC0 remains `in development`.
 
+### 2026-10-15 - TC0 diagnostic Darwin configure-input seal
+
+- Baseline: diagnostic source `abf4ad848e0bf336eb4e37b223e33b81c3d310da`,
+  with only the reviewed Mesa CI-cache and Darwin host-Make corrections
+  replayed. The SDK source chain, target configuration and runtime code remain
+  unchanged. This diagnostic composition is not protected-main qualification.
+- The native SDK exporter correctly rejected the stale `configure.in` seal:
+  the Darwin host case now selects installed GNU make for response-file rules.
+  Refresh only that reviewed input digest to
+  `715d96905d246e8286c5cd187b88fc22b7c7fb1245f5641125831735373bfd5a`.
+  No SDK roots, probes, ABI, source inventory or verification policy change.
+- Validation is the source-owned exporter check and its regressions, followed
+  by isolated exact-source producer preflights. These gates do not prove new
+  compiler A/B equality, SDK execution, relocation or hardware acceptance.
+- Safety: source metadata only; no existing build, board, firmware, media,
+  tag, release or diagnostic-run mutation. TC0 remains `in development`;
+  complete mixed-host diagnostic and publication gates remain open.
+
 ### 2026-10-12 - TC0 refresh the RV32 SDK profile-input seal
 
 - Baseline: local source `8c7828d8d73f7ef20fbf0889dca9dde7c4592876`.
