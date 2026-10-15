@@ -23,7 +23,9 @@ launch is held; controller/PHY versus physical-link cause is not established. Se
 HS diagnosis follow-up: core226912Bae814b48... with a cached read-only
 register/phase snapshot and USBPortStatus43012Bd02fb1f0... are installed with
 independent exact readback. Fresh FS return shows USBPort ready, two CPUs,
-touch and CPU1 WLAN startup; native dialog/HS observations are pending. No remote grant,
+touch and CPU1 WLAN startup. Two FS-connected photos show the native dialog
+working and loop progress22322->25136 at state1/phase4, with zero bus-reset/
+SETUP/mount counters. Same-boot HS observations remain pending. No remote grant,
 PHY tuning, USB reset, endpoint claim or raw MMIO access from the GUI. Exact
 artifacts, source comparison and still-open enumeration gate are in ROADMAP.
 
