@@ -148,7 +148,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| WL0 | Change-only WiFiLink observation logging | `host/native build verified; not deployed` | Omit printed per-query UID but retain internal RPC correlation. First and changed g/st/rb/ra/ev/lastid/k/reason emit; UID-only/identical repeats do not. Per-context diagnostic-only cache; no link/query policy change. Four O0/O2 sanitized configurations pass; fresh JC1060 CPU1 resource363160Bfe8edbdb... awaits approved deployment/observation. |
+| WL0 | Change-only WiFiLink observation logging | `JC1060 installed/readback verified; first native observation passed` | Omit printed per-query UID but retain internal RPC correlation. First and changed g/st/rb/ra/ev/lastid/k/reason emit; UID-only/identical repeats do not. Per-context diagnostic-only cache; no link/query policy change. Four O0/O2 sanitized configurations pass; JC1060 CPU1 resource363160Bfe8edbdb... independently readback verified; return boot logs first UID-free row and no periodic repeats during passive observation. Changed-state native gate and WLAN connectivity remain open. |
 | CI-WM | WirelessManager product build-contract integration | `source correction and RV32 build verified; PR91 CI pending` | Initial three product lanes fail AT0004 before compilation. P4-only classic-MetaMake diagnostic branch preserves the switch; ordinary profiles use the unchanged released closed capability. Three real transpiler product probes/counterprobes and twenty GNU make target/switch cells pass. Fresh diagnostic manager701280B8cb6490f... is byte-identical; no tool release, weakened gate or board write. |
 | N2H | Flash-delivered helper entry points | `deployment/readback/headless verified; JC1060 GUI scan observed`: Fabian confirms AROSP4DEV WiFi and corrected transition labels; generation1.3 and compact ESP32Board are installed; canonical FLASHDISK0P0 naming retained | Synchronized native GUI/open association; no full WiFi/SAE/PMF/IP pass |
 | N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `manager diagnosis resumed`: generation1.3 deployed; discovery and GUI Scan now recur successfully; manager lifecycle diagnostics deployed/readback/headless verified; explicit GPIO54 C6 reset and CPU1 owner captured; fresh-readiness600s manager capture running | Attribute manager initialization/stop and then open association; peer admission remains0, no IP/data pass |
@@ -195,7 +195,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C1P | Graphical boot/update performance | `hardware partial; runtime hang gate open` | Rotation/mirror: 140 sanitizer cases; actual producer: 400 submissions/1,677 guarded IRQs. CPU90 synchronous full update 2.776 s; CPU360 synchronous 0.617 s; v2 coalesced submission 0.296 s. Paired v2 core/HIDD initially passes headless Wanderer and flash checks. Fabian observes speedup then slowdown/hang. Console-only nonblocking runtime fix now sanitizer-tested, flashed and verified; explanation of the observed hang remains unconfirmed. On 2026-10-01 Fabian reports drawing is fine so far after requester-free RAM Disk opening; duration unspecified. Sustained no-reader/stress and complete interactive regression gates remain open. |
 | CQ1 | Bounded queued SMP debug console | `hardware partial (JC1060); default-plain deployed/readback/headless; D1001 open` | 2026-10-13 framed core showed both harts/108 consecutive records and reader recovery. 2026-10-14: P4_CONSOLE_RECORD_PREFIX defaults0, optional1 keeps framing; overflow warnings always active. Clean native193024Ba68ca519.../independent readback and111.929s fresh218-row headless export show no normal prefix,22 touch heartbeats and CPU1 WLAN owner. Twelve sanitized USB/UART default/0/1 host runs pass; old-header mutation rejected. Plain logs cannot prove sequence continuity. Native overload/physical disconnect and fresh interactive gates remain open. Early/fatal direct output and timer-failure backlog loss remain explicit limits. |
-| RC0 | Independent USB remote diagnostic MVP | `FS deployment/readback and return boot verified; offline safeguards extended; HS gates unresolved` | 2026-10-15: installed USBDiag261164Bd821f026..., kernel194384B03f997b1..., helper4194304B34d5b460... retain FS readback/return evidence, not HS acceptance. New uninstalled launchers52244Bb7706abb.../52052B28f384c1... classify numeric failures. Nine O0/O2 sanitized USB C suites, nine stager/six probe, fourteen recovery and fifteen client tests pass. Real portable composition uses fake endpoints/worker. Legacy-core recovery plan preserves sector tail; live identity/layout/preimage/readback guards and pinned esptool single whole-write attempt are offline-only. HS flash, CDC, echo, screenshots/files/input still need actual hardware evidence. Epic77/affected issues reconciled, open; full remote plan deferred. |
+| RC0 | Independent USB remote diagnostic MVP | `FS deployment/readback and return boot verified; offline safeguards extended; HS gates unresolved` | 2026-10-15: installed USBDiag261164Bd821f026..., unchanged kernel194384B03f997b1..., updated helper4194304B8cfa7b66... retain FS readback/return evidence, not HS acceptance. Installed launchers52244Bb7706abb.../52052B28f384c1... classify numeric failures; no autostart. Nine O0/O2 sanitized USB C suites, nine stager/six probe, fourteen recovery and fifteen client tests pass. Real portable composition uses fake endpoints/worker. Legacy-core recovery plan preserves sector tail; HS recovery tool remains offline-only. HS flash, CDC, echo, screenshots/files/input still need actual hardware evidence. Epic77/affected issues reconciled, open; full remote plan deferred. |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware verified` | Complete GB0 evidence: correctly oriented persistent Wanderer with title/icons/four edges, bounded graphical recovery without SD, 20/20 controlled EN-reset boots, a 30-minute desktop soak explicitly composed with B5's active concurrent SD/scanout stress, and an exact raw-card gate.  The latter used hardware-locked first host insertions around one normal D1001 boot; prepared image, pre-run readback and post-run readback are byte-identical at SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Two earlier comparisons remain documented as macOS `.fseventsd` contamination, not hidden as passes |
 | C4 | Touch as an absolute mouse HIDD | `hardware partial` | Since 2026-10-04 the touch path is the portable stack of D3 (`touchscreen.hidd`, `gsl3670.hidd`, `esp32p4board.resource`); the D1001 has not run it yet, so everything below describes the former kernel GSL driver and `p4touch.hidd`. D1001 identification, bounded firmware load/status and contact transport are hardware verified. The absolute mouse HIDD and nearest-contact continuity pass synchronized one-/two-contact tests; hardware IDs are not stable. A stationary pointer recovered after USB reset; its prior cause remains unknown. The tap policy defaults to button-free motion, tap-to-click and 400-ms hold-drag, preserving selectable direct mode and the right-button latch. Fabian confirms movement, tap and hold-drag with zero errors and clean release. A consented perimeter trace measures X=16..1638/Y=15..874; board-specific calibration now maps that range to the full surface. Its 3,863 host checks, build and package audit pass. A fresh synchronized run confirms four-edge reachability and menu-dropdown opening, with zero I2C errors and clean release at Y=5. Rapid double-tap reliability is reported poor; first-empty short-tap release (50-ms idle gap restored after renewed graphics slowdown) now pass 3,892 sanitizer checks and are a flashed candidate, not interactive acceptance; a volume requester precedes successful RAM Disk opening (name reported as TENEME, possibly THEME; unconfirmed). Theme assignments, Ice assets and PNG registration now pass a 167-entry host image verification; SD image now written/readback-verified/ejected; visible gate fails with missing png.library>=52; 171-entry runtime-library closure correction is now SD written/readback-verified/ejected (2026-10-01); synchronized 55-second boot reaches Wanderer and attempts the new runtime libraries; Fabian confirms requester-free RAM Disk opening and one visible toolbar symbol; complete toolbar and sustained performance are not yet accepted. Menu-item execution, bounded recovery, intermittent startup reliability and the 1,000-cycle gates remain open |
@@ -1709,7 +1709,10 @@ existing rejection. No stale-UP adoption, timeout extension or new authority.
 The2026-10-15 WL0 candidate removes only the displayed UID and suppresses
 unchanged observations per owner context. All other logged values remain in
 the change comparison; internal UID validation and query cadence are unchanged.
-Host/native builds pass, but the new resource is not installed or observed.
+Host/native builds pass. The subsequent approved FS deployment independently
+verifies the full BSP readback; fresh return IDs29823..30020 contain the first
+UID-free WiFiLink and no periodic repeats during passive observation. Changed
+native state and WLAN connectivity are not inferred from log silence.
 Eight diagnostic-off/on O0/O2 sanitized callback/AP-info runs pass; observer
 and quiet touch deployed/readback in preserved BSP2212f70a... . Fresh authorized
 attempt reports Could not connect: token1 commits, event776/reason8 follows,
@@ -4581,6 +4584,21 @@ Acceptance gate:
 ## Track RC: independent remote diagnostic access
 
 ### RC0 - USB investigation and diagnostic-MVP slice
+
+2026-10-15 HS echo attempt: Fabian confirms the sole-power cable is on HS,
+normal desktop visible, then explicitly starts USBEchoTest and accepts Start.
+Both IOKit and libusb snapshots find no prototype device (only the unrelated
+YubiKey). No interface is claimed and no echo transaction is attempted.
+Enumeration remains blocked; inspect launcher result and RAM:USBEcho.log
+before another run or physical change. This is not an echo/CDC/remote pass.
+
+2026-10-15 approved FS follow-up: updated consent launchers are installed in
+helper8cfa7b66..., independently readback verified. The accompanying preserved
+BSP installs WL0 resourcefe8edbdb..., full erase span exact. One reset with
+devserial already open returns both CPUs, watchdog, graphics/touch startup and
+CPU1 WLAN owner. No USB service is started; HS enumeration/echo, CDC, remote
+backends and HS flashing remain open. Next coordinate the sole-power cable move
+to HS, boot normally, then explicitly launch USBEchoTest (not BOOT/RESET).
 
 2026-10-15 PR91 blocker: all three initial product lanes fail AT0004 during
 WirelessManager capability validation, not runtime. CI-WM now records the
@@ -44766,3 +44784,74 @@ remain open. No partial stage is a complete A/B update system.
   hardware test. Next: integrate source through PR91, then freshly confirmed
   installation/HS gate and subsequent WLAN diagnosis. Do not infer link health
   from fewer log rows or absence of a message.
+
+### 2026-10-15 - RC0/WL0 approved FS deployment and HS-gate preparation
+
+- Fabian freshly confirms readiness, Debug/FS as the only USB-C power source,
+  and explicit target-port release/reopen permission. devserial capture remains
+  preserved; only /dev/cu.usbmodem1101 is released, Bluetooth port/daemon stay.
+  Installed CLI0.2.12 reports daemon0.2.13; no daemon restart is performed.
+  Bounded pre-release receipts29678..29685 still show the old per-query UID.
+- Exact live identity/security query succeeds via FS: MAC80:f1:b2:d3:3b:a6,
+  P4v1.3,16MiB, flags0, secure boot/encryption disabled. Live4KiB table passes
+  legacy ota_0/arosbsp validation; no A/B layout assumption. Evidence directory:
+  `usb-hs-gate-2026-10-15.CgC0nE` under the existing evidence root.
+- Live BSP read exits0,42 members/4052196B; installed WiFi362976B23be48ff...
+  matches the pre-change resource. Only esp32p4wifi.resource is replaced by
+  WL0's363160Bfe8edbdb..., all41 other member contents/order remain identical.
+  Old/new compiled P4Wifi_Init both store private ABI12/size348; SDMMC host and
+  sdcard are unchanged. Loader audit exits0 with0 rejected members. New package
+  4052380B SHA256a3ff57631619fd5346f09bbb7eeabb4fab6dd637ee26b9a6c4a6ac26314180b6.
+  Sector-preserving payload0x3de000B at0x820000 SHA256
+  282985d64a9a424e62ea3e32323ea94a969e5bba5bd05334b4e1238030c9844e;
+  bytes after declared package through erase-sector end are preserved.
+- Live helper pre-read exits0 and matches the retained34d5b460... image, so
+  existing content has not drifted. New stage changes exactly USBRemoteTest
+  and USBEchoTest to the previously Werror/fixture-qualified launchers, no
+  other path/content. FAT16 image4194304B SHA256
+  8cfa7b66898f895bf555e95cb1095ee44ff84e055d47f82a3b75106ff9a3274a;
+  readonly attach/fsck/detach exits0,39 files/349KiB free. No autostart added.
+- One pinned esptool5.5.0 wrapper write is started for only0x820000/0x3de000
+  and0xc00000/0x400000, before/after no-reset, whole-write attempts1.
+  Actual process completion and independent readbacks are still pending at
+  this preparation entry. Kernel, bootloader/table/NVS, SD and C6 untouched.
+  This is FS installation, not HS flash or USB remote acceptance. Next: actual
+  writer exit/readbacks, devserial-first return capture, then coordinated
+  single-power cable move to HS for an explicit echo-only desktop launch.
+
+- Completion: writer session52046 exits0, both esptool hashes verified.
+  Independent BSP read session61479 exits0,4055040B; cmp exact against the
+  sector-preserving payload, SHA256282985d64a9a424e62ea3e32323ea94a969e5bba5bd05334b4e1238030c9844e.
+  Independent helper read session71749 exits0,4194304B; cmp exact, SHA256
+  8cfa7b66898f895bf555e95cb1095ee44ff84e055d47f82a3b75106ff9a3274a.
+  No esptool process remains before the approved devserial reopen.
+- devserial opens before one explicit reset macro. Historical rows29686..29822
+  are old receipts, not return evidence; return-boot.jsonl scopes198 rows
+  IDs29823..30020, SHA256eee48da5c820f6941014371fc814bfe6d2de2d5079b83f18eb6a60faafc07140.
+  ROM reports CHIP_USB_UART_RESET/SPI_FAST_FLASH_BOOT, kernel watchdog armed
+  6000ms, PSRAM200MHz,42 modules, hart1 online/cpus2, queued console ready,
+  normal AddDisplayDriver, GT911/touch startup, C6 GPIO54 reset and CPU1 owner.
+  Graphics updates report faults0/rejects0. No captured trap/Guru/alert/overflow
+  or subsequent reset signature. Early resident text is visibly coalesced/
+  truncated: this is not lossless early-boot or reset-causality acceptance.
+- First new WiFiLink at30019 omits u; no further rows through the passive
+  observation ending06:39UTC. No native changed-state test or association/IP
+  claim. Kernel/bootloader/table/NVS/SD/C6 firmware remain untouched. No visual
+  desktop pass inferred, and no echo/remote service launched. Next fresh
+  coordinated HS cable move, then normal desktop boot and echo-only launcher.
+
+### 2026-10-15 - RC0 HS echo launch without host enumeration
+
+- Fabian confirms HS connected and desktop visible after normal sole-USB-C
+  power-on, then confirms USBEchoTest started with Start accepted. No BOOT or
+  RESET button requested, no second power cable and no remote backend enabled.
+- Host snapshot at06:43:59UTC: both IOKit IOUSB tree and PyUSB/libusb enumerate
+  only unrelated1050:0407 YubiKey; no1209:0001 prototype. Evidence files
+  usb-hs-gate-2026-10-15.CgC0nE/hs-echo-start-ioreg.txt and
+  hs-echo-start-libusb.txt. Commands exit0. These are point observations, not
+  proof that no transient attachment occurred between snapshots.
+- No device/interface claim, echo transfer, CDC open, reset or flash performed.
+  HS transport remains unqualified. Need launcher result and RAM:USBEcho.log
+  to distinguish startup rejection, PHY/controller failure and no attachment;
+  no cause inferred from absent enumeration alone. Await Fabian's observation
+  before a new run or cable/button action.

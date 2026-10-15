@@ -1,12 +1,15 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
-WiFiLink follow-up2026-10-15 (build verified, not installed): `u` is the
+WiFiLink follow-up2026-10-15 (JC1060 installed/readback verified): `u` is the
 per-query RPC UID, not a link-state value. Correlation remains unchanged,
 but this field is omitted from WiFiLink output. A context-local diagnostic
 cache emits the first observation and then only changes to g/st/rb/ra/ev/
 lastid/k/reason. Existing stale-snapshot rejection and radio timing/policy
 remain unchanged. Diagnostics on/off O0/O2 ASan/UBSan and a fresh complete
-JC1060 CPU1 resource build pass; resource363160Bfe8edbdb... is not deployed.
+JC1060 CPU1 resource build pass; resource363160Bfe8edbdb... is deployed in
+the preserved42-member BSP. Fresh return capture emits the first WiFiLink
+without u and no identical periodic repeats during the passive observation.
+This does not prove WLAN association or IP connectivity.
 
 2026-10-15 USB-MVP scope confirmed: screenshots, mouse/click, read-only files,
 CDC logs and HS firmware flashing; larger remote-control features deferred.
@@ -15,6 +18,9 @@ Nine sanitized USB host suites pass. JC1060 FS installation is byte-for-byte
 readback verified; the return boot shows two harts, watchdog, touch and graphics.
 HS echo/CDC/remote tests and HS flashing remain unqualified. HS-ROM absence
 remains unresolved and is not a completed gate.
+Following the confirmed cable move and visible normal desktop, Fabian starts
+USBEchoTest and accepts Start. IOKit/libusb still find no prototype device;
+no echo transfer is attempted. Launcher outcome/local log inspection is next.
 
 Offline follow-up2026-10-15: real portable CDC/echo/RemoteDiag sources now run
 together against fake bounded endpoints/worker, including no reader, partial
@@ -26,7 +32,8 @@ full readback. Only its offline plan has run; actual HS flashing remains open.
 Updated consent launchers show numeric DOS/setup errors and a bounded fixed
 status summary, never arbitrary log contents. Fresh RV32 Werror builds pass:
 USBRemoteTest52244Bb7706abb..., USBEchoTest52052B28f384c1.... These launchers
-are not yet deployed; this follow-up did not access hardware. Epic77 and
+are now deployed with independent full readback in helper image8cfa7b66...;
+only those two executables changed. No USB service autostarts. Epic77 and
 affected milestone issues were reconciled; all remain open.
 PR integration preparation merges current AROS-NX main16d40cb012 without
 rewriting feature history. TC0 compiler/SDK changes and both documentation
@@ -37,7 +44,8 @@ target-guarded source correction keeps the exact audited product form and the
 existing P4 classic-MetaMake opt-in. Three product capability probes and their
 old-form rejection counterprobes pass; fresh RV32 diagnostic WirelessManager
 is unchanged701280B8cb6490f..., with numeric markers intact. Complete CI and
-merge are still pending; nothing is newly installed on the board.
+merge are still pending; the separate FS deployment changes only the WiFi
+resource and the two consent launchers, not the kernel or C6 firmware.
 
 Composite USB candidate (2026-10-14, hardware open): vendor-bulk interface0
 now coexists with CDC control1/data2 for devserial logs. Nine staging/six probe
