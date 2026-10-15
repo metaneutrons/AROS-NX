@@ -20,8 +20,10 @@ confirms the desktop, but IOKit/libusb again find no P4 and no CDC port. Remote
 launch is held; controller/PHY versus physical-link cause is not established. See the
 [port-service plan](../../docs/plans/esp32p4-usb-port-service.md) and ROADMAP RC0.
 
-HS diagnosis follow-up: a cached read-only register/phase snapshot and touch
-USBPortStatus dialog are build verified, awaiting deployment. No remote grant,
+HS diagnosis follow-up: core226912Bae814b48... with a cached read-only
+register/phase snapshot and USBPortStatus43012Bd02fb1f0... are installed with
+independent exact readback. Fresh FS return shows USBPort ready, two CPUs,
+touch and CPU1 WLAN startup; native dialog/HS observations are pending. No remote grant,
 PHY tuning, USB reset, endpoint claim or raw MMIO access from the GUI. Exact
 artifacts, source comparison and still-open enumeration gate are in ROADMAP.
 
