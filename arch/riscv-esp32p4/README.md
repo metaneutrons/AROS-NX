@@ -15,7 +15,9 @@ preview exceeded the live BSP allocation by185832B. The kernel and new
 Remote client/launcher are now installed on JC1060 through Debug/FS with
 independent exact readback; fresh two-hart return boot reports USBPort ready,
 remote closed, graphics/touch and CPU1 WLAN startup. This is not HS
-enumeration or CDC/Remote-Bulk acceptance; native enumeration remains open. See the
+enumeration or CDC/Remote-Bulk acceptance. After the coordinated HS move Fabian
+confirms the desktop, but IOKit/libusb again find no P4 and no CDC port. Remote
+launch is held; controller/PHY versus physical-link cause is not established. See the
 [port-service plan](../../docs/plans/esp32p4-usb-port-service.md) and ROADMAP RC0.
 
 WiFiLink follow-up2026-10-15 (JC1060 installed/readback verified): `u` is the
