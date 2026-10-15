@@ -96,8 +96,11 @@ This verifies that workaround, not HS enumeration or a production writer.
 Tested normal artifact196688B1bc7eef7... is retained. Removal gate RC0-TW is open.
 AROS is now restored including scratch, independently byte-verified; fresh FS
 return shows ROM/PSRAM, graphics/touch, USBPort remote closed and CPU1 WiFi owner.
-Next synchronize a fresh HS run using the retained normal artifact, not the
-injected self-test. No HS cable action or visual acceptance occurred here.
+For the next synchronized HS run, the retained normal artifact1bc7eef7... is
+now reinstalled/readback verified with pristine scratch. The board waits in
+ROM on Debug/FS; no FS application boot was issued, so it has no new FS trace.
+AROS is temporarily replaced, with exact recovery retained. HS cable action
+and acceptance are pending; this is not the injected self-test.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
