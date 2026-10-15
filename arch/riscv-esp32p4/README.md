@@ -60,8 +60,8 @@ connection, neither IOKit nor devserial sees the reference/CDC. After the FS
 return, fresh register samples prove the DMA app executes, but early startup
 was not captured and these are FS-connected values, not the preceding HS run.
 The inspected vendor demos contain no invoked HS USB-device startup. An
-optional, default-off one-shot register journal is now built/host-tested, not
-installed, to preserve the next synchronized HS execution in one already
+optional, default-off one-shot register journal is now installed with exact
+readback, awaiting its first synchronized HS execution in one already
 backed-up app sector. It is board/layout/preimage bounded and refuses signed
 or encrypted configurations; see usb/idf-reference/README.md. No reference
 is known-good on this board until it actually enumerates and yields a complete
