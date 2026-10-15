@@ -41,6 +41,7 @@ endif
 %fetch mmake=xz-fetch archive=$(ARCHBASE) destination=$(PORTSDIR)/xz \
     location=$(PORTSSOURCEDIR) destination=$(PORTSDIR)/xz \
     archive_origins=$(REPOSITORIES) suffixes=$(ARCHSUFFIX) \
+    checksums="$(ARCHBASE).tar.gz=sha256:3d3a1b973af218114f4f889bbaa2f4c037deaae0c8e815eec381c3d546b974a0" \
     patches_specs=$(PATCHSPEC)
 
 %create_patch mmake=xz-create-patch \

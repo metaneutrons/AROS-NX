@@ -20,6 +20,9 @@ status summary, never arbitrary log contents. Fresh RV32 Werror builds pass:
 USBRemoteTest52244Bb7706abb..., USBEchoTest52052B28f384c1.... These launchers
 are not yet deployed; this follow-up did not access hardware. Epic77 and
 affected milestone issues were reconciled; all remain open.
+PR integration preparation merges current AROS-NX main16d40cb012 without
+rewriting feature history. TC0 compiler/SDK changes and both documentation
+histories are preserved; this adds no runtime or hardware acceptance.
 
 Composite USB candidate (2026-10-14, hardware open): vendor-bulk interface0
 now coexists with CDC control1/data2 for devserial logs. Nine staging/six probe
@@ -2368,6 +2371,11 @@ watchdog6000ms, graphics HIDD and running GSL3670 with4356 firmware records.
 SD detection reports no card: only the flash fallback boots. No Wanderer,
 SD-boot or visual/touch acceptance yet; fresh readiness/card insertion next.
 This supersedes the older D1001 "Currently flashed" history table below.
+The separate RV32 compiler/SDK release track is TC0 in
+[ROADMAP.md](ROADMAP.md#track-tc-rv32-compiler-and-sdk-publication).
+GNU recipes and complete SDK source inputs are being integrated on current
+AROS-NX main. Source regressions do not qualify a published compiler or SDK
+and do not change the hardware status below.
 
 Nothing in the table below is claimed to work until it has been observed
 working on hardware. `stub` means the file exists and compiles; `works`

@@ -11,7 +11,10 @@ FILES := \
 
 #MM- linklibs : linklibs-mui
 #MM- core-linklibs : linklibs-mui
-#MM linklibs-mui : includes
+# The compiler release needs these MUI headers, not the global Ports closure.
+# Classic selector 0 retains the complete upstream includes prerequisite.
+#MM linklibs-mui : sdk-includes-$(AROS_TOOLCHAIN_RELEASE) \
+#MM    workbench-libs-muimaster-includes includes-libraries-mui
 
 %build_linklib mmake=linklibs-mui libname=mui files=$(FILES)
 	

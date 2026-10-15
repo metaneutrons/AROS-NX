@@ -175,6 +175,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | N2U | Credential-free WLAN image defaults and first-use selection | `matched ABI8 candidate BSP/image build and host verification; deployment/runtime open` | Existing AROS WiFi/Network preferences, WirelessManager, AROSTCP and dhclient only; device/unit0, DHCP RAM paths, empty Wireless.prefs, autostart off. Five defaults/eighteen stage tests pass. WLAN-only whitelist includes ESP32Board/icon; actual85-file overlay, tracked Wanderer defaults, no saved build Env-Archive. Fresh static-linked resource282952B/device67584B, audited42-member BSP3971508B,41 other payloads unchanged. Final64MiB AROSDefault image has332 manifest entries; historical loader failures/artifacts retained in dated evidence. Installed baseline backup/full-span recovery, native discovery, single-manager lifetime, clock/routing/resolver/GUI/radio acceptance remain open. Both privacy assertions0; credentials excluded and SYS/SD read-only. |
 | N2E | Caller-visible asynchronous association failure | `generic caller/native binding/Close model+build verified; runtime open` | Native76cc32560a owned cookies/opener failure latches and message-ACK/token fence are bound; independent source review clear, clean72936B RV32 device build and all six scoped macOS/Linux O0/O2 sanitizer suites pass. Caller Close9a0a0d8346 integratedd50ca3ba1e passes independent review/macOS/Linux models and full679652B RV32 rebuild. Capability advertisement remains disabled. SUMMARY-only and privacy assertions0 unchanged. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
+| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | GNU recipe and SDK source-input corrections are being integrated on current AROS-NX main without changing SMP or board runtime. Source-owned pins, normalized cache contracts and explicit header prerequisites have fixture coverage. Release object paths and applicable GCC/GDB markers distinguish Classic and SDK-selector state. Clean source/runtime-bound compiler and complete SDK replay, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
@@ -2421,6 +2422,132 @@ new archive before selecting or adapting an existing MAC driver. Ethernet
 implementation and its acceptance gate follow that inventory, not an assumption
 that a similarly named AROS driver matches the P4 MAC generation.
 
+## Track TC: RV32 compiler and SDK publication
+
+TC0 separates the host compiler package from the target/ABI SDK. Both use
+generic aros-tools infrastructure; the SDK contract remains source-owned.
+The first GNU release profile is RV32/ESP32-P4, not RV64. Existing LLVM
+profiles remain part of the mixed release baseline.
+
+Acceptance requires a published V2-capable aros-tools runtime, the exact
+clean source/producer/runtime identities, three-host compiler A/B builds,
+byte comparisons, complete native SDK C/C++ final links and relocation,
+native P4 integration, and independent signed release/download audits.
+Recipe tests or declaration checks do not close this gate. A build does not
+change any board's hardware acceptance state.
+
+### 2026-10-10 - TC0 GNU recipes integrated on current SMP source
+
+- Baseline: protected AROS-NX main
+  `0c15f90eb34ce6b58089847f84b2b7a763ed6106`; integration branch
+  `fix/gnu-release-integration`. The current SMP/board files are unchanged.
+- Source selection: preserve the functional GNU release-layout fixes from
+  the locally tested series through `6eb0719aeb`, including the corrected
+  GCC 16.2 libstdc++ configure macros. Omit the RV64 OpenSBI GNU preset and
+  do not import the source branch's older board/SMP documentation.
+- Policy: `AROS_TOOLCHAIN_RELEASE=1` requires relocatable neutral-prefix
+  staging and private build-only host dependencies. Classic selector `0`
+  retains its default layout and header prerequisites. Consumers must supply
+  a target SDK explicitly; the compiler's sysroot marker is not an SDK.
+- Procedure: run `tools/crosstools/gnu/tests/test-release-layout.sh` with
+  GNU make, `test-header-closure.sh`, `test-zstd-closure.sh`,
+  `test-libstdcxx-configure.sh` against the locked GCC 16.2 archive, and
+  `test-script-relocation.sh` against the retained native Binutils libiberty.
+- Result: all five tests passed on macOS ARM64, including their classic
+  defaults, release-selector rejection and relocation counter-probes. These
+  are source-generation/fixture proofs, not new complete compiler binaries.
+- The recorded-metadata regression also passed against eight pristine files
+  extracted from the locked GCC archive. It applies the metadata patch with
+  zero fuzz and exercises actual configure/install code plus malformed-root
+  refusals. Lightweight header/layout/zstd tests now run in the required
+  product CI planning gate; archive-dependent tests remain separate.
+- Safety: no flash, media write, SMP/runtime change, tag or publication.
+  Existing compiler/SDK evidence remains tied to its original source commit.
+- Remaining gate: independent source review, normal product CI, clean
+  source/runtime binding and fresh mixed compiler/SDK release qualification.
+
+### 2026-10-10 - TC0 sealed Unicode generation replay
+
+- State: compiler/SDK source preparation remains `in development`; no
+  compiler release or board acceptance is inferred.
+- Configuration: Unicode 16.0.0 archive SHA-256
+  `c86dd81f2b14a43b0cc064aa5f89aa7241386801e35c59c7984e579832634eb2`.
+  The ordinary source Makefiles use this checked archive rather than loose
+  text files from a moving `latest` endpoint.
+- Procedure: `tools/genctbl/test-locked-sources.sh` with the existing native
+  CLI, reviewed GNU source lock and verified UCD archive. The test denies
+  curl, invokes the actual generator and stdc rules, removes one generated
+  input in its isolated fixture, and corrupts a separate archive copy.
+- Result: real locale generation and incremental recovery passed; both
+  direct and stdc routes refused corrupted input before output or usage
+  receipt. Recovered `en_GB_ISO8859-1.c` SHA-256:
+  `7906b7ca6d758463ee1788febca54b7e0a5d864f63a6c5bb070b5f1300830209`.
+  No loose Unicode text cache was used. Existing CI contract tests: 34 passed.
+- Safety: tests used disposable host fixtures only. The two changed
+  Makefiles' copyright marks were normalized to UTF-8 without changing
+  copyright ownership. No hardware, existing build tree or package modified.
+- Next: qualify the complete clean native SDK and P4 source contract against
+  the newly integrated source, then the three-host mixed release baseline.
+
+### 2026-10-10 - TC0 classic-state reuse counter-probes
+
+- Independent review of source integration `de4a4e0e21` found that an old
+  classic GCC/GDB install marker could skip the release build/install guard.
+  Generated libatomic configure/install state also did not encode its changed
+  SDK prerequisite selector. A fresh compiler build had not exposed reuse.
+- Correction: layout-versioned GCC/GDB install markers; separate release host
+  object directories for GNU packages, including private zstd scratch state;
+  object paths and GCC markers select the compiler-only or complete SDK context.
+  Libatomic state is isolated too. Classic paths and marker
+  names remain unchanged. Candidate install layouts must not be alternated.
+- Procedure: `MAKE=gmake sh tools/crosstools/gnu/tests/test-release-layout.sh`.
+  A test-only configure executable and child makefiles run through the actual
+  GenMF-expanded guards. Seeded classic install markers cannot skip release
+  GCC/GDB; seeded classic `.configured` cannot skip release GCC/libatomic.
+  Selector-0 release GCC markers and configured GCC/libatomic state likewise
+  cannot skip selector-1 producer commands.
+  Valid classic state still avoids redundant configure/debugger installation.
+- Result: regression passed on macOS ARM64; the pre-fix release-marker
+  assertion failed for the expected reason. Header and native zstd fixture
+  regressions also passed. Fixtures are removed by the test's exit trap.
+- Safety: no existing compiler tree, SDK, firmware, board or media changed.
+  These are recipe/state-transition probes, not new compiler binaries, A/B
+  evidence or hardware qualification. TC0 remains `in development`.
+- Next: final independent review and required product CI, followed by a clean
+  source/runtime-bound compiler/SDK replay and full mixed release gates.
+
+### 2026-10-10 - TC0 complete SDK source-input integration
+
+- Baseline: protected main `0c15f90eb34ce6b58089847f84b2b7a763ed6106`;
+  branch `fix/native-sdk-source-inputs`. Only source fetch/header-context
+  fixes are selected from the retained native SDK proof, not its old board
+  history, RV64 profile or SDK feature declaration. GNU recipe integration
+  remains a separate checked change.
+- Changes: pin the 14 fetch recipes in the complete SDK source closure;
+  preserve verified FreeType/GLU suffix candidates; select TIFF's HTTPS
+  origin. Codesets explicitly depends on its headers; GSM explicitly
+  declares its empty private header list rather than an undefined variable.
+- Normalization: zlib selects canonical-tar-gzip-v1, 2,337,668 bytes, SHA-256
+  `883d22e0b9aefc31a383c462adacdbd7941e6862559c5b27e59599db8114e783`.
+  GenMF forwards the representation fields. The shell fetch helper accepts
+  only an existing regular local canonical cache entry verified before locks,
+  extraction or network access, and rechecks it before extraction. It does
+  not canonicalize a remote response. Ordinary exact-byte fetches keep their
+  prior path. Product CI's existing locked zlib staging mapping is unchanged.
+- Procedure: the CI authoring regressions expand all 14 real recipes through
+  GenMF and GNU make, require an exact pin for every selected archive format,
+  and reject missing pins or unpinned fallbacks. The normalization regression
+  exercises actual local extraction and rejects corrupted hash, wrong size,
+  absent cache, incomplete/unknown metadata and multiple suffix candidates.
+  GSM generation is checked independently of a complete SDK build.
+- Evidence: 13 recipe inputs were rehashed against the retained prepared SDK
+  cache on macOS ARM64; zlib uses the independently verified repository seed.
+  This is input/fixture evidence, not fresh compiler/SDK qualification. No
+  hardware, media, existing build tree, tag or release was changed.
+- Next: required source CI and independent review, integrate the separate
+  GNU fixes, then bind the native SDK contract to the final exact source and
+  qualified runtime before clean mixed-host release qualification.
+
 ## Track E: ESP32-P4 / RV32 SMP
 
 Status 2026-10-08: the port is developed on AROS-NX `main` since
@@ -4448,6 +4575,11 @@ Acceptance gate:
 ## Track RC: independent remote diagnostic access
 
 ### RC0 - USB investigation and diagnostic-MVP slice
+
+2026-10-15 integration preparation: current main16d40cb012 is merged into the
+feature candidate without rebasing. Only README/ROADMAP needed content-conflict
+resolution; both the feature evidence and TC0 compiler/SDK track are retained.
+Required CI and actual protected merge remain separate from hardware gates.
 
 2026-10-15 offline completion: composition now exercises real portable CDC,
 echo and RemoteDiag sources with fake endpoints/worker at O0/O2 ASan/UBSan;
@@ -44536,3 +44668,17 @@ remain open. No partial stage is a complete A/B update system.
   or original RC-M6 acceptance is inferred. Next: fresh readiness and actual
   HS echo/enumeration, then CDC/capture/mouse/read-only comparison and separate
   HS ROM recovery qualification. No additional hardware run started here.
+
+### 2026-10-15 - ESP32 feature PR integration preparation
+
+- Fabian requests merging all pushed commits through PRs. Feature head before
+  integration is a55faa69af; current AROS-NX main is16d40cb012. The candidate
+  has321 feature-side commits; no squash/rebase or discarded historical evidence.
+- Merging main changes only existing source integration inputs and TC0
+  compiler/SDK work. README and ROADMAP have content conflicts from independent
+  status additions; both sides are preserved. No functional source conflict.
+  Master RC0 remains partial and TC0 remains in development. No hardware, flash,
+  serial or SD access; no new image is installed or hardware claim introduced.
+- Next: run source/CI-contract checks, push the merge candidate, open the
+  integration PR and require CI Success against the current protected base.
+  Full WLAN and HS qualification issues remain open after source integration.

@@ -4,7 +4,7 @@ include $(SRCDIR)/config/aros.cfg
 LIBTIFFVERSION=4.7.2
 REPOSITORIES =  \
     cache:// \
-    http://download.osgeo.org/libtiff
+    https://download.osgeo.org/libtiff
 ARCHBASE     := tiff-$(LIBTIFFVERSION)
 ARCHSUFFIX := "tar.xz"
 #PATCHSPEC := $(ARCHBASE)-aros.diff:$(ARCHBASE):-f,-p1
@@ -12,6 +12,7 @@ ARCHSRCDIR := $(PORTSDIR)/libtiff/$(ARCHBASE)
 
 %fetch mmake=libtiff-fetch archive=$(ARCHBASE) destination=$(PORTSDIR)/libtiff \
     location=$(PORTSSOURCEDIR) archive_origins=$(REPOSITORIES) suffixes=$(ARCHSUFFIX) \
+    checksums="$(ARCHBASE).tar.xz=sha256:4996f0c4f93094719b1ca5c6279b20e588773ba8a247533e486416fb662ddb88" \
     patches_specs=$(PATCHSPEC)
 
 %create_patch mmake=libtiff-create-patch \
