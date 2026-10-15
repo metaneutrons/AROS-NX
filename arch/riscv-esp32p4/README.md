@@ -55,7 +55,10 @@ usb/idf-reference builds the official IDF6.0.1 CDC example with a read-only
 register observer and pinned esp_tinyusb2.2.1/tinyusb0.19.0~3. Rev1.x DMA and
 PIO candidates are build/image verified. The DMA reference is now temporarily
 installed at0x20000 with independent full readback and waits in download mode;
-PIO remains unflashed. No reference
+PIO remains unflashed. After the confirmed10s sole-power interruption and HS
+connection, neither IOKit nor devserial sees the reference/CDC. Its boot has
+not yet been captured, so this is not evidence of a physical HS defect. Next
+capture reference startup over Debug/FS before any further change. No reference
 is known-good on this board until it actually enumerates and yields a complete
 dump. AROS is temporarily replaced in the application slot; the exact prior
 229376B is retained as aros-restore-exact.bin (see ROADMAP for the actual path).
