@@ -5,6 +5,7 @@
  */
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -23,7 +24,9 @@
 _Static_assert(TINYUSB_PORT_DEFAULT_HS==TINYUSB_PORT_HIGH_SPEED_0,
                "Reference must use native HS, not the Debug/FS connector");
 #if defined(HS_REFERENCE_PERSIST)
-void hs_journal_observe(const char *,size_t);
+void hs_reference_trace_start(void);
+void hs_reference_trace_event(const char *,int,int);
+void hs_reference_trace_sample(const char *,size_t);
 #endif
 
 static uint32_t reg(uintptr_t address)
@@ -66,7 +69,7 @@ static void observer(void *argument)
 #if defined(HS_REFERENCE_PERSIST)
         /* Capture before writing flash/logging; never reclassify a later FS
          * boot as the preceding HS execution. Wrapper attempts once only. */
-        if(sample>=6)hs_journal_observe(text,(size_t)n);
+        if(sample>=6)hs_reference_trace_sample(text,(size_t)n);
 #endif
         ESP_LOGI("HSReference","%s",text);
         if(tud_cdc_n_connected(0)) {
@@ -81,9 +84,26 @@ static void observer(void *argument)
 
 static esp_err_t observed_install(const tinyusb_config_t *config)
 {
+#if defined(HS_REFERENCE_PERSIST)
+    hs_reference_trace_event("usb_install_enter",0,__LINE__);
+#endif
+#if defined(HS_REFERENCE_INJECT_INSTALL_ERROR)
+    (void)config;
+    hs_reference_trace_event("usb_install_injected",ESP_ERR_INVALID_STATE,__LINE__);
+    esp_err_t result=ESP_ERR_INVALID_STATE;
+#else
     esp_err_t result=tinyusb_driver_install(config);
-    if(result==ESP_OK && xTaskCreate(observer,"HS observer",4096,NULL,1,NULL)!=pdPASS)
-        ESP_LOGE("HSReference","observer task unavailable");
+#endif
+#if defined(HS_REFERENCE_PERSIST)
+    hs_reference_trace_event("usb_install_return",result,__LINE__);
+#endif
+    if(result==ESP_OK) {
+        BaseType_t created=xTaskCreate(observer,"HS observer",4096,NULL,1,NULL);
+#if defined(HS_REFERENCE_PERSIST)
+        hs_reference_trace_event("observer_create",created==pdPASS?0:ESP_ERR_NO_MEM,__LINE__);
+#endif
+        if(created!=pdPASS)ESP_LOGE("HSReference","observer task unavailable");
+    }
     return result;
 }
 
@@ -92,11 +112,38 @@ static esp_err_t observed_install(const tinyusb_config_t *config)
  * is separate from the USB register sampling and disabled by default. */
 #define tinyusb_driver_install observed_install
 #define app_main reference_app_main
+#if defined(HS_REFERENCE_PERSIST)
+/* Record checked example outcomes, preserving the ordinary abort on error.
+ * Arbitrary panic/ROM/bootloader failures are NOT safely flash-logged here. */
+static void observed_check(esp_err_t error,const char *file,int line,
+                           const char *function,const char *expression)
+{
+    hs_reference_trace_event(error==ESP_OK?"example_check_ok":"example_error",error,line);
+    (void)file;(void)function;(void)expression;
+    if(error==ESP_OK)return;
+#if defined(NDEBUG)
+    /* Match IDF's evaluate-and-ignore configuration. */
+    return;
+#elif defined(CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT)
+    abort();
+#else
+    _esp_error_check_failed(error,file,line,function,expression);
+#endif
+}
+#undef ESP_ERROR_CHECK
+#define ESP_ERROR_CHECK(x) do { \
+    esp_err_t trace_error_=(x); \
+    observed_check(trace_error_,__FILE__,__LINE__,__ASSERT_FUNC,#x); \
+} while(0)
+#endif
 #include "tusb_serial_device_main.c"
 #undef app_main
 #undef tinyusb_driver_install
 
 void app_main(void)
 {
+#if defined(HS_REFERENCE_PERSIST)
+    hs_reference_trace_start();
+#endif
     reference_app_main();
 }

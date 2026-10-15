@@ -2,7 +2,8 @@
 
 Development-only ESP32-P4 reference from ESP-IDF6.0.1 commit
 8c19b156084a0753687347cca1f5355782893533 and esp_tinyusb2.2.1. The official
-`tusb_serial_device` example is compiled unchanged through an include wrapper.
+`tusb_serial_device` source is included unchanged through a wrapper. Optional
+persistence instruments install and checked outcomes, retaining normal aborts.
 CMake checks that example's SHA-256; the dependency lock pins the complete
 resolved graph (esp_tinyusb2.2.1 and tinyusb0.19.0~3).
 After successful driver installation, a low-priority task samples the same
@@ -45,10 +46,13 @@ The JC1060 vendor tree at `~/Downloads/JC1060P470C_I_W_Y` contains generic
 in the inspected IDF/Arduino demos. Those host helpers are not a known-good
 CDC reference. The unmodified official CDC example remains the comparison.
 
-When native CDC is absent, an explicit development build can retain one
-pre-write register snapshot after sample6 (about30 seconds). This is NOT a
-read-only-flash reference: `HS_REFERENCE_PERSIST=ON` permits one4096-byte
-erase/write at app-relative0x37000, absolute0x57000. It is restricted to
+`HS_REFERENCE_PERSIST=ON` now selects a staged HST2 trace, superseding the late
+HSJ1 snapshot. It begins in app_main before queue creation or USB initialization.
+It records app entry/reset reason, USB install entry/return/error, observer
+creation, checked example outcomes, observer progress and sample6 register
+chunks. This is NOT a read-only-flash reference: at most one4096-byte erase
+and sixteen256-byte writes at app-relative0x37000, absolute0x57000, are
+permitted during a fresh capture. It is restricted to
 JC1060 MAC80:f1:b2:d3:3b:a6 and the existing ota_0 at0x20000/0x800000.
 The complete original sector must already be retained for exact restoration;
 pass its CRC32 as `HS_REFERENCE_PREIMAGE_CRC32=0x85539a44` only for the
@@ -56,31 +60,62 @@ documented A6knoc preimage, not as a reusable board constant.
 
 The unsigned image including checksum padding and SHA must end before that
 sector. Signed-image configurations fail compilation; hardware secure boot,
-encrypted app partitions, an attached Debug/FS host, unknown/partial sector
-contents and image overlap refuse new writes. A valid old record is retained,
-not replaced. Failed/uncertain operations are not retried. CRC is a corruption
-guard, not authentication. Debug/FS absence alone does not prove an HS cable
-connection: synchronize the physical run and label the execution explicitly.
+encrypted app partitions, unknown/partial sector contents and image overlap
+refuse a fresh capture. A valid old HST2 or HSJ1 record is preserved, never
+appended to on a later boot. Failed/uncertain operations disable further writes.
+CRC is corruption checking, not authentication. Unlike HSJ1, Debug/FS presence
+does not deny a capture: link status is stored as data; preserved earlier
+records prevent replacement on an FS return boot. The SOF monitor initially
+assumes connection, so an early flag is not cable proof. Synchronize physical
+runs and never re-label a preserved FS trace as HS data.
 
-The current candidate is build verified only. Before deployment identify the
+Each256-byte slot contains HST2, LE32 sequence/length/reserved0, up to236 ASCII
+bytes with FF padding, then CRC32 over its first252 bytes. Only contiguous
+verified slots are valid. Decoder reports a torn tail as failure while showing
+the valid prefix. A torn first write/erase can leave no usable record. Refusal
+before the first safe write is console-only: untrusted/overlapping flash cannot
+safely receive a refusal record. Allocation/partition/MAC errors are also
+console-only. This is not a general panic handler and cannot record ROM,
+bootloader or pre-app_main failures. Last completed stage narrows a stall;
+it does not automatically identify its cause. Flash disturbs runtime timing.
+
+Build the staged candidate with `sdkconfig.defaults;sdkconfig.trace` as ordered
+SDKCONFIG_DEFAULTS in a fresh configuration. CMake requires IDF's size profile
+with assertions retained; the original debug profile produced an oversized
+candidate and must not be flashed across the scratch boundary. This optimization
+change is an additional difference from the earlier IDF comparison, not an AROS
+or USB fix. The normal configuration must have
+`HS_REFERENCE_INJECT_INSTALL_ERROR=OFF`. A separate explicit ON build is a
+headless self-test: it deliberately returns ESP_ERR_INVALID_STATE instead of
+calling the USB installer, records usb_install_injected/return and example_error,
+then retains IDF's configured error-check behavior. Its resulting abort is
+expected injection, never evidence of an actual USB controller failure.
+
+Decoder labels a clean partial trace `valid_prefix_only`; a verified terminal
+marker labels `sample6_complete`. Neither means USB enumeration or boot passed.
+
+Before deployment identify the
 board/table again, verify the full live scratch preimage and preserve app erase
 tails. Never write generated metadata. For an approved HS run wait at least35
 seconds, return to Debug/FS, retain/read the sector before any overwrite, then
 decode the saved file with `python3 decode-journal.py SECTOR`. Restore the
 entire original AROS0x38000-byte span, including the journal sector, and verify
 it independently. No valid record is a failed/inconclusive measurement, not a
-reason for an automatic retry. The snapshot precedes its flash operation;
-later USB behavior is not an undisturbed reference measurement.
+reason for an automatic retry. Registers are sampled before their append, but
+earlier progress writes precede USB setup: not an undisturbed reference.
 
 Offline checks: compile `main/journal.c` and `tests/test_journal.c` with the
 `main` include directory, C11, `-Wall -Wextra -Werror`, O0/O2 and ASan/UBSan;
 run both executables. Run `python3 decode-journal.py --self-test` separately.
-These checks do not establish HS enumeration or native flash-write safety.
+Also compile journal.c, trace.c and tests/test_trace.c with strict O0/O2
+sanitizer settings. These checks do not establish HS enumeration or native
+flash-write safety.
 
-Reachability limit: observer creation follows successful tinyusb_driver_install.
+Historical HSJ1 limit: observer creation follows successful tinyusb_driver_install.
 The official example aborts on install errors; none of those paths can reach
 sample6. An unchanged scratch sector therefore does not establish that app_main
-was never reached, and the current journal does not persist refusal reasons.
+was never reached; that journal did not persist refusal reasons. HST2 moves
+the first record before USB setup and records checked install failures.
 The35s cable wait is not a deadline measured from observer creation. The exact
 journal binary reaches sample6 at30220ms in the FS control, with result=-1
 (expected with an FS host). There is still no HS runtime result. For a commanded

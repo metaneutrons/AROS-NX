@@ -87,6 +87,15 @@ Next instrumentation must record pre-install progress and explicit failure/
 refusal reasons, independently of successful TinyUSB installation. Do not
 repeat PHY changes based on the absent late snapshot.
 
+The replacement HST2 staged trace is now build/host-test verified, native test
+pending. It writes app_main entry before USB initialization and appends checked
+install/error/observer/sample outcomes in the same retained4096B sector. Old
+captures are never overwritten on a later boot. Debug/FS is allowed for actual
+headless write/readback tests; link state is data, not a write-denial gate.
+Size-profile candidate196304Bb4df9c4c... fits below0x37000; original debug-profile
+candidates overlapped scratch and were rejected without flashing. General panic,
+ROM/bootloader and unsafe pre-write refusal remain outside persistence coverage.
+
 WiFiLink follow-up2026-10-15 (JC1060 installed/readback verified): `u` is the
 per-query RPC UID, not a link-state value. Correlation remains unchanged,
 but this field is omitted from WiFiLink output. A context-local diagnostic

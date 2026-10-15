@@ -195,7 +195,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C1P | Graphical boot/update performance | `hardware partial; runtime hang gate open` | Rotation/mirror: 140 sanitizer cases; actual producer: 400 submissions/1,677 guarded IRQs. CPU90 synchronous full update 2.776 s; CPU360 synchronous 0.617 s; v2 coalesced submission 0.296 s. Paired v2 core/HIDD initially passes headless Wanderer and flash checks. Fabian observes speedup then slowdown/hang. Console-only nonblocking runtime fix now sanitizer-tested, flashed and verified; explanation of the observed hang remains unconfirmed. On 2026-10-01 Fabian reports drawing is fine so far after requester-free RAM Disk opening; duration unspecified. Sustained no-reader/stress and complete interactive regression gates remain open. |
 | CQ1 | Bounded queued SMP debug console | `hardware partial (JC1060); default-plain deployed/readback/headless; D1001 open` | 2026-10-13 framed core showed both harts/108 consecutive records and reader recovery. 2026-10-14: P4_CONSOLE_RECORD_PREFIX defaults0, optional1 keeps framing; overflow warnings always active. Clean native193024Ba68ca519.../independent readback and111.929s fresh218-row headless export show no normal prefix,22 touch heartbeats and CPU1 WLAN owner. Twelve sanitized USB/UART default/0/1 host runs pass; old-header mutation rejected. Plain logs cannot prove sequence continuity. Native overload/physical disconnect and fresh interactive gates remain open. Early/fatal direct output and timer-failure backlog loss remain explicit limits. |
-| RC0 | Permanent HS port and USB remote diagnostic MVP | `HS enumeration blocked; HS journal inconclusive; exact reference reaches journal on FS; reset procedure corrected; AROS restored` | 2026-10-15: v3 RX IRQ/SETUP RX/DONE0. Cold HS journal run has no host USB/CDC or saved sample. Exact reference848a9564... FS control reaches install120ms/journal30220ms, refusing write as expected; host actual-image replay passes. DTR-only macro produced no boot, corrected RTS pulse does. This does not explain HS cold-start; add independent pre-install/error/refusal evidence next. AROS0x38000 restored/readback verified b19d6cea..., fresh FS graphics/touch/CPU1 WiFi startup. PIO/native transfers/updater unqualified. |
+| RC0 | Permanent HS port and USB remote diagnostic MVP | `HS blocked; staged pre-install/error trace build verified; native FS tests pending; AROS currently restored` | 2026-10-15: HST2 candidate196304Bb4df9c4c... records before USB install with independently checked appends in retained4KiB; actual-core O0/O2 sanitizer and decoder tests pass. FS write/readback/preservation and explicit error injection remain next. Earlier HSJ1 absent HS sample is inconclusive; DTR-only reset corrected to RTS pulse. AROS restoreb19d6cea... retained. PIO/native HS transfers/updater unqualified. |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware verified` | Complete GB0 evidence: correctly oriented persistent Wanderer with title/icons/four edges, bounded graphical recovery without SD, 20/20 controlled EN-reset boots, a 30-minute desktop soak explicitly composed with B5's active concurrent SD/scanout stress, and an exact raw-card gate.  The latter used hardware-locked first host insertions around one normal D1001 boot; prepared image, pre-run readback and post-run readback are byte-identical at SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Two earlier comparisons remain documented as macOS `.fseventsd` contamination, not hidden as passes |
 | C4 | Touch as an absolute mouse HIDD | `hardware partial` | Since 2026-10-04 the touch path is the portable stack of D3 (`touchscreen.hidd`, `gsl3670.hidd`, `esp32p4board.resource`); the D1001 has not run it yet, so everything below describes the former kernel GSL driver and `p4touch.hidd`. D1001 identification, bounded firmware load/status and contact transport are hardware verified. The absolute mouse HIDD and nearest-contact continuity pass synchronized one-/two-contact tests; hardware IDs are not stable. A stationary pointer recovered after USB reset; its prior cause remains unknown. The tap policy defaults to button-free motion, tap-to-click and 400-ms hold-drag, preserving selectable direct mode and the right-button latch. Fabian confirms movement, tap and hold-drag with zero errors and clean release. A consented perimeter trace measures X=16..1638/Y=15..874; board-specific calibration now maps that range to the full surface. Its 3,863 host checks, build and package audit pass. A fresh synchronized run confirms four-edge reachability and menu-dropdown opening, with zero I2C errors and clean release at Y=5. Rapid double-tap reliability is reported poor; first-empty short-tap release (50-ms idle gap restored after renewed graphics slowdown) now pass 3,892 sanitizer checks and are a flashed candidate, not interactive acceptance; a volume requester precedes successful RAM Disk opening (name reported as TENEME, possibly THEME; unconfirmed). Theme assignments, Ice assets and PNG registration now pass a 167-entry host image verification; SD image now written/readback-verified/ejected; visible gate fails with missing png.library>=52; 171-entry runtime-library closure correction is now SD written/readback-verified/ejected (2026-10-01); synchronized 55-second boot reaches Wanderer and attempts the new runtime libraries; Fabian confirms requester-free RAM Disk opening and one visible toolbar symbol; complete toolbar and sustained performance are not yet accepted. Menu-item execution, bounded recovery, intermittent startup reliability and the 1,000-cycle gates remain open |
@@ -4657,6 +4657,13 @@ The DTR-only devserial macro did not produce a fresh boot in this control;
 an RTS pulse with DTR released did. That corrects commanded-reset measurement,
 not the physical HS cold-start. Record independent pre-install stages/failure
 and refusal reasons before another HS run; restoration remains exact/verified.
+
+HST2 replacement now records before USB installation and checked errors through
+bounded append-only slots in the same sector. Native image196304Bb4df9c4c... and
+O0/O2 host tests pass; actual FS write/readback/preservation/error controls are
+pending. FS is permitted for a real storage test, link status is recorded;
+older captures are never updated by a later boot. General panic and unsafe
+pre-write refusal are not promised persistent records. See dated evidence.
 
 2026-10-15 HS echo attempt: Fabian confirms the sole-power cable is on HS,
 normal desktop visible, then explicitly starts USBEchoTest and accepts Start.
@@ -45667,3 +45674,39 @@ remain open. No partial stage is a complete A/B update system.
   survive the sole-power cable change, within the retained-sector boundary.
   Do not call the IDF example known-good or add another PHY hypothesis from
   the absent record. No further HS experiment started in this follow-up.
+
+### 2026-10-15 - RC0 pre-install staged trace candidate prepared
+
+- Replace late-only HSJ1 writer with explicit default-off HST2 instrumentation:
+  app_main entry/reset reason before queue creation/USB, install entry/return,
+  observer creation, checked official-example outcomes/errors, sample6 chunks
+  and terminal marker. Included official source hash/dependency lock remain
+  pinned; wrapper preserves evaluate-ignore/silent-abort/normal-error behavior
+  for the three IDF assertion configurations. No generic panic/ROM/bootloader
+  capture claim. Initial safety refusals cannot be persisted into unsafe flash.
+- Same board/layout/preimage/unsigned-image/encryption/security bounds. One
+  erase of relative0x37000/4096B then at most sixteen verified256B appends.
+  Independent per-record CRC/sequence/fill; unknown/torn initial content refuses
+  capture, old valid HST2/HSJ1 is retained, no later-boot append. Uncertain I/O
+  disables writes; mutex serializes sample/main events. FS is deliberately
+  allowed to exercise the real path headlessly; USJ SOF is stored as data and
+  initially optimistic, not physical-cable proof. CRC is not authentication.
+- Eleven actual-core host tests pass O0/O2 strict Clang/pedantic with ASan/UBSan.
+  Decoder self-tests cover old format, staged prefix/completion and corrupt/
+  truncated/gap/sequence failures. Neither valid prefix nor complete-sample
+  marker is a USB/boot pass. Independent Luna review found error-check semantic
+  mismatch and ambiguous decoder status; both repaired/re-reviewed before
+  hardware. No hardware action from either supporting reviewer.
+- Evidence hs-early-trace-2026-10-15.N4AH2N. Initial build fails missing explicit
+  esp_timer dependency, fixed. Debug-profile builds226064/225440/225392B overlap
+  scratch and were NOT flashed. Failed/oversized build logs retained. Explicit
+  sdkconfig.trace IDF size optimization with assertions enabled, same rev1.x/
+  min100,16MiB,DIO80,DMA,noPSRAM and no layout movement. Normal binary196304B
+  SHA256b4df9c4c0e5b18156d96fe30ab53929d6c8f6a6dafffe489567eab359d163e45,
+  build-normal-final.log exit0. Injection option OFF. This compiler-profile
+  change is another difference from the previous debug reference, not a fix.
+- Explicit separate injection option returns ESP_ERR_INVALID_STATE from the
+  installer wrapper, labels usb_install_injected, records return/example_error
+  and keeps configured abort behavior. This tests persistent errors, not USB
+  hardware. Native FS write/readback, reboot-preservation and error tests are
+  next; no HS cable interaction without freshly coordinated readiness.
