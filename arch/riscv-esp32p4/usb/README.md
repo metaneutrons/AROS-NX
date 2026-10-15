@@ -46,7 +46,12 @@ latter. Start requires confirmation, Cancel does not open USB; no autostart is
 installed. It runs synchronously for the application's600-second loop and
 writes stdout to volatile local RAM:USBDiag.log. A blocked native backend can
 delay shutdown beyond that loop deadline. The USB file root does not expose
-this RAM log. stderr goes to NIL:; nonzero status triggers a failure requester.
+this RAM log. stderr goes to NIL:. The final FINISHED/FAILED requester reports
+the actual DOS return or setup phase/IoErr plus one fixed status classification
+from at most the last1024 log bytes. Known failure markers also fail a zero
+return; unreadable, unknown or truncated-out markers are not success evidence.
+No arbitrary file text is displayed and failed log creation never reads an old
+run's log. There is no live progress display during the synchronous run.
 Do not use local touch/mouse during a confirmed unattended run.
 
 It additionally builds `USBEchoTest` from the same launcher with
@@ -60,11 +65,53 @@ from descriptor-only enumeration; a reader must assert DTR. Overflow warnings
 remain unconditional and early/pre-claim logs are still unavailable.
 
 The tests open no USB or serial device. Nine Python staging tests, six host
-probe tests and eight C suites at O0/O2 with ASan/UBSan cover ring bounds,
+probe tests, fourteen recovery tests and nine C suites at O0/O2 with ASan/UBSan cover ring bounds,
 partial transfers, FS/HS descriptors, owner-only OSAL/FIFO, PHY readback and
 restoration, failure budgets and main lifecycle/quarantine. Platform, time,
 controller and MMIO in the main fixture are fakes; these tests do not execute
 the real DWC2 controller or prove AROS scheduling/USB enumeration.
+The composition suite links actual portable echo/CDC/RemoteDiag sources to
+bounded fake endpoints and a single-slot worker model: blocked/no CDC reader,
+partial writes, overflow, reset/reconnect, discarded CDC RX and stale replies.
+It does not execute TinyUSB, DWC2 or the AROS scheduler. Launcher fixtures cover
+fourteen diagnostic and thirteen echo cases at each optimization.
+
+## Explicit legacy-core ROM recovery tool
+
+`hs_recovery.py plan` is a pure-file operation. It validates a P4 image with
+appended digest against an explicit operator-supplied SHA-256, checks a saved
+partition table and constructs sector-preserving bytes in a new directory:
+
+```sh
+python3 arch/riscv-esp32p4/usb/hs_recovery.py plan --image CORE_BIN --sha256 EXPECTED_SHA256 --table TABLE_BIN --before EXACT_AFFECTED_SECTORS --flash-mib 16 --output NEW_PLAN_DIRECTORY
+```
+
+Only a checksum-valid legacy table with one unencrypted8MiB `ota_0` at0x20000
+is supported (16/32MiB flash); A/B layouts and migration are refused. The hash
+is operator authorization/identity, not a signed-release trust proof. This tool
+does not update helpers/BSP, metadata, bootloader, C6 or eFuses.
+
+The separate `flash --execute` mode is **unqualified hardware code**; do not
+run it until fresh physical readiness and an identified actual HS ROM endpoint
+exist. Its required arguments are `--image`, `--sha256`, a new `--output`, an
+explicit `--port`, lowercase expected `--mac`, and absolute `--esptool` console
+script path in a trusted esptool5.5.0 environment. The wrapper selects that
+script's absolute Python interpreter and pins both installed/module versions.
+It sets the reviewed `ESPLoader.WRITE_FLASH_ATTEMPTS` to1 before esptool starts,
+preventing whole-write reconnect/reset retries; normal protocol block retries
+are not disabled. Before/after reset modes remain `no-reset`.
+
+Every command refuses a devserial-managed port; it never closes a port or
+stops/clears the daemon. Explicit scoped release and exclusive operator use
+must precede a future run. This is a point-in-time ownership check, not an
+atomic lease excluding another flasher. Identity/security/USB-OTG/flash size,
+live table, exact preimage and sector tail are checked. The table and affected
+sectors are reread before the sole write; changes refuse it. Any post-write
+ambiguity is WRITE_UNCERTAIN, never automatic retry/reset/rollback. Full
+independent readback is mandatory for VERIFIED_READBACK; boot remains unproven.
+USB-OTG identity alone does not prove physical HS connector or negotiated speed:
+record those independently. All current recovery tests use files/mocks; no
+new HS flash, device claim or reset was performed for this implementation.
 
 The native script compiles every object fresh with warnings as errors and
 the configured `riscv-aros-gcc`. It explicitly selects this build's generated

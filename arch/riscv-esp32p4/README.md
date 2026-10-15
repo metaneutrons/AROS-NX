@@ -3,10 +3,23 @@
 2026-10-15 USB-MVP scope confirmed: screenshots, mouse/click, read-only files,
 CDC logs and HS firmware flashing; larger remote-control features deferred.
 Echo-only and diagnostic launchers now permit separate transport/backend gates.
-Eight sanitized USB host suites pass. JC1060 FS installation is byte-for-byte
+Nine sanitized USB host suites pass. JC1060 FS installation is byte-for-byte
 readback verified; the return boot shows two harts, watchdog, touch and graphics.
 HS echo/CDC/remote tests and HS flashing remain unqualified. HS-ROM absence
 remains unresolved and is not a completed gate.
+
+Offline follow-up2026-10-15: real portable CDC/echo/RemoteDiag sources now run
+together against fake bounded endpoints/worker, including no reader, partial
+writes, overflow and stale reconnects (O0/O2 ASan/UBSan). Fourteen pure-file/
+mock-runner recovery tests pass. The explicit legacy-core HS ROM tool validates
+identity/security/layout, preserves the last erase-sector tail, rechecks the
+preimage, disables esptool5.5.0 whole-write retries and requires independent
+full readback. Only its offline plan has run; actual HS flashing remains open.
+Updated consent launchers show numeric DOS/setup errors and a bounded fixed
+status summary, never arbitrary log contents. Fresh RV32 Werror builds pass:
+USBRemoteTest52244Bb7706abb..., USBEchoTest52052B28f384c1.... These launchers
+are not yet deployed; this follow-up did not access hardware. Epic77 and
+affected milestone issues were reconciled; all remain open.
 
 Composite USB candidate (2026-10-14, hardware open): vendor-bulk interface0
 now coexists with CDC control1/data2 for devserial logs. Nine staging/six probe
@@ -16,11 +29,12 @@ kernel console-tap integration passed its corrected clean build (194384B,
 03f997b1...). Native-ROM CDC/DFU did not enumerate at HS in either tested
 connector orientation. FS ROM identity/security queries pass; no security or
 OTG-download fuse restriction was found in those queries. Native HS recovery
-remains unresolved, not qualified. No firmware has been flashed for this gate.
+remains unresolved, not qualified. Initial composite preparation did not flash
+firmware; the later FS installation above does not qualify the HS gate.
 CDC only mirrors logs while the diagnostic
 application runs; it does not replace ROM/early-boot debug or implement flashing.
 
-Remote diagnostic USB prototype (2026-10-14, host/native-build verified):
+Historical preparation baseline (2026-10-14, before the FS installation above):
 an isolated opt-in DOS USBEcho application uses pinned TinyUSB4c195b7b...,
 HS rhport1/DWC2 PIO, a single-owner polled AROS adapter, bounded queues/waits
 and explicit PHY setup/restoration. No hardware IRQ integration is claimed.

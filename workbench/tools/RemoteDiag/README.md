@@ -1,7 +1,8 @@
 # RemoteDiag: offline-prepared USB diagnostic slice
 
-Status: implementation and host/native builds only. No installed service,
-native USB enumeration, screenshot, input or file-transfer acceptance yet.
+Status: implementation and host/native builds; the opt-in executable is
+installed on JC1060 via FS without autostart. No native HS USB enumeration,
+screenshot, input or file-transfer acceptance yet.
 Fabian explicitly requested preparing these backends ahead of transport
 qualification on2026-10-14; this does not waive the hardware gate or close
 [RC-v5](https://github.com/metaneutrons/AROS-NX/issues/77).

@@ -3,7 +3,8 @@
 Implementation follow-up2026-10-14: Fabian explicitly requested preparing
 screenshot/mouse/read-only backends before the later board test. The isolated
 echo and separate USBDiag candidates are now host/native-build verified,
-not installed or hardware qualified. See
+subsequently installed via FS without autostart on2026-10-15, but not
+HS-hardware qualified. See
 [RemoteDiag implementation/limits](../../workbench/tools/RemoteDiag/README.md)
 and ROADMAP RC0. This supersedes the preparation order suggested below, not
 the transport/hardware acceptance prerequisites. The remainder records the

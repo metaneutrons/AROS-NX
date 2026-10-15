@@ -16,8 +16,10 @@ export ASAN_OPTIONS=halt_on_error=1
 export UBSAN_OPTIONS=halt_on_error=1
 TINYUSB_ARCHIVE="$archive" python3 "$src/test_prepare_stack.py"
 python3 "$src/echo_probe.py" --self-test
+python3 "$src/test_hs_recovery.py"
 python3 "$src/prepare_stack.py" "$archive" "$output/tinyusb"
 stack="$output/tinyusb/src"
+remote="$src/../../../workbench/tools/RemoteDiag"
 for optimization in 0 2; do
     cc=${CC:-clang}
     flags="-std=c11 -Wall -Wextra -Werror -O$optimization -g -fsanitize=address,undefined -fno-omit-frame-pointer"
@@ -30,6 +32,8 @@ for optimization in 0 2; do
     "$cc" $flags -DP4_USB_LAUNCH_ECHO -I"$src" "$src/test_launch_diag.c" -o "$output/echo-launcher-O$optimization"
     "$cc" $flags -DP4_USB_ECHO_HOST_TEST -Dmain=p4_usb_echo_app_main -I"$src" -c "$src/main.c" -o "$output/main-O$optimization.o"
     "$cc" $flags -I"$src" "$src/test_main.c" "$src/echo.c" "$output/main-O$optimization.o" -o "$output/main-O$optimization"
+    "$cc" $flags -DRD_SERVICE_TEST -Dmain=rd_fixture_main -I"$remote" -I"$src" -c "$remote/test_service.c" -o "$output/remote-fakes-O$optimization.o"
+    "$cc" $flags -DRD_SERVICE_TEST -I"$remote" -I"$src" "$src/test_composite.c" "$src/cdc_log.c" "$src/echo.c" "$remote/protocol.c" "$remote/service.c" "$remote/path.c" "$output/remote-fakes-O$optimization.o" -o "$output/composite-O$optimization"
     "$output/echo-O$optimization"
     "$output/descriptors-O$optimization"
     "$output/osal-O$optimization"
@@ -38,5 +42,6 @@ for optimization in 0 2; do
     "$output/launcher-O$optimization"
     "$output/echo-launcher-O$optimization"
     "$output/main-O$optimization"
+    "$output/composite-O$optimization"
 done
 echo 'USB echo host tests passed; no native enumeration/transfer is claimed'
