@@ -293,6 +293,13 @@ proves app entry/reset11/debug_sof1 and terminal reachability, not complete
 console continuity or absence of transient FIFO activity. Exact AROS recovery
 remains retained; reference ROM-stopped after retrieval, RC0-TW and all native
 acceptance gates stay open.
+RX follow-up2026-10-17: default-off PIO DCD instrumentation passes host tests,
+source-transform equivalence and independent review. Installed/readback-verified
+196896B7f14f2f7... completes12 saved records after a Debug reset: handler6,
+RXFLVL0, FIFO pops0, SETUP_RX/DONE/EP0-stage0; reset2/setup0/xfer0. No native
+Mac device. Thus no SETUP status reached the PIO RX handler in this run; this
+does not prove whether the host sent packets or establish a hardware defect.
+Reference remains installed and ROM-stopped; exact AROS recovery retained.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual

@@ -133,8 +133,41 @@ function(hs_reference_force_fs_hsphy target source output)
             "hs_reference_force_fs_hsphy: expected one DCFG statement in '${_source}', found multiple")
     endif()
 
-    string(REPLACE "${_original_statement}" "${_replacement_statement}"
-        _patched_contents "${_original_contents}")
+    if(ARGC GREATER 3)
+        if(NOT ARGV3 STREQUAL "RX_TRACE")
+            message(FATAL_ERROR "Unknown DCD diagnostic mode")
+        endif()
+        set(_patched_contents "#include \"rx_trace.h\"\n${_original_contents}")
+        # Exact hash above pins each insertion. Reuse values already read by
+        # the DCD: no extra MMIO/FIFO read or acknowledgement is introduced.
+        foreach(_site IN ITEMS
+            "const uint32_t gintsts = dwc2->gintsts & gintmask;"
+            "const dwc2_grxstsp_t grxstsp = {.value = dwc2->grxstsp};"
+            "static void handle_epout_slave(uint8_t rhport, uint8_t epnum, dwc2_doepint_t doepint_bm) {\n  if (doepint_bm.setup_phase_done) {")
+            if(_site MATCHES "gintsts =")
+                set(_hook "hs_rx_record(&hs_rx_state, rhport, HS_RX_IRQ, gintsts);")
+            elseif(_site MATCHES "grxstsp =")
+                set(_hook "hs_rx_record(&hs_rx_state, rhport, HS_RX_POP, grxstsp.value);")
+            else()
+                set(_hook "hs_rx_record(&hs_rx_state, rhport, HS_RX_EP_SETUP, epnum);")
+            endif()
+            string(FIND "${_patched_contents}" "${_site}" _site_position)
+            if(_site_position EQUAL -1)
+                message(FATAL_ERROR "RX diagnostic site is missing")
+            endif()
+            string(LENGTH "${_site}" _site_length)
+            math(EXPR _site_end "${_site_position} + ${_site_length}")
+            string(SUBSTRING "${_patched_contents}" ${_site_end} -1 _site_tail)
+            string(FIND "${_site_tail}" "${_site}" _site_duplicate)
+            if(NOT _site_duplicate EQUAL -1)
+                message(FATAL_ERROR "RX diagnostic site is ambiguous")
+            endif()
+            string(REPLACE "${_site}" "${_site}\n  ${_hook}" _patched_contents "${_patched_contents}")
+        endforeach()
+    else()
+        string(REPLACE "${_original_statement}" "${_replacement_statement}"
+            _patched_contents "${_original_contents}")
+    endif()
     get_filename_component(_output_dir "${_output}" DIRECTORY)
     # Reject symlink components before creating directories. A lexical path
     # under CMAKE_BINARY_DIR can otherwise escape through a parent symlink.

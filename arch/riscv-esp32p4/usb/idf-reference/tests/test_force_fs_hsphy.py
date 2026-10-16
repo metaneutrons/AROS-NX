@@ -60,6 +60,7 @@ class ForceFsHsphyTests(unittest.TestCase):
         relative_target_source: bool = False,
         output_parent_symlink_target: Path | None = None,
         output_hardlink: bool = False,
+        mode: str = "",
     ) -> tuple[subprocess.CompletedProcess[str], Path]:
         temporary = tempfile.TemporaryDirectory(prefix="force-fs-hsphy-")
         self.addCleanup(temporary.cleanup)
@@ -98,6 +99,7 @@ hs_reference_force_fs_hsphy(
     espressif__tinyusb
     {cmake_quote(source)}
     {cmake_quote(output_path)}
+    {mode}
 )
 
 get_target_property(actual_sources espressif__tinyusb SOURCES)
@@ -142,6 +144,29 @@ endif()
             text=True,
         )
         return result, build
+
+    def test_rx_trace_only_adds_three_observer_calls(self) -> None:
+        original = self.source.read_text()
+        result, build = self.configure(self.source, mode="RX_TRACE")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        generated = (build / "hs-fs-comparison/dcd_dwc2.c").read_text()
+        self.assertEqual(generated.count("hs_rx_record("), 3)
+        self.assertEqual(generated.count('include "rx_trace.h"'), 1)
+        restored = generated.removeprefix('#include "rx_trace.h"\n')
+        for call in (
+            "hs_rx_record(&hs_rx_state, rhport, HS_RX_IRQ, gintsts);",
+            "hs_rx_record(&hs_rx_state, rhport, HS_RX_POP, grxstsp.value);",
+            "hs_rx_record(&hs_rx_state, rhport, HS_RX_EP_SETUP, epnum);",
+        ):
+            self.assertEqual(restored.count(call), 1)
+            restored = restored.replace("\n  " + call, "")
+        self.assertEqual(restored, original)
+        self.assertEqual(self.source.read_text(), original)
+
+    def test_rejects_unknown_diagnostic_mode(self) -> None:
+        result, _ = self.configure(self.source, mode="UNKNOWN")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Unknown DCD diagnostic mode", result.stdout + result.stderr)
 
     def test_replaces_one_statement_in_an_out_of_tree_copy(self) -> None:
         original_bytes = self.source.read_bytes()

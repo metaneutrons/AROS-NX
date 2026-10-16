@@ -195,7 +195,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C1P | Graphical boot/update performance | `hardware partial; runtime hang gate open` | Rotation/mirror: 140 sanitizer cases; actual producer: 400 submissions/1,677 guarded IRQs. CPU90 synchronous full update 2.776 s; CPU360 synchronous 0.617 s; v2 coalesced submission 0.296 s. Paired v2 core/HIDD initially passes headless Wanderer and flash checks. Fabian observes speedup then slowdown/hang. Console-only nonblocking runtime fix now sanitizer-tested, flashed and verified; explanation of the observed hang remains unconfirmed. On 2026-10-01 Fabian reports drawing is fine so far after requester-free RAM Disk opening; duration unspecified. Sustained no-reader/stress and complete interactive regression gates remain open. |
 | CQ1 | Bounded queued SMP debug console | `hardware partial (JC1060); default-plain deployed/readback/headless; D1001 open` | 2026-10-13 framed core showed both harts/108 consecutive records and reader recovery. 2026-10-14: P4_CONSOLE_RECORD_PREFIX defaults0, optional1 keeps framing; overflow warnings always active. Clean native193024Ba68ca519.../independent readback and111.929s fresh218-row headless export show no normal prefix,22 touch heartbeats and CPU1 WLAN owner. Twelve sanitized USB/UART default/0/1 host runs pass; old-header mutation rejected. Plain logs cannot prove sequence continuity. Native overload/physical disconnect and fresh interactive gates remain open. Early/fatal direct output and timer-failure backlog loss remain explicit limits. |
-| RC0 | Permanent HS port and USB remote diagnostic MVP | `HS blocked; EP0 masks armed, no queued SETUP` | 2026-10-17: authorized Debug-reset EP0 trace complete11 records, reset2/setup0/xfer0; STUPCNT3/global RX/EP0 masks enabled, no pending EP0 or RX status in first/late snapshots. No native Mac CDC. Transient RX history unresolved. PIO196512B52c1d2c6... retained/ROM-stopped; RC0-TW/CDC/remote/writer OPEN. |
+| RC0 | Permanent HS port and USB remote diagnostic MVP | `HS blocked; no PIO RX activity` | 2026-10-17: RX-instrumented PIO196896B7f14f2f7... installed/readback verified; Debug-reset trace complete12 records, IRQ6/RXFLVL0/FIFO-pop0/SETUP-stage0, reset2/setup0/xfer0; EP0 masks armed. No native Mac CDC. Host transmission/link/PHY distinction OPEN. Diagnostic retained/ROM-stopped; RC0-TW/CDC/remote/writer OPEN. |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware verified` | Complete GB0 evidence: correctly oriented persistent Wanderer with title/icons/four edges, bounded graphical recovery without SD, 20/20 controlled EN-reset boots, a 30-minute desktop soak explicitly composed with B5's active concurrent SD/scanout stress, and an exact raw-card gate.  The latter used hardware-locked first host insertions around one normal D1001 boot; prepared image, pre-run readback and post-run readback are byte-identical at SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Two earlier comparisons remain documented as macOS `.fseventsd` contamination, not hidden as passes |
 | C4 | Touch as an absolute mouse HIDD | `hardware partial` | Since 2026-10-04 the touch path is the portable stack of D3 (`touchscreen.hidd`, `gsl3670.hidd`, `esp32p4board.resource`); the D1001 has not run it yet, so everything below describes the former kernel GSL driver and `p4touch.hidd`. D1001 identification, bounded firmware load/status and contact transport are hardware verified. The absolute mouse HIDD and nearest-contact continuity pass synchronized one-/two-contact tests; hardware IDs are not stable. A stationary pointer recovered after USB reset; its prior cause remains unknown. The tap policy defaults to button-free motion, tap-to-click and 400-ms hold-drag, preserving selectable direct mode and the right-button latch. Fabian confirms movement, tap and hold-drag with zero errors and clean release. A consented perimeter trace measures X=16..1638/Y=15..874; board-specific calibration now maps that range to the full surface. Its 3,863 host checks, build and package audit pass. A fresh synchronized run confirms four-edge reachability and menu-dropdown opening, with zero I2C errors and clean release at Y=5. Rapid double-tap reliability is reported poor; first-empty short-tap release (50-ms idle gap restored after renewed graphics slowdown) now pass 3,892 sanitizer checks and are a flashed candidate, not interactive acceptance; a volume requester precedes successful RAM Disk opening (name reported as TENEME, possibly THEME; unconfirmed). Theme assignments, Ice assets and PNG registration now pass a 167-entry host image verification; SD image now written/readback-verified/ejected; visible gate fails with missing png.library>=52; 171-entry runtime-library closure correction is now SD written/readback-verified/ejected (2026-10-01); synchronized 55-second boot reaches Wanderer and attempts the new runtime libraries; Fabian confirms requester-free RAM Disk opening and one visible toolbar symbol; complete toolbar and sustained performance are not yet accepted. Menu-item execution, bounded recovery, intermittent startup reliability and the 1,000-cycle gates remain open |
@@ -4584,6 +4584,15 @@ Acceptance gate:
 ## Track RC: independent remote diagnostic access
 
 ### RC0 - USB investigation and diagnostic-MVP slice
+
+RX follow-up2026-10-17: default-off PIO DCD counters now distinguish handler,
+RXFLVL/pop and EP0 SETUP_RX/DONE/endpoint stages without additional USB reads
+or writes. Host tests, generated-copy equivalence and independent review pass.
+Installed/readback-verified196896B7f14f2f7... completes12 saved records after
+Debug reset:6 handler entries, RXFLVL/pop/all SETUP stages0, reset2/setup0/xfer0.
+No native Mac device. This removes earlier ambiguity about transient FIFO
+consumption in this run, not about host transmission or electrical reception.
+Retained diagnostic ROM-stopped; exact AROS recovery retained. No PHY fix.
 
 EP0 follow-up2026-10-17: default-off publish-once first reset-end snapshot
 and late sample6 snapshot now cover global RX/mask and EP0 OUT/local mask
@@ -47153,3 +47162,51 @@ remain open. No partial stage is a complete A/B update system.
   traffic before changing PHY/endpoint configuration. Exact AROS recovery and
   diagnostic reference retained; ROM-stopped after retrieval, both cables
   unchanged. Native enumeration/CDC/remote/writer and RC0-TW remain OPEN.
+
+### 2026-10-17 - RC0 PIO RX-path instrumentation: no FIFO activity reaches handler
+
+- Default-off HS_REFERENCE_RX_TRACE requires EP0 trace and PIO. The reviewed
+  DCD override reuses the existing hash-pinned, path-checked output mechanism;
+  original dependency remains unchanged. Three exact unique insertions observe
+  existing masked IRQ status, already-popped GRXSTSP and PIO setup-phase-done.
+  No additional MMIO/FIFO read, acknowledgement, USB write or speed change.
+  Lock-free relaxed32-bit counters are initialized before USB install and not
+  cleared by bus reset; individual loads are not a coherent packet history.
+  Extra sample6 checkpoint makes maximum15/16 slots, no storage-format change.
+- Strict C11 O0/O2-NDEBUG ASan/UBSan tests pass count/filter/wrap/format/budget;
+  eleven CMake tests pass including RX transform exact equivalence (removing
+  header+three calls reproduces original source), unchanged dependency and
+  unknown-mode rejection. Native P4rev1.x/IDF6.0.1 PIO build exits0 and creates
+  image196896B SHA256
+  7f14f2f7d023cf3813c8ee9ca16fe9f8fd718fa00aa5d067446b1bb6dd62fb19.
+  Independent source review confirms semantics and bounds. All prior switches
+  stay unchanged, RX_TRACE alone added; forcedFS/injection remain OFF.
+- No-reset identity verifies expected MAC/P4v1.3/flags0. Fresh larger preimage
+  covers0x31000 bytes at0x20000 (new image crosses prior0x30000 erase bound);
+  retained exact AROS0x38000 recovery covers it. Offline image/table/range plan
+  creates payload SHA256
+  27d2ce58d6ecf06198241bed97bf3a0e65befc565c9f2cbf69482b1c22884df7.
+  One bounded app write and independent read/cmp exit0. Prior EP0 trace is
+  reread and byte-matches its saved copy before scratch reset. Pristine4096B
+  scratch at0x57000 restored and independently read/cmp verified. No metadata,
+  bootloader/table/BSP/helper/SD/C6 writes. RC0-TW still diagnostic workaround.
+- Both cables remain; fresh capture boundary34040, one Debug DTR-low/RTS
+  pulse,35s+ host wait. Early logs now present but terminate during descriptor
+  summary, so still not complete console continuity. Host inventory has only
+  Debug/unrelated devices, no native CDC. Scoped close then one USB-reset ROM
+  retrieval verifies identity; trace read/decoder exit0 with12 valid records,
+  sample6_complete. Post-run0x31000 app read/cmp exits0; firmware unchanged.
+- Trace SHA256
+  73621e59d47181c99dc59fb9bb9f882f94a0bb079917af25a9803094bb964814.
+  Evidence logs, binaries, plan, test/build logs, raw/decoded trace and host
+  inventory in hs-ep0-trace-2026-10-17.2ZTe0T. App entry15585us/reset11/
+  debug_sof1, install52343/return0at58897us, observer62256us/stack2136,
+  reconnect skipped for activity. EP0 first/late fields match previous run;
+  reset2/setup0/xfer0. RX irq6, rx0, pop0, sr0, sd0, ep0, last0, kinds0,
+  ints00003800 (masked reset/enum/suspend bits). This proves the instrumented
+  IRQ handler ran and no RXFLVL/pop/SETUP stage reached it during the sampled
+  interval. It is not proof no packets were transmitted by the host or that
+  the PHY/cable is defective. Next discriminate host transaction/data-link
+  reception rather than modify higher SETUP dispatch or blindly enable EP0.
+- Actual state: RX reference retained, ROM-stopped after retrieval; exact AROS
+  recovery retained. Native CDC/remote/firmware writer and RC0-TW gates OPEN.

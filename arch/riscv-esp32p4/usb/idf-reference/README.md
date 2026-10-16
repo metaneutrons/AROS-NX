@@ -83,6 +83,17 @@ An already drained SETUP cannot be reconstructed from these snapshots.
 The default OFF build retains its previous behavior. This is instrumentation,
 not an endpoint-arming fix or a native USB acceptance result.
 
+`HS_REFERENCE_RX_TRACE=ON` additionally requires PIO mode. It uses a hash-pinned
+out-of-tree DCD copy, adding exactly three counter calls after existing masked
+IRQ status, after the existing GRXSTSP pop, and in the PIO setup-phase-done
+branch. No extra MMIO read, FIFO pop, acknowledgement or speed assignment.
+The managed source stays unchanged. The additional sample6 checkpoint keeps
+the maximum at15/16 slots. irq counts handler entries, rx entries with masked
+RXFLVL, pop all popped statuses, sr/sd EP0 SETUP_RX/SETUP_DONE, ep EP0
+setup-phase branch; last/kinds retain last popped value/status-kind bitmap,
+ints ORs masked IRQ status. These are wrapping independent relaxed counters,
+not an atomic packet trace. Default OFF leaves the original DCD selected.
+
 `HS_REFERENCE_RECONNECT=ON` is a separate diagnostic, requiring persistent
 link trace, normal HS speed and no injected error. At the first five-second
 observer tick it skips permanently if mounted/connected or any queued bus

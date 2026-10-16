@@ -33,6 +33,10 @@ static const bool ep0_dma=true;
 static const bool ep0_dma=false;
 #endif
 #endif
+#if defined(HS_REFERENCE_RX_TRACE)
+#include "rx_trace.h"
+struct hs_rx_counters hs_rx_state;
+#endif
 #if defined(HS_REFERENCE_RECONNECT)
 struct reconnect_run { bool detach_called; };
 #include "link_reconnect.h"
@@ -304,6 +308,11 @@ static void observer(void *argument)
                 counts.event[6],counts.event[7],&first);
             if(bytes>0 && (unsigned)bytes<=HS_TRACE_SAMPLE_CHUNK)
                 (void)hs_reference_trace_checkpoint(compact,(size_t)bytes);
+#if defined(HS_REFERENCE_RX_TRACE)
+            bytes=hs_rx_format(compact,sizeof(compact),&hs_rx_state);
+            if(bytes>0 && (unsigned)bytes<=HS_TRACE_SAMPLE_CHUNK)
+                (void)hs_reference_trace_checkpoint(compact,(size_t)bytes);
+#endif
             bytes=hs_ep0_format(compact,sizeof(compact),'L',ep0_dma,
                 (bool)tud_mounted(),counts.event[1],counts.event[6],counts.event[7],&late);
             if(bytes>0 && (unsigned)bytes<=HS_TRACE_SAMPLE_CHUNK)
@@ -409,6 +418,9 @@ static void observed_check(esp_err_t error,const char *file,int line,
 
 void app_main(void)
 {
+#if defined(HS_REFERENCE_RX_TRACE)
+    hs_rx_init(&hs_rx_state);
+#endif
 #if defined(HS_REFERENCE_EP0_TRACE)
     hs_ep0_init(&ep0_capture);
 #endif
