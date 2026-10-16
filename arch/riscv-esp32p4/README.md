@@ -123,8 +123,14 @@ events is expected, not a reception pass. Raw GOTGCTL BSESVLD0 alone is not a
 VBUS diagnosis. Exact AROS recovery/readback and FS return are verified. The
 enhanced HS reference is now reinstalled/readback verified on2026-10-16 with
 pristine scratch and no FS app boot, following fresh readiness. It waits in ROM
-for the coordinated HS move; AROS is temporarily replaced. Protected BOOT-held
-ROM-only retrieval remains required; no enumeration fix is claimed.
+for the coordinated HS move. Fabian now confirms10s sole-power gap and35s+
+HS connection; host again has no P4/CDC. AROS is temporarily replaced. Protected
+BOOT-held ROM-only retrieval now recovers13 valid records:8 queued bus-reset
+events,0 SETUP and0 transfer completions, complete sample6. Analog fields match
+the FS control. Thus HS IRQ/event processing runs, but enumeration still fails;
+this does not prove whether physical SETUP packets were sent or lost. AROS is
+exactly restored/readback verified; USB reset retains DOWNLOAD and manual
+RESET-only is pending. Next compare a different cable/host path. No fix claimed.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
