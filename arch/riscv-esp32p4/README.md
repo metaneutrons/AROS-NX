@@ -184,6 +184,10 @@ currently visible on the Mac; passive repeat agrees. Reconnect execution and
 its cause remain unclassified until the persisted trace can be retrieved.
 No further reset/write attempted. Candidate remains installed; AROS recovery
 is retained but restoration awaits Debug/FS recovery and trace preservation.
+Confirmed power/both cables and a synchronized BOOT-held RESET attempt still
+yield no board host interface; ROM entry itself is unconfirmed. No new write
+or reset from the host. Next synchronized Debug-only host cable reattachment,
+HS power retained; no application-cause or physical-cold-boot inference.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual

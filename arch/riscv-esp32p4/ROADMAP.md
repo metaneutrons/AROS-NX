@@ -4647,6 +4647,11 @@ Debug/FS nor native HS, including a repeated passive inventory. No serial
 read/reset/write possible; do not infer successful stimulus or its cause.
 Preserve scratch for ROM retrieval after synchronized physical recovery.
 Candidate remains installed, AROS restoration pending recovered Debug access.
+Fabian confirms board power and both cables, then synchronized BOOT-held
+RESET/release. Passive host inventory still has neither board interface.
+ROM entry itself is unconfirmed, not a verified ROM failure or proof of an
+application cause. Next synchronize a Debug-cable-only host reconnection while
+HS remains powered, without app boot or scratch writes if ROM is reachable.
 
 2026-10-15 permanent-port decision supersedes temporary controller takeover
 for the next candidate: kernel-registered resource, one AFTERDOS owner,
@@ -46479,3 +46484,16 @@ remain open. No partial stage is a complete A/B update system.
   recovery b19d6cea... available. Next confirm physical connectivity/power,
   synchronize ROM recovery if needed, retrieve untouched trace before any
   restoration; no blind automatic reset loop. All acceptance gates stay OPEN.
+
+### 2026-10-16 - RC0 synchronized ROM attempt still has no host interface
+
+- Fabian confirms both cables connected and board powered, then fresh
+  readiness and completion of BOOT held/RESET briefly/BOOT release. No board
+  device in IOKit, no board serial port in devserial or /dev/cu inventory.
+  ROM entry cannot be confirmed; do not label the application or ROM as the
+  cause. No serial open/reset/query/write attempted against a missing port.
+- rom-recovery-ports.json and rom-recovery-usb-tree.txt retained in
+  hs-reset-control-2026-10-16.1HyzYf. No trace retrieved/overwritten, candidate
+  remains installed, AROS restoration still pending. Next ask fresh readiness
+  for Debug/FS cable-only host detach/reattach with HS retained as power;
+  this is not rail-off, and no blind firmware retry is authorized by the gap.
