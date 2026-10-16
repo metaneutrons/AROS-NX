@@ -233,7 +233,13 @@ reset/SETUP/XFER stay0 and all six external Mac USB-port connection/failure
 deltas stay0. USBCTRL00bba640 differs from physical-reset00a22640 already
 before install, so reset inheritance is a confound, not a diagnosed PHY fault.
 Trace preserved, only scratch reset/readback verified; physical RESET control
-is prepared with the same firmware and unchanged cables. No PHY tuning.
+has now completed with the same firmware and unchanged cables: all16 records,
+USBCTRL00a22640 without the four force bits, DCTL transitions correct,
+reset/SETUP/XFER0 and no native enumeration. Mac counts only Debug reconnect.
+The extra USB-reset force bits are therefore not a necessary cause of this
+failure. Cable/data continuity and electrical HS attachment remain unproven;
+do not infer a defective PHY from this test. Diagnostic remains installed,
+ROM-stopped after retrieval. No PHY tuning.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
