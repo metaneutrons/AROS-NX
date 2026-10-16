@@ -240,6 +240,10 @@ The extra USB-reset force bits are therefore not a necessary cause of this
 failure. Cable/data continuity and electrical HS attachment remain unproven;
 do not infer a defective PHY from this test. Diagnostic remains installed,
 ROM-stopped after retrieval. No PHY tuning.
+Passive follow-up confirms USB-disable/pin-swap fuses0 and direct outer-board
+HS connector-to-module nets; module-internal VDD_USBPHY remains unverified.
+The official bus-powered path explicitly disables B-session overrides, so
+GOTGCTL.BSESVLD0 is not sufficient grounds to force session-valid as a fix.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual

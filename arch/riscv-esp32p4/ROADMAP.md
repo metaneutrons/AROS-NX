@@ -46883,3 +46883,11 @@ remain open. No partial stage is a complete A/B update system.
   observed blocker. Module-internal supply and connector electrical attachment
   remain unmeasured. Next independently audit B-session validity semantics
   before considering any controlled override. No new flash/reset/cable action.
+- Independent audit confirms pinned DCD dcd_init explicitly disables
+  BVALOEN/BVALOVAL/VBVALOVAL (dcd_dwc2.c432); esp_tinyusb197..203 uses external
+  HS VBUS monitoring only for self-powered devices. Bus-powered/default no
+  GPIO monitor is expected; no source basis for a required forced BVALID.
+  Official guide: https://docs.espressif.com/projects/esp-usb/en/latest/esp32p4/usb_device.html.
+  Do not convert BSESVLD0 into an inferred missing init step. Next non-invasive
+  input is actual board/connector/revision identification; module internal
+  supply or line activity requires a real measurement, not controller counters.
