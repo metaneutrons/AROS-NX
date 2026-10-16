@@ -68,6 +68,28 @@ journal: it can create the first trace if the preceding HS boot never did.
 
 ## Optional single-cable diagnostic journal (default OFF)
 
+`HS_REFERENCE_RECONNECT=ON` is a separate diagnostic, requiring persistent
+link trace, normal HS speed and no injected error. At the first five-second
+observer tick it skips permanently if mounted/connected or any queued bus
+activity was seen; otherwise it calls public `tud_disconnect()`, records DCTL
+and USBCTRL, waits1000ms, calls `tud_connect()` and records again. Exactly one
+attempt, no automatic retry or PHY/speed/reset tuning. The default OFF build
+adds no detach/attach stimulus. Both builds now record raw USBCTRL before and
+after install to distinguish inherited reset state from installer changes.
+
+The activity guard is best effort, not atomic with the DCD ISR; use only for
+the idle failing reference. API returns are unconditional true in the pinned
+TinyUSB, not host acknowledgements. Observe DCTL.SDIS and host enumeration;
+zero UNPLUG counters do not disprove soft detach. This adds two trace slots:
+normal bound14 plus2 is16, with no spare slot. The skipped path adds one.
+No USB/CDC pass follows from a complete journal. Compare identical reset and
+cable setup; cold, button and Debug resets remain distinct observations.
+
+Host helper test `tests/test_link_reconnect.c` covers all four API outcome
+pairs, ordering, one-second request, once-only behavior and invalid inputs.
+Run strict C11 O0/O2 ASan/UBSan, including NDEBUG; assertions must not erase
+test actions. The runtime stimulus is diagnostic-only, not a production fix.
+
 `HS_REFERENCE_LINK_TRACE=ON` adds read-only UTMI FC00..FC07 snapshots before
 and after installer execution and queued TinyUSB event counters to sample6.
 The option defaults OFF; the original example/PHY/DWC configuration is not

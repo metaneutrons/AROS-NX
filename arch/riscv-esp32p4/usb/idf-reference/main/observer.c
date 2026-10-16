@@ -1,5 +1,6 @@
 /* Copyright (C) 2026, The AROS Development Team.
- * Reference only: unmodified official CDC example plus read-only USB observation.
+ * Reference only: official CDC example plus read-only USB observation by default.
+ * Explicit RECONNECT diagnostic adds one task-context soft detach/attach.
  * Explicit development option adds one backed-up flash-sector journal.
  * Not linked into AROS. Never flash IDF's generated bootloader/table.
  */
@@ -14,6 +15,9 @@
 #include "tinyusb_cdc_acm.h"
 #include "tusb.h"
 #include "sdkconfig.h"
+#if defined(HS_REFERENCE_RECONNECT)
+#include "link_reconnect.h"
+#endif
 #if defined(HS_REFERENCE_FORCE_FS_HSPHY)
 /* Keep high-speed capability compiled in: disabling it selects phy_fs_init(),
  * not full-speed signaling on the same UTMI link. Only DCFG.DEVSPD is varied. */
@@ -60,20 +64,21 @@ static uint32_t reg(uintptr_t address)
 static void link_phy_note(const char *stage)
 {
     char text[237];
-    uint32_t hp=reg(0x500e6018),lp=reg(0x50111048);
+    uint32_t hp=reg(0x500e6018),lp=reg(0x50111048),usbctl=reg(0x500e515c);
     int n;
     /* Do not touch UTMI registers while either clock is gated or reset held. */
     if((hp & (1u<<16)) && (lp & (1u<<30)) && !(lp & 6u)) {
         n=snprintf(text,sizeof(text),
-            "stage=%s hp=%08lx lp=%08lx fc=%08lx,%08lx,%08lx,%08lx,%08lx,%08lx,%08lx,%08lx\n",
+            "stage=%s hp=%08lx lp=%08lx usbctl=%08lx fc=%08lx,%08lx,%08lx,%08lx,%08lx,%08lx,%08lx,%08lx\n",
             stage,(unsigned long)hp,(unsigned long)lp,
+            (unsigned long)usbctl,
             (unsigned long)reg(0x5009c000),(unsigned long)reg(0x5009c004),
             (unsigned long)reg(0x5009c008),(unsigned long)reg(0x5009c00c),
             (unsigned long)reg(0x5009c010),(unsigned long)reg(0x5009c014),
             (unsigned long)reg(0x5009c018),(unsigned long)reg(0x5009c01c));
     } else {
-        n=snprintf(text,sizeof(text),"stage=%s hp=%08lx lp=%08lx fc=unread_clock_or_reset\n",
-                   stage,(unsigned long)hp,(unsigned long)lp);
+        n=snprintf(text,sizeof(text),"stage=%s hp=%08lx lp=%08lx usbctl=%08lx fc=unread_clock_or_reset\n",
+                   stage,(unsigned long)hp,(unsigned long)lp,(unsigned long)usbctl);
     }
     if(n<=0 || (size_t)n>=sizeof(text))return;
 #if defined(HS_REFERENCE_PERSIST)
@@ -83,12 +88,55 @@ static void link_phy_note(const char *stage)
 }
 #endif
 
+#if defined(HS_REFERENCE_RECONNECT)
+static bool reconnect_disconnect(void *ctx) { (void)ctx;return tud_disconnect(); }
+static bool reconnect_connect(void *ctx) { (void)ctx;return tud_connect(); }
+static void reconnect_wait(void *ctx,unsigned ms)
+{ (void)ctx;vTaskDelay(pdMS_TO_TICKS(ms)); }
+static void reconnect_note(void *ctx,bool attached,bool ok)
+{
+    (void)ctx;
+    char text[237];
+    int n=snprintf(text,sizeof(text),
+        "stage=soft_%s api_ok=%u dctl=%08lx usbctl=%08lx\n",
+        attached?"attach":"detach",(unsigned)ok,
+        (unsigned long)reg(0x50000804),(unsigned long)reg(0x500e515c));
+    if(n<=0 || (size_t)n>=sizeof(text))return;
+    hs_reference_trace_note(text,(size_t)n);
+    ESP_LOGI("HSReconnect","%s",text);
+}
+#endif
+
 static void observer(void *argument)
 {
     (void)argument;
     unsigned sample=0;
+#if defined(HS_REFERENCE_RECONNECT)
+    bool reconnect_attempted=false;
+    const struct hs_reconnect_ops reconnect_ops={NULL,reconnect_disconnect,
+        reconnect_connect,reconnect_wait,reconnect_note};
+#endif
     for(;;) {
         vTaskDelay(pdMS_TO_TICKS(5000));
+#if defined(HS_REFERENCE_RECONNECT)
+        /* One task-context stimulus, not an automatic recovery loop. API return
+         * success is not host enumeration. No PHY/reset/speed tuning here. */
+        if(!reconnect_attempted) {
+            struct hs_link_counts before;
+            hs_link_events_snapshot(&link_events,&before);
+            bool active=tud_mounted() || tud_connected();
+            for(unsigned event=1;event<HS_LINK_EVENT_COUNT;++event)
+                active=active || before.event[event]!=0;
+            if(active) {
+                reconnect_attempted=true;
+                static const char skipped[]="stage=soft_reconnect_skipped_activity\n";
+                hs_reference_trace_note(skipped,sizeof(skipped)-1);
+                ESP_LOGW("HSReconnect","skipped: stack/event activity");
+            } else {
+                hs_reconnect_once(&reconnect_attempted,&reconnect_ops);
+            }
+        }
+#endif
         /* No FIFO pop, W1C acknowledgement or peripheral/clock write. */
 #if defined(HS_REFERENCE_LINK_TRACE)
         char text[1024];

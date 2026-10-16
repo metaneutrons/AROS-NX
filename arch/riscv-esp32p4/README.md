@@ -159,6 +159,15 @@ hs-fs-dual-2026-10-16.1Ih2cr. Exact AROS229376Bb19d6cea... restoration and
 independent readback pass again; the fresh return log reaches calibrated
 200MHz PSRAM, graphics updates, touch, USB owner remote closed and CPU1 WiFi.
 This is headless return evidence, not visual acceptance or HS enumeration.
+Further reset/attach investigation adds a default-off one-shot soft reconnect
+diagnostic with an idle activity guard and read-only USBCTRL pre/post samples.
+Host tests and native ON/OFF builds pass. New control197792Bfe8a18eb... is
+installed/readback verified and stores13 valid records through sample6; no
+enumeration or queued reset/SETUP/XFER. Its app entry reports reset7(WDT),
+whereas the captured initial boot reports USB reset and stops at multicore
+startup. This discontinuity invalidates a matched comparison. Reconnect
+candidate198304B7a5c86a9... remains unflashed; exact AROS restoration/readback
+passes. Reset continuity must be resolved before claiming attach-edge results.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual

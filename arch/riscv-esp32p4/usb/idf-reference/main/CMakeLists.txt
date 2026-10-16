@@ -10,6 +10,12 @@ option(HS_REFERENCE_PERSIST "Single-boot staged diagnostic in backed-up app sect
 option(HS_REFERENCE_INJECT_INSTALL_ERROR "Headless trace self-test, not a USB fault" OFF)
 option(HS_REFERENCE_LINK_TRACE "Read-only PHY snapshots and queued USB event counters" OFF)
 option(HS_REFERENCE_FORCE_FS_HSPHY "Diagnostic: full speed on the native HS UTMI PHY" OFF)
+option(HS_REFERENCE_RECONNECT "Diagnostic: one delayed soft detach/attach" OFF)
+if(HS_REFERENCE_RECONNECT AND
+   (NOT HS_REFERENCE_PERSIST OR NOT HS_REFERENCE_LINK_TRACE OR
+    HS_REFERENCE_INJECT_INSTALL_ERROR OR HS_REFERENCE_FORCE_FS_HSPHY))
+    message(FATAL_ERROR "Reconnect comparison requires persistent HS link trace without injection or forced FS")
+endif()
 if(HS_REFERENCE_FORCE_FS_HSPHY AND
    (NOT HS_REFERENCE_PERSIST OR NOT HS_REFERENCE_LINK_TRACE OR HS_REFERENCE_INJECT_INSTALL_ERROR))
     message(FATAL_ERROR "FS-on-HS comparison requires persistent link trace and no error injection")
@@ -35,6 +41,9 @@ if(HS_REFERENCE_LINK_TRACE)
 endif()
 if(HS_REFERENCE_FORCE_FS_HSPHY)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE HS_REFERENCE_FORCE_FS_HSPHY=1)
+endif()
+if(HS_REFERENCE_RECONNECT)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE HS_REFERENCE_RECONNECT=1)
 endif()
 if(HS_REFERENCE_PERSIST)
     target_link_options(${COMPONENT_LIB} INTERFACE
