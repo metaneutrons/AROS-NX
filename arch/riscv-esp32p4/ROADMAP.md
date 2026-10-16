@@ -177,7 +177,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | N2U | Credential-free WLAN image defaults and first-use selection | `matched ABI8 candidate BSP/image build and host verification; deployment/runtime open` | Existing AROS WiFi/Network preferences, WirelessManager, AROSTCP and dhclient only; device/unit0, DHCP RAM paths, empty Wireless.prefs, autostart off. Five defaults/eighteen stage tests pass. WLAN-only whitelist includes ESP32Board/icon; actual85-file overlay, tracked Wanderer defaults, no saved build Env-Archive. Fresh static-linked resource282952B/device67584B, audited42-member BSP3971508B,41 other payloads unchanged. Final64MiB AROSDefault image has332 manifest entries; historical loader failures/artifacts retained in dated evidence. Installed baseline backup/full-span recovery, native discovery, single-manager lifetime, clock/routing/resolver/GUI/radio acceptance remain open. Both privacy assertions0; credentials excluded and SYS/SD read-only. |
 | N2E | Caller-visible asynchronous association failure | `generic caller/native binding/Close model+build verified; runtime open` | Native76cc32560a owned cookies/opener failure latches and message-ACK/token fence are bound; independent source review clear, clean72936B RV32 device build and all six scoped macOS/Linux O0/O2 sanitizer suites pass. Caller Close9a0a0d8346 integratedd50ca3ba1e passes independent review/macOS/Linux models and full679652B RV32 rebuild. Capability advertisement remains disabled. SUMMARY-only and privacy assertions0 unchanged. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
-| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | GNU recipe and SDK source-input corrections are being integrated on current AROS-NX main without changing SMP or board runtime. Source-owned pins, normalized cache contracts and explicit header prerequisites have fixture coverage. Release object paths and applicable GCC/GDB markers distinguish Classic and SDK-selector state. Clean source/runtime-bound compiler and complete SDK replay, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
+| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | GNU recipe and SDK source-input corrections are being integrated on current AROS-NX main without changing SMP or board runtime. Source-owned pins, normalized cache contracts and explicit header prerequisites have fixture coverage. Libinit literal commands now retain target flags once; six GenMF/GNU Make dry-run regressions cover aggregate and overridden CFLAGS without rebuilding a compiler. Release object paths and applicable GCC/GDB markers distinguish Classic and SDK-selector state. Clean source/runtime-bound compiler and complete SDK replay, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
@@ -2441,6 +2441,28 @@ byte comparisons, complete native SDK C/C++ final links and relocation,
 native P4 integration, and independent signed release/download audits.
 Recipe tests or declaration checks do not close this gate. A build does not
 change any board's hardware acceptance state.
+
+### 2026-10-16 - TC0 libinit literal compiler-flag closure
+
+- Evidence: nonpublishing Producer diagnostic `38777083911`, source
+  `eb4b922c9636f94c29f0034780fa8e282270af1a`, completed all 24 compiler owners.
+  Its GNU Linux SDK consumers then rejected repeated source ABI flags in
+  `LiteralCompilerRole.cmake`; that strict check remains unchanged.
+- Cause: the two literal libinit recipes repeated `TARGET_ISA_CFLAGS` and
+  `TARGET_CFLAGS` through the `CFLAGS` aggregate defined by `make.cfg.in`.
+  The corrected recipes retain their mandatory prefixes and append only
+  aggregate words not already supplied by those prefixes. Direct or empty
+  `CFLAGS` overrides still retain the mandatory target flags.
+- Procedure: `python3 scripts/ci/test_libinit_cflags.py` runs actual GenMF and
+  GNU Make dry-runs of both kickentry and libentry targets. All six tests pass,
+  including aggregate/default and override cases, the old duplicate-prefix
+  counterprobe, and a missing-ABI counterprobe. The selected compiler path is
+  deliberately absent; no compiler, firmware or SDK rebuild occurs.
+- Scope and remaining gate: command-authoring verification only. No source
+  ABI, loader, board, media, release or published artifact changed. Integrate
+  the reviewed source patch, preserve the diagnostic SDK integration chain,
+  and replay the SDK consumers with verified existing compiler packages before
+  claiming SDK qualification. TC0 remains `in development`.
 
 ### 2026-10-10 - TC0 GNU recipes integrated on current SMP source
 
