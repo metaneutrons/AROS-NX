@@ -46891,3 +46891,33 @@ remain open. No partial stage is a complete A/B update system.
   Do not convert BSESVLD0 into an inferred missing init step. Next non-invasive
   input is actual board/connector/revision identification; module internal
   supply or line activity requires a real measurement, not controller counters.
+
+### 2026-10-16 - RC0 enclosed connector identification from manufacturer drawings
+
+- Fabian declines opening enclosure and requires both cables remain attached.
+  Render specification page5 Interface Description and complete mechanical
+  drawing, compare RJ45/header/FPC and connector ordering with supplied photo
+  AA07B65B-274C-412B-8855-3A27753EA600/1-Eingefügtes-Bild-1.jpg.
+  Manufacturer connector7 is FS, connector9 HS; rotating that assembly into
+  photo orientation maps silver/left cable to HS, black/right to FS/Debug.
+  Earlier statement that enclosure photo cannot identify connector assignment
+  was too strong; manufacturer positional references resolve it without opening.
+  Actual PCB revision, hidden module supply and electrical continuity remain
+  unproven. No cable change or hardware action requested/performed.
+- Specification PDF SHA256
+  a19323b7d9ee1af360b6d08c23e7b568ae13bbe150568a239da1885e3a75adb6;
+  mechanical PDF SHA256
+  51ccc4501821de8d36c4b7906fbe4b0c37cc312f69cacea7447dedfe2eb8ed8a.
+  Source paths under ~/Downloads/JC1060P470C_I_W_Y/2-Specification and
+  3-Structure_Diagram. Original PDFs unchanged; renders are read-only aids.
+- Vendor common BSP usb_host_start calls generic usb_host_install, not a
+  board-specific HS-device sequence. Its copied GPIO19/20 USB macros must
+  not be applied to dedicated HS pads; no invoked known-good HS device demo
+  established by this inspection. Do not flash unrelated board demo settings.
+- Considered bootloader prerequisite hypothesis, then checked authoritative
+  prior evidence: live original22544B27b99e03... is ESP-IDF6.0.1, not a bespoke
+  AROS second-stage loader. Correct initial commentary accordingly. No new
+  bootloader write is authorized or proposed from that mistaken premise.
+  Source audit of app/boot early clock responsibility pending; no claim that
+  missing bootloader initialization explains HS failure. Diagnostic remains
+  installed/ROM-stopped, full traces and exact AROS recovery retained.

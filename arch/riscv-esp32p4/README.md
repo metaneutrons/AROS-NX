@@ -244,6 +244,11 @@ Passive follow-up confirms USB-disable/pin-swap fuses0 and direct outer-board
 HS connector-to-module nets; module-internal VDD_USBPHY remains unverified.
 The official bus-powered path explicitly disables B-session overrides, so
 GOTGCTL.BSESVLD0 is not sufficient grounds to force session-valid as a fix.
+Manufacturer interface photograph (specification page5) and mechanical bottom
+view now identify the user's enclosed connectors without opening it: in his
+photo silver/left is HS, black/right is FS/Debug. Earlier inability to map
+the connectors from the enclosure photo is corrected; board revision and
+module-internal power remain unverified. No cable move required.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
