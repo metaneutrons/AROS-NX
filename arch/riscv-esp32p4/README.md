@@ -172,6 +172,13 @@ After fresh readiness the same control is now reinstalled/readback verified
 with pristine scratch for a physical RESET-only comparison. Both cables stay;
 Debug capture is open before the button action. AROS is temporarily replaced,
 exact recovery retained. No software app reset or new runtime result yet.
+That physical RESET-only now yields13 valid records through sample6: first
+app entry reset1, installer0, mounted0 and zero queued reset/SETUP/XFER.
+Mac still no native CDC; missing early console prevents a full reset-history
+claim. Reconnect198304B7a5c86a9... is now installed/readback verified50ba6c00...
+after exact pristine-scratch restoration, with no intervening app boot.
+It awaits fresh physical RESET readiness; no reconnect result yet. Both cables
+remain, AROS temporarily replaced and exact recovery retained.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
