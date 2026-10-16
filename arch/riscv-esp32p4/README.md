@@ -283,10 +283,16 @@ EP0 follow-up2026-10-17: default-off first-reset/late read-only register
 snapshots pass sanitized host tests, independent review and native ON/OFF
 builds. PIO candidate196512B52c1d2c6... is now installed at0x20000 with
 independent full readback; old trace preserved, pristine scratch restored and
-readback verified. ROM-stopped pending synchronized physical RESET, both
-cables retained. No new runtime result, endpoint/PHY fix or enumeration pass.
-Exact AROS recovery remains retained; RC0-TW and all native acceptance gates
-stay open.
+readback verified. Both cables retained; the requested physical RESET was
+replaced by a Debug reset at Fabian's explicit request. No endpoint/PHY fix.
+The authorized Debug-reset run now yields11 valid records/sample6_complete:
+reset2/setup0/xfer0, both EP0 snapshots have STUPCNT3, RXFLVL/global and
+EP0-local masks enabled, no pending EP0 or peeked RX status. Mac still has
+Debug only, no native CDC. No first-byte console was captured; the saved trace
+proves app entry/reset11/debug_sof1 and terminal reachability, not complete
+console continuity or absence of transient FIFO activity. Exact AROS recovery
+remains retained; reference ROM-stopped after retrieval, RC0-TW and all native
+acceptance gates stay open.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
