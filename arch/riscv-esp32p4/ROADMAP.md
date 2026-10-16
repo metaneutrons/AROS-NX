@@ -46853,3 +46853,33 @@ remain open. No partial stage is a complete A/B update system.
   or electrical instrument before speculative PHY writes. Both cables remain
   untouched; any physical change requires coordination. Diagnostic remains
   installed, ROM-stopped after trace retrieval; AROS recovery retained.
+
+### 2026-10-16 - RC0 passive board path and USB eFuse audit
+
+- Fabian confirms HS cable is data-capable; keep both cables attached.
+  Do not continue presenting charge-only cable as the established cause.
+- Visually render manufacturer outer schematic JC1060P470C_I_W_Y-V1.0.pdf,
+  SHA256ae3f41fe9a66b201358ef8cf1f531fdced68c63f84c8bde36e23cde5132a23ee.
+  USB3 HighSpeed: both D+ contacts ESP_USB_P/both D- ESP_USB_N, ESD D6/D7,
+  CC pulldowns R62/R63 5k1, sharedUSB5V_IN. Nets reach module U3 pins40P/39N;
+  no active data switch is shown. FullSpeed USB2 uses USB1P1 nets to module
+  pins43P/42N. This outer sheet does not expose internal VDD_USBPHY supply;
+  it cannot verify actual population, continuity, supply voltage or board rev.
+- Read-only espefuse5.5.0/no-reset/no-reset auto-detects P4v1.3:
+  DIS_USB_OTG_DOWNLOAD_MODE=0, USB_PHY_SEL=0, DIS_USB_JTAG=0,
+  DIS_USB_SERIAL_JTAG_DOWNLOAD_MODE=0. Second targeted read confirms
+  USB_DEVICE_EXCHG_PINS=0/USB_OTG11_EXCHG_PINS=0. No burns or key dump.
+  First command included unsupported USB_EXCHG_PINS alias which emitted no
+  field; do not count that spelling as a measured setting. Both reads exit0.
+  Logs in hs-attach-full-2026-10-16.ikf8hp, SHA256c965a7ec... ande26c62e7....
+- Read-only ROM GPIO_STRAP register0x500e0038 returns4; no interpretation
+  without validated strap-bit mapping. Initial read-reg spelling rejected
+  before access; supported read-mem succeeds. No state-changing MMIO.
+- Official Espressif hardware guidance specifies separate VDD_USBPHY
+  2.97..3.63V and dedicated HS pins, not an LDO output inferred from display
+  operation. See https://docs.espressif.com/projects/esp-hardware-design-guidelines/en/latest/esp32p4/schematic-checklist-esp32p4.html
+  and https://docs.espressif.com/projects/esp-techpedia/en/latest/esp-friends/get-started/try-firmware/try-firmware-hardware/esp32p4.html.
+  USB-disable fuses and a visible outer-board GPIO data switch are not the
+  observed blocker. Module-internal supply and connector electrical attachment
+  remain unmeasured. Next independently audit B-session validity semantics
+  before considering any controlled override. No new flash/reset/cable action.
