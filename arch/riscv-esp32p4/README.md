@@ -220,7 +220,12 @@ and FSLS wrapper snapshots to existing progress records. The wrapper is not
 an HS UTMI pull measurement. Candidate198992B67411e30... is prepared for
 correlation with Mac per-port connection-counter deltas; no attach-edge result
 yet. It is now installed at0x20000 with independent full readback; capture
-is open before the requested physical RESET. Both cables remain unchanged,
+was open before the confirmed physical RESET. Fourteen valid records now
+prove DCTL.SDIS0->1->1->0 across both API calls; Mac port counters show only
+Debug reconnect, no second data attach. This is register-state evidence, not
+electrical attachment. Collection interrupted before a final sample was saved;
+the30s gate is incomplete, not failed or passed. Both cables unchanged;
+diagnostic firmware retained, currently ROM-stopped after trace retrieval.
 AROS is temporarily replaced and exact recovery retained.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
