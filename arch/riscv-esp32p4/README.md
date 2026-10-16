@@ -147,7 +147,18 @@ Following fresh readiness, FS-on-HS197776B4b943580... is now installed with
 independent exact readbackb38afa01.... One captured Debug/FS reset still yields
 ROM DOWNLOAD, not application execution. Manual RESET-only is now requested;
 both cables remain. AROS is temporarily replaced, exact recovery retained.
-No Full-Speed runtime/enumeration acceptance from installation alone.
+Following Fabian's physical RESET-only, FS-on-HS now completes a13-record
+sample6 trace with DCFG08100005, mounted0 and queued reset/SETUP/XFER all0.
+The retained normal-HS control197760B6f831199... is then installed/readback
+verified after an exact scratch restoration. A Debug reset successfully boots
+it; its13-record sample6 has DCFG08100004, mounted0 and the same zero counters.
+Neither mode enumerates on the Mac with both cables retained. Physical versus
+Debug reset and SUSPENDM differ, so this is not a speed-only causal comparison
+or proof of a cable/PHY defect. Full traces and host inventory are retained in
+hs-fs-dual-2026-10-16.1Ih2cr. Exact AROS229376Bb19d6cea... restoration and
+independent readback pass again; the fresh return log reaches calibrated
+200MHz PSRAM, graphics updates, touch, USB owner remote closed and CPU1 WiFi.
+This is headless return evidence, not visual acceptance or HS enumeration.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
