@@ -2457,8 +2457,16 @@ that a similarly named AROS driver matches the P4 MAC generation.
   source-suite invocation omitted LLVM's archive tools from PATH and failed
   setup; selecting the existing LLVM tools fixed the environment without
   changing the tests or production code.
-- Next step: complete independent review and exact-commit source preflight,
-  then select the complete normal protected-main product CI before merge.
+- Independent review found no actionable findings. Clean integration commit
+  `8f94c114072cc729fa3e67b0b9caf64e889d32f0` passed all sixteen actual source
+  preflight stages with the measured runtime and locked Zlib/Mesa cache inputs.
+  Wrong-source and wrong-runtime counterprobes failed before output creation.
+  This evidence remains tied to that commit; record a final-head preflight
+  after this evidence update rather than transferring the source identity.
+- Next step: the existing PR now targets protected main. Its workflow excludes
+  base-edit events, so push this measured evidence update as the normal
+  synchronization event selecting complete product CI. Require final-head
+  source preflight and every selected product check before merge.
   Historical local compiler/SDK evidence remains tied to its original source;
   no new compiler build or full diagnostic is authorized by this preparation.
 - Safety: no firmware, media, historical run, tag or published artifact changed.
