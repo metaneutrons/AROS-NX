@@ -252,7 +252,14 @@ module-internal power remain unverified. No cable move required.
 Fresh bootloader readback again matches22544B27b99e03...; no missing custom-
 bootloader USB step established. A same-instrumentation PIO control is now
 installed/readback verified196112B3891f3b2..., replacing DMA diagnostic only.
-It awaits physical RESET; no PIO runtime or enumeration result yet.
+After confirmed physical RESET and35s+ observation, neither board USB
+interface is visible; Fabian then clarifies Debug is physically disconnected,
+so its absence is not a PIO failure. Host drd2 counts10 connection/address/enum failures;
+all three Type-C connectors report USB2, but an unrelated iPhone also appeared
+and drd1 counts2 connections. Attribution/window not isolated; no PIO pass or
+cause claimed. Trace retrieval awaits coordinated ROM recovery; diagnostic
+remains installed, no restoration or second run attempted. BOOT-held Debug
+reconnection requested to preserve provenance; HS remains connected.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
