@@ -46807,3 +46807,10 @@ remain open. No partial stage is a complete A/B update system.
   Same diagnostic remains installed, ROM-stopped; Debug capture reopened
   before physical-control prompt. Next one physical RESET without cable moves,
   allow35s+ from completion before collection. No analog writes or AROS restore.
+- Independent pinned-source audit: changed force fields are R/W/default0 but
+  vendor descriptions give no functional explanation. Only IDF setter found
+  for this register changes bit21, not the four observed differences. Thus
+  their origin is unproven: do not call them ROM/test residue. Reset11 maps
+  to ESP_RST_USB from USB Serial/JTAG UART or JTAG core reset; it does not
+  identify which path set those bits. Physical-reset comparison remains the
+  next discriminating observation; it cannot alone prove electrical effect.
