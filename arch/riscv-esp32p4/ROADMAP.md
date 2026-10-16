@@ -47006,3 +47006,24 @@ remain open. No partial stage is a complete A/B update system.
   BOOT held plus one RESET pulse, then release BOOT after3s, both cables
   unchanged. Await completion. PIO diagnostic remains installed, execution
   state unknown; preserved prior DMA traces/exact AROS recovery retained.
+
+### 2026-10-16 - RC0 BOOT+RESET yields no Debug; host CC path is disconnected
+
+- Fabian confirms BOOT-held RESET then release after3s, both board cables
+  retained. devserial and independent IOKit inventory show no board interface,
+  only unrelated YubiKey. No esptool attempt against absent node, no write or
+  host reset. ROM execution unconfirmed; PIO trace remains unread/preserved.
+- Read-only AppleHPMInterfaceType10 inventory: Type-C@2 ConnectionActive=false,
+  TransportsActive=[], connectNone. Its UsbIOPort maps to usb-drd1-port-hs,
+  the host node that previously carried Debug serial80:F1:B2:D3:3B:A6.
+  Type-C@1 hasCC+USB2/YubiKey; Type-C@3 hasCC+USB2 but no device node.
+  Both active ports have overcurrent0. Do not overinterpret authorization-
+  pending fields as a macOS user-denial without evidence.
+- boot-reset-typec.plist SHA256
+  babf01facb7c0db2488bf62627687109e7b454638e2975f1af4316057bea5132;
+  boot-reset-ports.plist retained in hs-pio-trace-2026-10-16.a1DlYx.
+  Absent Type-C@2 CC is a host-side physical-continuity observation, not proof
+  the user removed a particular cable or that the cable is faulty. It
+  contradicts an assumed unchanged direct two-board-cable host connection.
+  Next verify Debug cable's host endpoint/contact without opening enclosure,
+  unplugging HS, rewriting flash or repeating ineffective firmware resets.

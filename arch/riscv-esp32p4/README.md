@@ -264,6 +264,10 @@ After confirmed BOOT-held Debug reconnection without RESET, Debug still has
 no host node. No-reset identity cannot open1101; no trace read/write occurred.
 Because HS retained power, reconnect/BOOT alone does not establish fresh ROM
 entry. Coordinated BOOT+RESET is next; no firmware-cause inference.
+Confirmed BOOT+RESET still yields no board interface. New host evidence maps
+the former Debug host port to Type-C@2, ConnectionActive=false/transports[];
+HS-side Type-C@3 reports CC+USB2. Host-side Debug continuity must be checked
+before further ROM attempts; this is not evidence of a PIO firmware fault.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
