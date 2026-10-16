@@ -121,8 +121,10 @@ PHY tuning. Native FS control197728B2d612c32... stores13 valid records including
 pre/post snapshots and complete sample6; HS is unattached, so zero queued bus
 events is expected, not a reception pass. Raw GOTGCTL BSESVLD0 alone is not a
 VBUS diagnosis. Exact AROS recovery/readback and FS return are verified. The
-enhanced HS measurement still needs fresh physical readiness and protected
-BOOT-held ROM-only retrieval; no enumeration fix is claimed.
+enhanced HS reference is now reinstalled/readback verified on2026-10-16 with
+pristine scratch and no FS app boot, following fresh readiness. It waits in ROM
+for the coordinated HS move; AROS is temporarily replaced. Protected BOOT-held
+ROM-only retrieval remains required; no enumeration fix is claimed.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
