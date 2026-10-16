@@ -138,6 +138,20 @@ that confirmation is non-interactive evidence only and must not be counted as
 an interactive acceptance test, even if the user later reports that they
 missed it.
 
+Fabian clarified on2026-10-16 that readiness and the exact requested physical
+action should be combined in one message once preparation/capture is ready:
+ask him to perform the action if ready and confirm completion, instead of a
+separate ready-but-do-nothing exchange followed by another instruction. Still
+wait for his explicit confirmation; never run an interactive test in advance.
+
+For a connected diagnostic test series, retain the diagnostic firmware between
+related runs. Fabian explicitly requests restoring AROS only when no further
+tests in that series are planned, not as an intermediate restore/reinstall
+cycle. Preserve every trace before any authorized scratch reset, retain exact
+AROS recovery and keep image/range/readback checks. State the actual installed
+firmware at handoff. This changes neither metadata-write authority nor the
+fresh-readiness requirement for physical actions.
+
 Fabian clarified on2026-10-11 that reproducible development firmware/volumes
 do not require a fresh full flash backup before every rewrite. A retained
 known-good image or reproducible build can provide recovery. Continue to

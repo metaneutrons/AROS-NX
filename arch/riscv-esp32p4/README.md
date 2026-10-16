@@ -207,6 +207,13 @@ skip it. Compact sample6 keeps the trace at16 slots but is not a full PHY
 reference dump. Host/native ON/OFF builds pass; first synchronized RESET is
 pending, both cables unchanged. AROS temporarily replaced, recovery retained;
 no runtime outcome or HS fix claimed.
+The synchronized progress run now saves all16 records through sample6,
+including observer entry and both USB API entry/return pairs. Calls return;
+earlier interruption is not reproduced. Mounted/reset/SETUP/XFER remain0 and
+Mac still has no native CDC, so the HS issue remains open. AROS/scratch exactly
+restored/readback verified. For subsequent diagnostic series retain the test
+firmware between runs, following Fabian's clarification received after this
+restore; restore AROS only when ending the series.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual

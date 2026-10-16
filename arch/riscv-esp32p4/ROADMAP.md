@@ -195,7 +195,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C1P | Graphical boot/update performance | `hardware partial; runtime hang gate open` | Rotation/mirror: 140 sanitizer cases; actual producer: 400 submissions/1,677 guarded IRQs. CPU90 synchronous full update 2.776 s; CPU360 synchronous 0.617 s; v2 coalesced submission 0.296 s. Paired v2 core/HIDD initially passes headless Wanderer and flash checks. Fabian observes speedup then slowdown/hang. Console-only nonblocking runtime fix now sanitizer-tested, flashed and verified; explanation of the observed hang remains unconfirmed. On 2026-10-01 Fabian reports drawing is fine so far after requester-free RAM Disk opening; duration unspecified. Sustained no-reader/stress and complete interactive regression gates remain open. |
 | CQ1 | Bounded queued SMP debug console | `hardware partial (JC1060); default-plain deployed/readback/headless; D1001 open` | 2026-10-13 framed core showed both harts/108 consecutive records and reader recovery. 2026-10-14: P4_CONSOLE_RECORD_PREFIX defaults0, optional1 keeps framing; overflow warnings always active. Clean native193024Ba68ca519.../independent readback and111.929s fresh218-row headless export show no normal prefix,22 touch heartbeats and CPU1 WLAN owner. Twelve sanitized USB/UART default/0/1 host runs pass; old-header mutation rejected. Plain logs cannot prove sequence continuity. Native overload/physical disconnect and fresh interactive gates remain open. Early/fatal direct output and timer-failure backlog loss remain explicit limits. |
-| RC0 | Permanent HS port and USB remote diagnostic MVP | `HS blocked; progress diagnostic installed/readback verified, RESET pending` | 2026-10-16: clean9-record prefix does not identify the stop. Default-off progress mode adds observer entry and pre/post USB checkpoints, fresh-trace guard and compact sample; bounded16 slots, host/native ON/OFF builds pass. Reviewed198816B31585ceb... installed0x20000/0x31000/readback9f77d13a... exact; pristine scratch and AROS recovery retained. No app reset yet; physical RESET requested with both cables unchanged. No new runtime result; RC0-TW/CDC/remote/writer OPEN. |
+| RC0 | Permanent HS port and USB remote diagnostic MVP | `HS blocked; observer and both USB calls return, full progress trace captured` | 2026-10-16: synchronized RESET yields16 valid records through sample6; observer entry, detach entry/return and attach entry/return all present. Stack high-water mark1336 at returns. No queued reset/SETUP/XFER or host enumeration; earlier interruption not reproduced, cause still unknown. Exact AROS/scratch restored/readback verified before Fabian's restore-only-at-end clarification. No HS fix; RC0-TW/CDC/remote/writer OPEN. |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware verified` | Complete GB0 evidence: correctly oriented persistent Wanderer with title/icons/four edges, bounded graphical recovery without SD, 20/20 controlled EN-reset boots, a 30-minute desktop soak explicitly composed with B5's active concurrent SD/scanout stress, and an exact raw-card gate.  The latter used hardware-locked first host insertions around one normal D1001 boot; prepared image, pre-run readback and post-run readback are byte-identical at SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Two earlier comparisons remain documented as macOS `.fseventsd` contamination, not hidden as passes |
 | C4 | Touch as an absolute mouse HIDD | `hardware partial` | Since 2026-10-04 the touch path is the portable stack of D3 (`touchscreen.hidd`, `gsl3670.hidd`, `esp32p4board.resource`); the D1001 has not run it yet, so everything below describes the former kernel GSL driver and `p4touch.hidd`. D1001 identification, bounded firmware load/status and contact transport are hardware verified. The absolute mouse HIDD and nearest-contact continuity pass synchronized one-/two-contact tests; hardware IDs are not stable. A stationary pointer recovered after USB reset; its prior cause remains unknown. The tap policy defaults to button-free motion, tap-to-click and 400-ms hold-drag, preserving selectable direct mode and the right-button latch. Fabian confirms movement, tap and hold-drag with zero errors and clean release. A consented perimeter trace measures X=16..1638/Y=15..874; board-specific calibration now maps that range to the full surface. Its 3,863 host checks, build and package audit pass. A fresh synchronized run confirms four-edge reachability and menu-dropdown opening, with zero I2C errors and clean release at Y=5. Rapid double-tap reliability is reported poor; first-empty short-tap release (50-ms idle gap restored after renewed graphics slowdown) now pass 3,892 sanitizer checks and are a flashed candidate, not interactive acceptance; a volume requester precedes successful RAM Disk opening (name reported as TENEME, possibly THEME; unconfirmed). Theme assignments, Ice assets and PNG registration now pass a 167-entry host image verification; SD image now written/readback-verified/ejected; visible gate fails with missing png.library>=52; 171-entry runtime-library closure correction is now SD written/readback-verified/ejected (2026-10-01); synchronized 55-second boot reaches Wanderer and attempts the new runtime libraries; Fabian confirms requester-free RAM Disk opening and one visible toolbar symbol; complete toolbar and sustained performance are not yet accepted. Menu-item execution, bounded recovery, intermittent startup reliability and the 1,000-cycle gates remain open |
@@ -4672,6 +4672,14 @@ and fits16 slots using a compact sample6. Host and native ON/OFF builds pass;
 reviewed31585ceb... is installed/readback verified after fresh identity/table/
 preimage checks. It awaits one synchronized physical RESET, both cables
 unchanged. AROS temporarily replaced/exact recovery retained. No result yet.
+The synchronized run now saves all16 records: observer entry, both pre/post
+API checkpoints and terminal sample6. Both calls return with api_ok1; this
+does not prove host-visible disconnection. Mounted/reset/SETUP/XFER remain0,
+host has no native CDC. Earlier interruption is not reproduced, not explained
+or fixed by the instrumentation. AROS exactly restored/readback verified.
+Fabian subsequently clarifies: retain diagnosis firmware through a test series,
+restore AROS only at the end; the already completed restore predates that
+instruction. Apply this workflow to subsequent runs without extra app boots.
 
 2026-10-15 permanent-port decision supersedes temporary controller takeover
 for the next candidate: kernel-registered resource, one AFTERDOS owner,
@@ -46615,3 +46623,58 @@ remain open. No partial stage is a complete A/B update system.
   Next synchronized physical RESET-only and inspect last durable checkpoint,
   compact terminal marker and host enumeration before interpretation. RC0-TW
   storage workaround/removal gate remains explicit and OPEN; no HS fix claimed.
+
+### 2026-10-16 - RC0 full observer/reconnect progress; enumeration still absent
+
+- Fabian confirms synchronized RESET-only with both cables unchanged. Debug
+  remains host-visible. First read has no fresh rows; reconfigure33918 then
+  rows33919..33929 include sample6 at31.422s and written next15/16. Console
+  is coalesced/partial, not a lossless startup capture. Host inventory contains
+  only Debug USB JTAG/serial and unrelated YubiKey, no native CDC.
+- Scoped1101 close, single USB-reset ROM entry, expected MAC/P4v1.3/flags0
+  verified. Raw0x57000/4096 read/decoder exit0,16 valid records through
+  sample6_complete. progress-trace.bin SHA256
+  d8173b9723c1ec45c8638a4d350a29fd6c949023ad91acc1bb4dfd01fce3850e.
+  Same198816B31585ceb.../payload9f77d13a..., first app entryus53967/reset1/
+  debug_sof1. Install90602/return0at95252; observer_enter98261 precedes
+  create-result99400, expected cross-core ordering, followed by three checks.
+- Durable detach_enter5098152/return5109077, attach_enter6108136/return6119121;
+  both return api_ok1. Entry api_ok0 is a placeholder, not a failed call.
+  Times bound checkpoints, including flash/log overhead, not API duration.
+  Stack high-water mark2280 at entry/1368 before detach/1336 at both returns;
+  this is sampled stack evidence, not a general overflow proof. Compact sample6
+  mounted0, DCFG08100004/DCTL0/DSTS00400003/USBCTRL00a22640, reset0/setup0/
+  xfer0. Live sample likewise reports all queued counters0. Full progress is
+  verified for this execution; host-visible detach/attach is NOT verified.
+  api_ok is unconditional true in pinned TinyUSB and not a host acknowledgement.
+- The earlier nine-record interruption is not reproduced and its cause remains
+  unknown; do not call it fixed or infer a PHY fault. This run establishes
+  successful observer scheduling and API return despite absent enumeration,
+  narrowing this execution's blocker away from those missing progress stages.
+  The compact progress record is not a full PHY-reference acceptance test.
+- Evidence hs-progress-2026-10-16.LKPQ0H retains raw/decoded trace, exports,
+  host inventory and post-run identity. progress-run-export.jsonl SHA256
+  fb24f852cd51e3b4ff8622ff211d7a6bc8cbe231d25991ce7f2c88c2a73b4b06;
+  progress-run-usb-tree.txt SHA256
+  8e6984537869a82d6ba2e5dc7152bb34b0b98d9b308c3b99e0b6801342d77624.
+- Fresh table unchanged, live0x20000/0x31000 exact installed payload. Restore
+  retained229376B AROS/scratch0x20000/0x38000, write/read exit0/full cmp/SHA256
+  b19d6ceab198f6c3c7e4ff839a40b8abfd516c0cf078767eab2fcc96f47dc051.
+  No bootloader/table/metadata/BSP/helper/SD/C6 writes. This restoration was
+  already completed when Fabian clarifies to restore AROS only when no more
+  tests in the series are planned. Acknowledge and apply prospectively: retain
+  diagnostic firmware between related runs; no pointless restore/reinstall
+  cycles. Preserve traces before any authorized scratch reset and independently
+  validate ranges/readbacks as before. No physical action implied by that rule.
+- One reader-attached Debug reset for normal return after closing this run;
+  capture separately. Next investigate host-visible attach/physical link and
+  distinguish the earlier reset/protocol-record gap; no more unchanged soft-
+  reconnect repeats. HS CDC/Remote-Bulk/writer and RC0-TW stay OPEN.
+
+- Fresh AROS return33931..34031 reaches ROM USB-reset/flash boot, PSRAM200MHz,
+  USB owner remote closed/writer unavailable, GT911, CPU1 WiFi and graphics
+  253frames/9swaps/faults0/rejects0. The return export is retained as
+  aros-return-export.jsonl in the same evidence directory. No visual or
+  touch acceptance. Actual installed firmware at handoff is restored AROS.
+  Record the clarified retain-diagnostic-series workflow and combined
+  readiness/action prompt in port AGENTS so fresh sessions preserve it.
