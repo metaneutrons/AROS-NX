@@ -100,7 +100,7 @@
     },
     {
       "path": "compiler/libinit/mmakefile.src",
-      "sha256": "557a3a5341fc9aac79974002a43c7211d35848b21af99b42c775b9c2b6329b12"
+      "sha256": "c5d1c0200ad3b7544484c37c7b3bde0d5e6b137e2b5244ca2da8c2c3e6b20ea2"
     },
     {
       "path": "compiler/mmakefile.src",

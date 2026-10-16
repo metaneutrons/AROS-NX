@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | GNU recipes, sealed SDK source inputs and SoftFloat integration are included in the current source. Local complete SDK construction and four normal C/C++ original/relocated links passed. Retained Linux A/B inputs isolated a PCH checksum mismatch to libcody's physical diagnostic prefix; release-only mapping passed bounded native object/checksum/assertion probes. Generator epoch regressions passed. A qualified tools runtime, fresh reproducible SDK packaging, authenticated release admission, complete three-host compiler A/B and SDK qualification, signed publication and public consumer verification remain required. These local results do not qualify a published compiler or SDK or change board status. |
+| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | GNU recipes, sealed SDK source inputs and SoftFloat integration are included in the current source. The checked libinit duplicate-flag correction and its four derived SDK input seals are composed; source/exporter regressions pass, exact-commit preflight remains pending. Local complete SDK construction and four normal C/C++ original/relocated links passed. Retained Linux A/B inputs isolated a PCH checksum mismatch to libcody's physical diagnostic prefix; release-only mapping passed bounded native object/checksum/assertion probes. Generator epoch regressions passed. A qualified tools runtime, fresh reproducible SDK packaging, authenticated release admission, complete three-host compiler A/B and SDK qualification, signed publication and public consumer verification remain required. These local results do not qualify a published compiler or SDK or change board status. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
@@ -157,6 +157,30 @@ gate: compensated output is not the native display contract.
 | S8 | Free migration of ordinary tasks | `stages 1 and 2 hardware verified (JC1060P470C); corrected closing suite, production headless soak and visual/touch passed` | Decision (Fabian, 2026-10-09): pinned by default, migration opt-in with `C:Affinity`. Fabian confirms Wanderer/touch on previous production `a4179c1e…`. Closing runner `f77784aa…` failed with an ISR-stack task context and later watchdog reset. The trap-exit MIE correction passes actual-body O0/O2 regressions with failing old-code controls; corrected runner `3415a01a…` passes all 240 programs in twenty rounds with no fault signature. Plain `0e1fa444…` passes its 360-second headless soak and synchronized visual/touch check. Open: #70 merge, DOS segment lists/late assigns and D1001. SMP.md, "S8". |
 
 ## Track TC: RV32 compiler and SDK publication
+
+### 2026-10-16 - TC0 compose the checked libinit flag correction
+
+- Baseline: diagnostic source `eb4b922c9636f94c29f0034780fa8e282270af1a`;
+  failed nonpublishing run `38777083911` retains all 24 successful compiler
+  owners but no successful SDK. Fabian authorized necessary AROS-NX corrections.
+- Change: replay only the libinit recipes and six command regressions from
+  checked source PR96, commit `41ffa9f65e96776f25905ac14e6a187e1cbde460`.
+  Preserve mandatory target prefixes and filter their duplicates from aggregate
+  CFLAGS, without changing source ABI or strict consumer validation.
+- Binding: refresh only `compiler/libinit/mmakefile.src` in all four SDK
+  input seals to SHA-256
+  `c5d1c0200ad3b7544484c37c7b3bde0d5e6b137e2b5244ca2da8c2c3e6b20ea2`.
+  Configure seals, SDK roots, probes, runtime and board code remain unchanged.
+- Validation: this composition passes all 77 source CI tests, including the
+  six actual GenMF/GNU Make dry-run regressions and duplicate-prefix/missing-ABI
+  counterprobes. All six LLVM exporter tests, the three GNU recipe gates and
+  tracked-path hygiene pass. The four source seals are current. The isolated
+  exact-commit producer preflight remains required before changing producer
+  pins. No compiler rebuild or new diagnostic is authorized by this composition.
+- Safety and next step: no firmware, media, historical run or published artifact
+  changed. Complete the isolated exact-commit preflight and bounded composition
+  review, then bind qualified producer inputs. TC0
+  remains `in development`; complete SDK and release qualification remain open.
 
 TC0 separates the host compiler package from the target/ABI SDK. Both use
 generic aros-tools infrastructure; the SDK contract remains source-owned.

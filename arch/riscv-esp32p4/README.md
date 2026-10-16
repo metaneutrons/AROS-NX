@@ -79,6 +79,10 @@ This is source-binding preparation only, not new SDK or hardware qualification.
 GNU recipes and complete SDK source inputs are being integrated on current
 AROS-NX main. Source regressions do not qualify a published compiler or SDK
 and do not change the hardware status below.
+The checked libinit flag correction is now composed into this diagnostic SDK
+chain: mandatory target flags occur once, including direct or empty CFLAGS
+overrides. The four SDK contracts bind only the changed libinit input digest.
+Source command regressions are not compiler, SDK, release or hardware acceptance.
 The Linux GNU compiler A/B diagnostic found physical prefix-map paths in GCC's
 PCH checksum-option record. A source-owned release-only metadata correction has
 passed bounded recipe regressions; complete fresh A/B and SDK release qualification remain
