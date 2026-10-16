@@ -188,6 +188,17 @@ Confirmed power/both cables and a synchronized BOOT-held RESET attempt still
 yield no board host interface; ROM entry itself is unconfirmed. No new write
 or reset from the host. Next synchronized Debug-only host cable reattachment,
 HS power retained; no application-cause or physical-cold-boot inference.
+Actual recovery differs: Fabian reconnects Debug/FS and disconnects HS; Debug
+returns. Protected ROM read recovers only9 valid staged records through USB
+install/checks, no reconnect or sample6 marker. Cable/power chronology and
+same-boot HS provenance remain uncertain. Candidate/table readback unchanged;
+exact229376B AROS/scratch b19d6cea... restored and independently verified.
+Fresh Debug return reaches PSRAM/DSI startup. No successful reconnect claimed;
+diagnose observer/reset/trace continuity before another unchanged test.
+Fresh return now reaches graphics updates, GT911, USB owner remote closed
+and CPU1 WiFi. Fabian reconnects HS afterward; passive host inventory still
+has Debug only, no native CDC. Both cables retained again; no host reset or
+flash on this reattachment, no visual or HS acceptance inferred.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
