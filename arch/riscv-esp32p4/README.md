@@ -131,6 +131,18 @@ the FS control. Thus HS IRQ/event processing runs, but enumeration still fails;
 this does not prove whether physical SETUP packets were sent or lost. AROS is
 exactly restored/readback verified; USB reset retains DOWNLOAD and manual
 RESET-only is pending. Next compare a different cable/host path. No fix claimed.
+Full-Speed-on-HS comparison is now build verified, not installed: default-off
+HS_REFERENCE_FORCE_FS_HSPHY changes only the device-speed assignment in an
+out-of-tree hash-pinned DCD copy. HS controller/port1, UTMI setup, DMA and
+dual-speed descriptor support stay enabled. Controlled build197760B6f831199...
+and FS-on-HSPHY197776B4b943580... fit below the existing trace sector. Nine
+configure-only tests plus trace/event/decoder regressions pass; generated
+source differs by exactly one speed assignment, original dependency unchanged.
+Fabian has no hub and opts to retain both Debug/FS and HS connected to the
+same Mac. Future comparisons use that documented two-cable warm-start setup,
+not the single-cable cold-start gate; electrical power isolation is unqualified.
+No hardware action occurred during this preparation. Physical RESET readiness
+is required before the first installed comparison; no more cable moves planned.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual

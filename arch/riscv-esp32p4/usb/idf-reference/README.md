@@ -39,6 +39,33 @@ larger pre-read, including the tail that must be restored. Scope/record every
 write and restore; do not count application recovery as a USB firmware updater.
 Fresh physical readiness is required for each cable/recovery interaction.
 
+## Full-speed comparison on the same HS connector (diagnostic, default OFF)
+
+`HS_REFERENCE_FORCE_FS_HSPHY=ON` limits DCFG.DEVSPD to Full-Speed on the HS
+PHY (encoding1), not dedicated-FS-PHY encoding3. Keep the high-speed compile
+capability, port1/HS DWC, UTMI init, DMA and descriptors unchanged; disabling
+TUD_OPT_HIGH_SPEED would select phy_fs_init and is NOT this experiment.
+The option requires persistent link trace and forbids injected install errors.
+The sample labels its configured maximum as FS_HSPHY or HS; DSTS remains the
+actual observed speed, not a successful-enumeration assertion.
+
+An out-of-tree generated copy changes one device-speed assignment in the
+hash-pinned TinyUSB DCD, before its initial connect. No detach/reconnect patch,
+managed-dependency edit, clock/reset/termination tuning or production AROS
+change is intended. The original official example remains included unchanged.
+The normal OFF build uses the original DCD. A successful FS result would only
+isolate the speed/negotiation path; it would not qualify High-Speed or justify
+shipping a permanent12Mbit/s workaround.
+
+Fabian opts to leave Debug/FS and HS connected simultaneously to the same Mac
+on2026-10-16 to avoid repeated cable moves. This is a different two-cable
+procedure, not a sole-power interruption or cold boot. Shared VBUS topology and
+per-port power protection are not electrically qualified by that choice. Record
+the actual setup, capture on Debug/FS and compare both speed modes under the
+same setup; never merge those results into the previous single-cable cold gate.
+Do not run a standard FS app boot before reading any preceding single-cable
+journal: it can create the first trace if the preceding HS boot never did.
+
 ## Optional single-cable diagnostic journal (default OFF)
 
 `HS_REFERENCE_LINK_TRACE=ON` adds read-only UTMI FC00..FC07 snapshots before

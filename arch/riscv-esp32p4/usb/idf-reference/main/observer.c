@@ -14,6 +14,11 @@
 #include "tinyusb_cdc_acm.h"
 #include "tusb.h"
 #include "sdkconfig.h"
+#if defined(HS_REFERENCE_FORCE_FS_HSPHY)
+/* Keep high-speed capability compiled in: disabling it selects phy_fs_init(),
+ * not full-speed signaling on the same UTMI link. Only DCFG.DEVSPD is varied. */
+_Static_assert(TUD_OPT_HIGH_SPEED,"FS-on-HS comparison must retain the UTMI init path");
+#endif
 #if defined(HS_REFERENCE_LINK_TRACE)
 #include "link_events.h"
 #include "device/dcd.h"
@@ -91,7 +96,7 @@ static void observer(void *argument)
         char text[768];
 #endif
         int n=snprintf(text,sizeof(text),
-            "[HSReference] sample=%u mounted=%u mode=%s\n"
+            "[HSReference] sample=%u mounted=%u mode=%s max=%s\n"
             "ID %08lx CFG2 %08lx CFG4 %08lx\n"
             "IRQ %08lx mask %08lx OTG %08lx AHB %08lx USB %08lx\n"
             "DCFG %08lx DCTL %08lx DSTS %08lx PCGC %08lx\n"
@@ -102,6 +107,11 @@ static void observer(void *argument)
             "DMA",
 #else
             "PIO",
+#endif
+#if defined(HS_REFERENCE_FORCE_FS_HSPHY)
+            "FS_HSPHY",
+#else
+            "HS",
 #endif
             (unsigned long)reg(0x50000040),(unsigned long)reg(0x50000048),
             (unsigned long)reg(0x50000050),(unsigned long)reg(0x50000014),
