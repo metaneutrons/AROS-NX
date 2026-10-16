@@ -2391,6 +2391,10 @@ The separate RV32 compiler/SDK release track is TC0 in
 GNU recipes and complete SDK source inputs are being integrated on current
 AROS-NX main. Source regressions do not qualify a published compiler or SDK
 and do not change the hardware status below.
+The libinit literal SDK recipes now retain mandatory target flags once instead
+of repeating them through the aggregate `CFLAGS`. Six GenMF/GNU Make dry-run
+regressions cover the default, direct overrides and failure counterprobes;
+they do not rebuild a compiler or establish SDK or hardware qualification.
 
 Nothing in the table below is claimed to work until it has been observed
 working on hardware. `stub` means the file exists and compiles; `works`
