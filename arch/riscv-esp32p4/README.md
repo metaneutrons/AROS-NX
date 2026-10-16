@@ -227,6 +227,13 @@ electrical attachment. Collection interrupted before a final sample was saved;
 the30s gate is incomplete, not failed or passed. Both cables unchanged;
 diagnostic firmware retained, currently ROM-stopped after trace retrieval.
 AROS is temporarily replaced and exact recovery retained.
+The subsequent full Debug-reset run now stores all16 records including
+sample6_complete after a host-timed35s+ window. DCTL toggles, but queued
+reset/SETUP/XFER stay0 and all six external Mac USB-port connection/failure
+deltas stay0. USBCTRL00bba640 differs from physical-reset00a22640 already
+before install, so reset inheritance is a confound, not a diagnosed PHY fault.
+Trace preserved, only scratch reset/readback verified; physical RESET control
+is prepared with the same firmware and unchanged cables. No PHY tuning.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
