@@ -168,6 +168,10 @@ whereas the captured initial boot reports USB reset and stops at multicore
 startup. This discontinuity invalidates a matched comparison. Reconnect
 candidate198304B7a5c86a9... remains unflashed; exact AROS restoration/readback
 passes. Reset continuity must be resolved before claiming attach-edge results.
+After fresh readiness the same control is now reinstalled/readback verified
+with pristine scratch for a physical RESET-only comparison. Both cables stay;
+Debug capture is open before the button action. AROS is temporarily replaced,
+exact recovery retained. No software app reset or new runtime result yet.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
