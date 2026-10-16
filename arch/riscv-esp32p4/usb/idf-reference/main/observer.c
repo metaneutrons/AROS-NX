@@ -16,6 +16,9 @@
 #include "tusb.h"
 #include "sdkconfig.h"
 #include "esp_timer.h"
+#if defined(HS_REFERENCE_ATTACH_STATE)
+#include "soc/usb_wrap_struct.h"
+#endif
 #if defined(HS_REFERENCE_PROGRESS)
 #include "progress.h"
 _Static_assert(CONFIG_TINYUSB_CDC_COUNT==1,"Progress trace slot budget requires one CDC interface");
@@ -100,11 +103,19 @@ static void link_phy_note(const char *stage)
 static bool progress_checkpoint(const char *stage,bool ok)
 {
     char text[237];
-    /* No USB MMIO before the checkpoint: a missing return bounds the API or
-     * the following checkpoint write, not a diagnostic USB-register read. */
+    /* Plain progress mode has no USB MMIO before this checkpoint. The explicit
+     * attach-state mode adds read-only snapshots; a missing marker there also
+     * includes those reads, not just the API/reset/flash-append region. */
+#if defined(HS_REFERENCE_ATTACH_STATE)
+    const struct hs_attach_state snapshot={reg(0x50000804),reg(0x50000808),
+        USB_WRAP.otg_conf.val,reg(0x500e515c),reg(0x50000000)};
+    int n=hs_attach_format(text,sizeof(text),stage,esp_timer_get_time(),
+        (unsigned)ok,(unsigned)uxTaskGetStackHighWaterMark(NULL),&snapshot);
+#else
     int n=snprintf(text,sizeof(text),"stage=%s us=%lld api_ok=%u stack_free=%u\n",
         stage,(long long)esp_timer_get_time(),(unsigned)ok,
         (unsigned)uxTaskGetStackHighWaterMark(NULL));
+#endif
     return n>0 && (size_t)n<sizeof(text) &&
         hs_reference_trace_checkpoint(text,(size_t)n);
 }

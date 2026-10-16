@@ -214,6 +214,14 @@ Mac still has no native CDC, so the HS issue remains open. AROS/scratch exactly
 restored/readback verified. For subsequent diagnostic series retain the test
 firmware between runs, following Fabian's clarification received after this
 restore; restore AROS only when ending the series.
+Attach-state follow-up2026-10-16 is build verified: default-off
+HS_REFERENCE_ATTACH_STATE adds read-only DCTL/DSTS/GOTGCTL, HP USB control
+and FSLS wrapper snapshots to existing progress records. The wrapper is not
+an HS UTMI pull measurement. Candidate198992B67411e30... is prepared for
+correlation with Mac per-port connection-counter deltas; no attach-edge result
+yet. It is now installed at0x20000 with independent full readback; capture
+is open before the requested physical RESET. Both cables remain unchanged,
+AROS is temporarily replaced and exact recovery retained.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual

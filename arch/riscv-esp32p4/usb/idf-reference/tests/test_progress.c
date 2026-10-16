@@ -17,5 +17,16 @@ int main(void)
     CHECK(hs_progress_format(text,sizeof(text),NULL)==-1);
     /* Initial9 + observer entry1 + four call checkpoints + sample1 + end1. */
     CHECK(9u+1u+4u+1u+1u==HS_TRACE_SLOTS);
-    puts("PASS compact progress sample: worst-case bound, fields, invalid arguments, slot budget");
+    char state[HS_TRACE_TEXT_MAX+1u];
+    const struct hs_attach_state raw={2,UINT32_MAX,UINT32_MAX,UINT32_MAX,UINT32_MAX};
+    n=hs_attach_format(state,sizeof(state),"123456789012345678901234",INT64_MIN,
+                       UINT32_MAX,UINT32_MAX,&raw);
+    CHECK(n>0 && (unsigned)n<=HS_TRACE_TEXT_MAX);
+    CHECK(strstr(state,"dctl=00000002") && strstr(state,"wrap=ffffffff"));
+    CHECK(hs_attach_format(state,sizeof(state),"1234567890123456789012345",0,0,0,&raw)==-1);
+    CHECK(hs_attach_format(state,sizeof(state)-1,"x",0,0,0,&raw)==-1);
+    CHECK(hs_attach_format(state,sizeof(state),NULL,0,0,0,&raw)==-1);
+    CHECK(hs_attach_format(state,sizeof(state),"x",0,0,0,NULL)==-1);
+    CHECK(hs_attach_format(NULL,sizeof(state),"x",0,0,0,&raw)==-1);
+    puts("PASS progress/attach format: worst-case bound, fields, invalid arguments, slot budget");
 }
