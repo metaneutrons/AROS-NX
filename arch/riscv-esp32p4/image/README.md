@@ -26,6 +26,109 @@ The target writes four files next to each other in
 | `aros-test.manifest` | every entry with size and SHA-256 |
 | `aros-test.sha256` | checksum of the image |
 
+## Opt-in JC1060 WLAN bootimage (development)
+
+In the separate JC1060 RV32-SMP build tree:
+
+    gmake kernel-image-esp32p4-riscv-wifi P4_BOARD=jc1060p470c-v2 \
+        P4_C3_GRAPHICAL_BOOT=1 P4_C3_WLAN_IMAGE=1 AROS_GUI_THEME=AROSDefault
+
+Use v1 only for that verified panel batch. The explicit target declares the
+existing AROS runtime dependencies and writes `aros-wifi.img` with its layout,
+manifest and checksum, separately from `aros-test.img`. It does not write SD
+or flash. D1001, nongraphical builds and private GSL blobs are refused.
+Do not pass the WLAN flag to legacy image/flash-volume targets.
+
+The WLAN stage excludes the build's entire saved Env-Archive. Instead it uses
+tracked stock Wanderer preferences, the source ABI major value and generated
+credential-free network defaults. ESP32 WiFi builds default to VOLATILE;
+staging validates the actual ELF policy and rejects stale persistent builds.
+Other architectures retain the generic default. Rebuild all four WiFi objects
+when changing flags, as required by the port's AGENTS.md.
+
+Open Prefs/WiFi from Wanderer for first-use selection. No background manager
+is started by this image. Real GUI/single-manager, clock, DHCP, routing and
+radio acceptance remain open; neither privacy assertion is enabled here.
+
+The image is not a self-contained radio firmware: esp32p4wlan.device opens
+esp32p4wifi.resource from the separately flashed BSP and requires private
+bridge ABI8. Scanning requires a ready persistent owner (Core1 profile), not
+the one-shot MAC/scan diagnostic. Pair the image with an explicitly rebuilt,
+loader/capacity-checked BSP and verified recovery baseline before deployment.
+The image target does not rebuild or write that package. Never infer package
+freshness from a newer standalone resource: the local package inspected on
+2026-10-10 still contained the old31652B resource while the standalone owner
+resource was254812B. Both credential privacy assertions must remain0 until
+their separate acceptance gates pass.
+
+The2026-10-11 ABI8 candidate pairs resource282952B/device67584B with
+ESP32Board121796B. Its3971508B BSP passes all42 loader audits, with41 other
+payloads unchanged and91724B headroom. The matched64MiB AROSDefault image
+passes FAT32/fsck and all332 mounted manifest entries; its original hash is
+unchanged. This supersedes the older pairing below for development, not for
+hardware acceptance. Neither candidate is deployed. DISCOVER-C6 still needs
+an installed compatible C6 extension; it cannot bootstrap its own first-install
+recovery. UPDATE-C6 remains unavailable.
+
+The subsequent loader audit found discarded-frame references in both old
+default-linked modules. network/mmakefile.src now uses the standard BSP static
+link mode; fresh resource249944B/device67492B pass loader audit. The corrected
+42-member test package passes with41 other payloads unchanged. The regenerated
+image includes the corrected device and passes329-file/FAT32 verification.
+These are build/host checks, not deployment or actual WLAN acceptance.
+
+## WLAN build defaults
+
+`python3 make-wifi-stage.py --aros-root BUILD_AROS --output NEW_DIRECTORY`
+collects a whitelist of native WLAN runtime files and the generated defaults.
+Every required executable must parse as little-endian RISC-V ELF32 ET_REL;
+WiFi must contain one initialized writable two-byte WifiVolatile symbol set
+to 1. Missing, empty or symlinked required inputs fail before reserving output.
+Built WiFi/Network catalogs are optional and allowlisted. No build-tree saved
+preferences or Package-Startup are imported. The whitelist also includes
+Tools/ESP32Board and its generic tool icon, copied from Prefs/Touchscreen.info
+like the WiFi/Network icons. Its build dependency is confined to the WLAN
+target. Eighteen host tests pass, including byte-exact tool/icon staging and
+missing/empty/wrong-architecture/symlink refusal before output creation.
+The expected overlay has 85 files with desktop defaults (80 without them);
+this is not board/runtime acceptance.
+The WLAN device additionally must pass the P4 loader relocation audit before
+output is reserved; a runtime reference to discarded .eh_frame is rejected.
+The explicit WLAN target consumes this stage with `--desktop-defaults`.
+The existing C3 base supplies GUI classes, but its recursive build preference
+import is disabled for this profile. Normal image targets retain their behavior.
+
+The package lookup is fixed to SYS:System/Network/AROSTCP. Neutral
+netdb-myhost/static-routes replace the source package's fixed sample LAN;
+DHCP applies gateway/DNS dynamically. Prefs/WiFi now honors PATH_DHCLIENT_DB
+through POSIX stdio, with the same /T default as dhclient. Complete lease
+records now match the exact interface/current IP and cannot borrow options
+from other records;144 extracted-helper checks pass each O0/O2 sanitized.
+Expiry now refuses missing/malformed/duplicate/expired timestamps and invalid
+clocks;203 actual-helper checks pass in host/32-bit time_t at O0/O2 sanitized.
+Stored values still do not prove installed global routing/resolver state;
+clock/GUI/runtime qualification remains open. Credential transmission remains gated.
+
+`python3 make-wifi-defaults.py NEW_DIRECTORY` generates fixed, credential-free
+preferences for native `DEVS:Networks/esp32p4wlan.device`, unit0 and DHCP.
+This helper alone produces a preferences overlay, not a complete network image.
+The WLAN stage adds the standard database, stack/DHCP/manager binaries,
+libraries and Network preferences through the existing AROS build targets.
+
+Existing output directories and symlinks are refused; never merge this output
+over saved private preferences. `AutoRun` and `WirelessAutoRun` are False.
+Wireless.prefs contains no network; config writing is disabled in the manager
+build (its parser does not accept update_config). No SSID/password
+input is accepted. Credential persistence is not part of the first delivery.
+The read-only C3 startup copies ENVARC into RAM-backed ENV. AROSTCP/Config
+selects its working database there; DHCP lease/PID paths explicitly use /T/,
+and the DHCP executable path remains on SYS. Both privacy gates stay disabled.
+
+`python3 test-wifi-defaults.py` passes five tests for exact outputs, reproducibility and
+existing-directory/symlink refusal. It is a host generator test, not execution
+of the AROS parsers, DHCP, GUI or radio. Production stage/runtime acceptance
+remains open; do not treat generated defaults as a working WLAN image.
+
 ## Verifying
 
     sh arch/riscv-esp32p4/image/verify-image.sh <path>/aros-test.img

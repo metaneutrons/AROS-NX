@@ -1,0 +1,75 @@
+--- a/components/esp_wifi/src/lib_printf.c
++++ b/components/esp_wifi/src/lib_printf.c
+@@ -24,6 +24,14 @@
+ 
+ static int lib_printf(const char* tag, const char* format, va_list arg)
+ {
++#if CONFIG_IDF_TARGET_ESP32C6
++    /* Private C6 image: legacy vendor logging bypasses OS log callbacks.
++     * Never format diagnostic arguments or publish network metadata. */
++    (void)tag;
++    (void)format;
++    (void)arg;
++    return 0;
++#else
+     char temp[VPRINTF_STACK_BUFFER_SIZE];
+     int len = vsnprintf(temp, sizeof(temp) - 1, format, arg);
+     temp[sizeof(temp) - 1] = 0;
+@@ -40,6 +48,7 @@
+     }
+     va_end(arg);
+     return len;
++#endif
+ }
+ 
+ int pp_printf(const char* format, ...)
+--- a/components/esp_coex/src/lib_printf.c
++++ b/components/esp_coex/src/lib_printf.c
+@@ -24,6 +24,14 @@
+ 
+ static int lib_printf(const char* tag, const char* format, va_list arg)
+ {
++#if CONFIG_IDF_TARGET_ESP32C6
++    /* Private C6 image: legacy vendor logging bypasses OS log callbacks.
++     * Never format diagnostic arguments or publish network metadata. */
++    (void)tag;
++    (void)format;
++    (void)arg;
++    return 0;
++#else
+     char temp[VPRINTF_STACK_BUFFER_SIZE];
+     int len = vsnprintf(temp, sizeof(temp) - 1, format, arg);
+     temp[sizeof(temp) - 1] = 0;
+@@ -40,6 +48,7 @@
+     }
+     va_end(arg);
+     return len;
++#endif
+ }
+ 
+ int coexist_printf(const char* format, ...)
+--- a/components/esp_phy/src/lib_printf.c
++++ b/components/esp_phy/src/lib_printf.c
+@@ -24,6 +24,14 @@
+ 
+ static int lib_printf(const char* tag, const char* format, va_list arg)
+ {
++#if CONFIG_IDF_TARGET_ESP32C6
++    /* Private C6 image: legacy vendor logging bypasses OS log callbacks.
++     * Never format diagnostic arguments or publish network metadata. */
++    (void)tag;
++    (void)format;
++    (void)arg;
++    return 0;
++#else
+     char temp[VPRINTF_STACK_BUFFER_SIZE];
+     int len = vsnprintf(temp, sizeof(temp) - 1, format, arg);
+     temp[sizeof(temp) - 1] = 0;
+@@ -40,6 +48,7 @@
+     }
+     va_end(arg);
+     return len;
++#endif
+ }
+ 
+ int phy_printf(const char* format, ...)

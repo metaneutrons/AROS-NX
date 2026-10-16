@@ -137,6 +137,15 @@ struct wpa_ssid {
 	char *passphrase;
 
 	/**
+	 * sae_password - SAE password bytes, distinct from a WPA PSK passphrase
+	 *
+	 * This is passed to a capable FullMAC driver as an SAE password. It is
+	 * never converted with the WPA PSK PBKDF2 operation.
+	 */
+	u8 *sae_password;
+	size_t sae_password_len;
+
+	/**
 	 * pairwise_cipher - Bitfield of allowed pairwise ciphers, WPA_CIPHER_*
 	 */
 	int pairwise_cipher;
@@ -219,6 +228,14 @@ struct wpa_ssid {
 	 * authenticator.
 	 */
 	int proactive_key_caching;
+
+	/**
+	 * fullmac_allow_diagnostic - Explicit per-network diagnostic-risk consent
+	 *
+	 * This does not establish production firmware/privacy qualification and
+	 * is not inferred from the network security type or its credential.
+	 */
+	int fullmac_allow_diagnostic;
 
 	/**
 	 * mixed_cell - Whether mixed cells are allowed

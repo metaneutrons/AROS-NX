@@ -25,60 +25,37 @@
 
 static BOOL p4sd_reset_fifo(struct sdcard_Bus *bus);
 
+BOOL FNAME_P4SDBUS(BeginTransaction)(struct sdcard_Bus *bus, BOOL may_wait)
+{
+    struct p4sd_private *priv = P4SD_PRIV(bus);
+    if (!priv->host ||
+        !priv->host->acquire(priv->host,
+                            may_wait ? P4_SDMMC_HOST_WAIT_US : 0))
+        return FALSE;
+    if (priv->host_generation != priv->host->generation)
+    {
+        priv->host_ready = FALSE;
+        priv->card_rca = 0;
+    }
+    return TRUE;
+}
+
+void FNAME_P4SDBUS(EndTransaction)(struct sdcard_Bus *bus)
+{
+    struct p4sd_private *priv = P4SD_PRIV(bus);
+    priv->host->release(priv->host);
+}
+
+#if P4_SDCARD_FAULT_INJECT != P4SD_FAULT_NONE
 static BOOL p4sd_fault_injected;
+#endif
 static ULONG p4sd_cmd12_confirmations;
 
-#if P4_SDCARD_TRACE
-/* The FIFO observations below are the measurement for the word-repeat fault.
-   They are bounded, because a 128-sector cell would otherwise emit one line
-   per command and per drain. */
-static ULONG p4sd_fifo_trace_budget = 24;
-#endif
-
-/* ESP32-P4 uses a 64-byte IDMAC descriptor.  The SDMMC peripheral can DMA
-   directly to PSRAM, but descriptors must be cache-line aligned and fully
-   visible before DBADDR is armed.  The generic driver serializes requests,
-   so one bounded static chain is sufficient and avoids adding an allocator or
-   a write-capable DMA path. */
-struct p4sd_dma_desc
-{
-    ULONG control;
-    ULONG size;
-    APTR buffer;
-    struct p4sd_dma_desc *next;
-    ULONG reserved[12];
-};
-
-#define P4SD_DESC_LAST                  (1UL << 2)
-#define P4SD_DESC_FIRST                 (1UL << 3)
-#define P4SD_DESC_CHAIN                 (1UL << 4)
-#define P4SD_DESC_OWN                   (1UL << 31)
-
-static struct p4sd_dma_desc p4sd_dma_desc[P4SD_DMA_DESC_COUNT]
-    __attribute__((aligned(64)));
-
-/* ESP-IDF moves every SDMMC data byte with the IDMAC and never reads the
-   data FIFO from software.  The measurement of 2026-08-22 showed why: a CPU
-   read of P4SD_BUFFIFO does not pop, so 128 reads returned the same word 128
-   times while STATUS.FIFO_COUNT never dropped and TBBCNT never moved.  Every
-   data read therefore goes through the IDMAC now, including the eight-byte
-   CMD51 that card identification depends on.  Such a short destination is
-   neither cache-line aligned nor a whole number of lines, so it lands here
-   first and is copied afterwards, which is also how IDF handles a buffer its
-   DMA cannot use directly.
-
-   Sized for the largest transfer the backend accepts rather than for one
-   sector, because the caller that actually needs it is a filesystem.  FAT's
-   cache reads 32 sectors at a time into a buffer it allocated with AllocMem,
-   which is 32-byte aligned on this target and so unusable as a DMA
-   destination; with a 512-byte bounce that request was refused, and FAT
-   retried it 134,101 times in one boot.  Splitting the request would work
-   too, but it would mean issuing several commands where the card expects one,
-   and the memory this costs is not scarce: the buffer lives in the module's
-   .bss, which the loader places in the 32 MB external window, so it is 64 KiB
-   of PSRAM and nothing of the 230 KB internal heap.  It is also already the
-   proven DMA destination - every unaligned read since A1 has landed here. */
-static UBYTE p4sd_bounce[P4SD_MAX_DATA_LEN] __attribute__((aligned(64)));
+#include "../sdmmc/dma.h"
+#include "../sdmmc/command.h"
+#define p4sd_dma_desc ((struct P4HostDMADesc *)P4SD_PRIV(bus)->host->dma_desc)
+#define p4sd_bounce (P4SD_PRIV(bus)->host->bounce)
+#define P4SD_DESC_OWN P4HOST_DESC_OWN
 
 static inline ULONG p4sd_reg(ULONG offset);
 
@@ -111,7 +88,8 @@ struct p4sd_trace
 
 static struct p4sd_trace p4sd_trace;
 
-static void p4sd_trace_take(struct p4sd_trace *trace, const char *event)
+static void p4sd_trace_take(struct p4sd_trace *trace, const char *event,
+                            struct sdcard_Bus *bus)
 {
     struct p4sd_trace_sample *sample;
 
@@ -160,82 +138,7 @@ static void p4sd_trace_dump(struct p4sd_trace *trace,
 }
 #endif
 
-/* CacheClearE() on this port is deliberately only an ordering fence.  The
-   P4 SDMMC IDMAC is non-coherent with PSRAM, so use the documented ROM range
-   operations for ownership handoff.  Both ROM addresses are invariant for
-   the base and ECO5 P4 ROMs. */
-#define P4_ROM_CACHE_INVALIDATE_ADDR    0x4FC003E4UL
-#define P4_ROM_CACHE_WRITEBACK_ADDR     0x4FC003F4UL
-#define P4_CACHE_MAP_L1_DCACHE          (1UL << 4)
-#define P4_CACHE_MAP_L2                 (1UL << 5)
-
-typedef int (*p4sd_cache_range_t)(ULONG map, ULONG address, ULONG length);
-
-/*
- * The ROM's cache maintenance is one hardware unit that the kernel and
- * every other task that loads code or draws use as well, possibly on the
- * other hart. The kernel owns it and serializes its users, and hands the
- * two operations this driver needs through KATTR_CacheOps. The direct ROM
- * calls below remain only for a kernel that does not offer the table.
- */
-static const struct KrnCacheOps *p4sd_cache_ops;
-static BOOL p4sd_cache_ops_known;
-
-/* sdcard_base.h makes KernelBase a field of the device base, which this
-   function does not have; it opens the resource itself, once. */
-#undef KernelBase
-static const struct KrnCacheOps *p4sd_cache_table(void)
-{
-    if (!p4sd_cache_ops_known)
-    {
-        struct Library *KernelBase = OpenResource("kernel.resource");
-
-        if (KernelBase)
-        {
-            IPTR ops = (IPTR)KrnGetSystemAttr(KATTR_CacheOps);
-
-            if (ops && ops != (IPTR)-1)
-                p4sd_cache_ops = (const struct KrnCacheOps *)ops;
-        }
-        p4sd_cache_ops_known = TRUE;
-    }
-    return p4sd_cache_ops;
-}
-#define KernelBase SDCardBase->sdcard_KernelBase
-
-static void p4sd_cache_writeback(APTR address, ULONG length)
-{
-    const struct KrnCacheOps *ops = p4sd_cache_table();
-
-    if (length && ops)
-        ops->writeback_range(address, length);
-    else if (length)
-    {
-        p4sd_cache_range_t writeback =
-            (p4sd_cache_range_t)P4_ROM_CACHE_WRITEBACK_ADDR;
-
-        writeback(P4_CACHE_MAP_L1_DCACHE | P4_CACHE_MAP_L2,
-                  (ULONG)(IPTR)address, length);
-    }
-    __asm__ volatile("fence rw, rw" ::: "memory");
-}
-
-static void p4sd_cache_invalidate(APTR address, ULONG length)
-{
-    const struct KrnCacheOps *ops = p4sd_cache_table();
-
-    if (length && ops)
-        ops->invalidate_range(address, length);
-    else if (length)
-    {
-        p4sd_cache_range_t invalidate =
-            (p4sd_cache_range_t)P4_ROM_CACHE_INVALIDATE_ADDR;
-
-        invalidate(P4_CACHE_MAP_L1_DCACHE | P4_CACHE_MAP_L2,
-                   (ULONG)(IPTR)address, length);
-    }
-    __asm__ volatile("fence rw, rw" ::: "memory");
-}
+/* Cache handoffs belong to the permanent shared host resource. */
 
 static inline ULONG p4sd_read(IPTR address)
 {
@@ -255,6 +158,8 @@ static inline ULONG p4sd_reg(ULONG offset)
 
 static inline void p4sd_set(ULONG offset, ULONG value)
 {
+    if (offset == P4SD_RINTSTS)
+        value &= P4SD_INT_CMD_DATA_MASK;
     p4sd_write(P4_SDMMC_BASE + offset, value);
 }
 
@@ -331,130 +236,24 @@ static void p4sd_configure_pins(unsigned int drive)
         p4sd_iomux(gpio, P4_IOMUX_FUNC_SDMMC, TRUE, drive);
 }
 
-static void p4sd_host_clock_enable(unsigned int divider)
+static BOOL p4sd_module_reset(struct sdcard_Bus *bus)
 {
-    ULONG value;
-
-    value = p4sd_read(P4_HP_SYS_CLKRST_BASE + P4_HP_SOC_CLK_CTRL1);
-    p4sd_write(P4_HP_SYS_CLKRST_BASE + P4_HP_SOC_CLK_CTRL1,
-               value | P4_HP_SDMMC_CLK_EN);
-
-    value = p4sd_read(P4_HP_SYS_CLKRST_BASE + P4_HP_REF_CLK_CTRL2);
-    p4sd_write(P4_HP_SYS_CLKRST_BASE + P4_HP_REF_CLK_CTRL2,
-               value | P4_HP_REF_160M_CLK_EN);
-
-    value = p4sd_read(P4_HP_SYS_CLKRST_BASE + P4_HP_PERI_CLK_CTRL01);
-    value &= ~(P4_HP_SDIO_HS_MODE | P4_HP_SDIO_CLK_SRC);
-    if (divider == 1)
-        value |= P4_HP_SDIO_HS_MODE;
-    value |= P4_HP_SDIO_CLK_EN;
-    p4sd_write(P4_HP_SYS_CLKRST_BASE + P4_HP_PERI_CLK_CTRL01, value);
-
-    value = p4sd_read(P4_HP_SYS_CLKRST_BASE + P4_HP_PERI_CLK_CTRL02);
-    value &= ~P4_HP_SDIO_FIELDS_M;
-    if (divider > 1)
-    {
-        value |= ((divider - 1) << P4_HP_SDIO_EDGE_L_S) |
-                 ((divider / 2 - 1) << P4_HP_SDIO_EDGE_H_S) |
-                 ((divider - 1) << P4_HP_SDIO_EDGE_N_S);
-    }
-    value |= (1UL << P4_HP_SDIO_DRV_EDGE_S) |
-             P4_HP_SDIO_SLF_EN | P4_HP_SDIO_DRV_EN |
-             P4_HP_SDIO_SAM_EN;
-    p4sd_write(P4_HP_SYS_CLKRST_BASE + P4_HP_PERI_CLK_CTRL02,
-               value | P4_HP_SDIO_UPDATE);
-    p4sd_write(P4_HP_SYS_CLKRST_BASE + P4_HP_PERI_CLK_CTRL02, value);
-    sdcard_Udelay(10);
-}
-
-static void p4sd_module_reset(void)
-{
-    ULONG value = p4sd_read(P4_LP_CLKRST_BASE + P4_LP_SDMMC_RST_CTRL);
-
-    p4sd_write(P4_LP_CLKRST_BASE + P4_LP_SDMMC_RST_CTRL,
-               value | P4_LP_SDMMC_RST_EN);
-    p4sd_write(P4_LP_CLKRST_BASE + P4_LP_SDMMC_RST_CTRL,
-               value & ~P4_LP_SDMMC_RST_EN);
-    sdcard_Udelay(10);
-}
-
-static BOOL p4sd_clock_update(void)
-{
-    ULONG command = P4SD_CMD_UPDATE_CLK | P4SD_CMD_WAIT_DATA |
-                    P4SD_CMD_USE_HOLD | P4SD_CMD_START;
-
-    if (!p4sd_wait_clear(P4SD_CMD, P4SD_CMD_START, P4SD_CMD_TIMEOUT_US))
-        return FALSE;
-    p4sd_set(P4SD_RINTSTS, 0xFFFFFFFFUL);
-    p4sd_set(P4SD_CMDARG, 0);
-    p4sd_set(P4SD_CMD, command);
-    if (!p4sd_wait_clear(P4SD_CMD, P4SD_CMD_START, P4SD_CMD_TIMEOUT_US))
-        return FALSE;
-    if (p4sd_reg(P4SD_RINTSTS) & P4SD_INT_HLE)
-        return FALSE;
-    p4sd_set(P4SD_RINTSTS, 0xFFFFFFFFUL);
-    return TRUE;
+    struct p4sd_private *priv = P4SD_PRIV(bus);
+    return priv->host->reset(priv->host);
 }
 
 static BOOL p4sd_program_clock(ULONG requested, struct sdcard_Bus *bus)
 {
     struct p4sd_private *priv = P4SD_PRIV(bus);
-    ULONG host_div, card_div, actual;
-
+    ULONG actual;
+    /* Storage keeps its qualified 25-MHz ceiling; radio negotiates its own. */
     if (requested > P4SD_CLOCK_MAX_HZ)
         requested = P4SD_CLOCK_MAX_HZ;
-    if (requested < P4SD_CLOCK_MIN_HZ)
-        requested = P4SD_CLOCK_MIN_HZ;
-
-    if (requested == P4SD_CLOCK_MIN_HZ)
+    if (!priv->host->set_clock(priv->host, 0, requested, TRUE, &actual))
     {
-        /* IDF's conservative identification setting: 160M/10/(2*20). */
-        host_div = 10;
-        card_div = 20;
+        priv->host_ready = FALSE;
+        return FALSE;
     }
-    else
-    {
-        host_div = P4SD_CLOCK_SOURCE_HZ / requested;
-        if (host_div < 1)
-            host_div = 1;
-        if (host_div <= 15)
-        {
-            if ((P4SD_CLOCK_SOURCE_HZ / host_div) > requested)
-                ++host_div;
-            card_div = 0;
-        }
-        else
-        {
-            host_div = 2;
-            card_div = (P4SD_CLOCK_SOURCE_HZ / host_div) /
-                       (2 * requested);
-            if (card_div < 1)
-                card_div = 1;
-            if ((P4SD_CLOCK_SOURCE_HZ / host_div / (2 * card_div)) >
-                requested)
-                ++card_div;
-            if (card_div > 255)
-                card_div = 255;
-        }
-    }
-
-    p4sd_set(P4SD_CLKENA, 0);
-    if (!p4sd_clock_update())
-        return FALSE;
-
-    p4sd_set(P4SD_CLKDIV, card_div & 0xFF);
-    p4sd_set(P4SD_CLKSRC, 0);
-    p4sd_host_clock_enable(host_div);
-    if (!p4sd_clock_update())
-        return FALSE;
-
-    p4sd_set(P4SD_CLKENA, 1UL | (1UL << 16));
-    if (!p4sd_clock_update())
-        return FALSE;
-
-    actual = P4SD_CLOCK_SOURCE_HZ / host_div;
-    if (card_div != 0)
-        actual /= 2 * card_div;
     priv->clock_hz = actual;
     return TRUE;
 }
@@ -463,30 +262,19 @@ static BOOL p4sd_host_init(struct sdcard_Bus *bus)
 {
     struct p4sd_private *priv = P4SD_PRIV(bus);
 
-    p4sd_host_clock_enable(10);
-    p4sd_module_reset();
-
-    p4sd_set(P4SD_CTRL, p4sd_reg(P4SD_CTRL) | P4SD_CTRL_RESET_ALL);
-    if (!p4sd_wait_clear(P4SD_CTRL, P4SD_CTRL_RESET_ALL,
-                         P4SD_CMD_TIMEOUT_US))
+    priv->host_ready = FALSE;
+    priv->card_rca = 0;
+    /* The first owner performs shared initialization. An already initialized
+     * peer must retain its clocks, width and protocol state. A faulted host
+     * requires an explicit full-reset/re-enumeration path, not slot joining. */
+    if (!priv->host->initialization_started && !p4sd_module_reset(bus))
         return FALSE;
-
-    p4sd_set(P4SD_CTRL, 0);       /* no global IRQ, DMA or IDMAC */
-    p4sd_set(P4SD_BMOD, 0);
-    p4sd_set(P4SD_IDINTEN, 0);
-    p4sd_set(P4SD_IDSTS, 0xFFFFFFFFUL);
-    p4sd_set(P4SD_INTMASK, 0);
-    p4sd_set(P4SD_RINTSTS, 0xFFFFFFFFUL);
-    p4sd_set(P4SD_RST_N, 1);
-    p4sd_set(P4SD_CTYPE, 0);      /* slot 0, one data bit, never eight */
-    p4sd_set(P4SD_TMOUT, 0xFFFFFFFFUL);
-    /* With a 32-bit FIFO port, an RX watermark of 127 releases exactly one
-       512-byte sector at a time.  Keep that safe PIO threshold and select an
-       eight-beat IDMAC burst; BMOD.PBL mirrors this FIFOTH field on P4. */
-    p4sd_set(P4SD_FIFOTH, P4SD_FIFOTH_RX_WMARK |
-             P4SD_FIFOTH_DMA_MSIZE_8);
-    p4sd_set(P4SD_CARDTHRCTL, 0);
-    p4sd_set(P4SD_CLK_EDGE_SEL, 0);
+    if (priv->host->host_div < 1 || priv->host->host_div > 16 ||
+        priv->host->dma_faulted || priv->host->dma_length)
+        return FALSE;
+    p4sd_set(P4SD_RST_N, p4sd_reg(P4SD_RST_N) | 1UL);
+    p4sd_set(P4SD_CTYPE, p4sd_reg(P4SD_CTYPE) &
+             ~(P4SD_CTYPE_4BIT_SLOT0 | P4SD_CTYPE_8BIT_SLOT0));
 
     priv->host_ready = TRUE;
     if (!p4sd_program_clock(P4SD_CLOCK_MIN_HZ, bus))
@@ -494,7 +282,81 @@ static BOOL p4sd_host_init(struct sdcard_Bus *bus)
         priv->host_ready = FALSE;
         return FALSE;
     }
+    priv->host_generation = priv->host->generation;
     return TRUE;
+}
+
+/* Called only by RecoverUnit with one outer task-context host acquisition.
+ * Generation invalidation is shared with the radio; ordinary slot joining
+ * must not reset a healthy peer. No unit state is published here. */
+BOOL FNAME_P4SDBUS(RecoveryNeeded)(struct sdcard_Bus *bus)
+{
+    struct p4sd_private *priv = P4SD_PRIV(bus);
+    struct P4SDMMCHost *host = priv->host;
+    if (!host || host->lock.ss_Owner != FindTask(NULL))
+        return FALSE;
+    return !priv->host_ready || !priv->powered || !priv->card_rca ||
+           !priv->clock_hz || host->slot_clock[0] != priv->clock_hz ||
+           priv->host_generation != host->generation ||
+           host->host_div < 1 || host->host_div > 16 ||
+           host->dma_faulted || host->dma_length;
+}
+
+BOOL FNAME_P4SDBUS(RecoveryPrepare)(struct sdcard_Bus *bus)
+{
+    struct p4sd_private *priv = P4SD_PRIV(bus);
+    struct P4SDMMCHost *host = priv->host;
+    if (!host || host->lock.ss_Owner != FindTask(NULL) ||
+        priv->recovery_budget)
+        return FALSE;
+    priv->host_ready = FALSE;
+    priv->card_rca = 0;
+    if (!host->set_budget(host, P4SD_RECOVERY_BUDGET_US))
+        return FALSE;
+    priv->recovery_budget = TRUE;
+    /* Recovery does not cycle rails or toggle a powered card's switch. */
+    if (!priv->powered || !p4sd_card_present() || !p4host_budget_ok(host))
+        return FALSE;
+    if (!host->initialization_started || host->host_div < 1 ||
+        host->host_div > 16 || host->dma_faulted || host->dma_length)
+        if (!p4sd_module_reset(bus))
+            return FALSE;
+    p4sd_configure_pins(3);
+    return p4host_budget_ok(host) && p4sd_host_init(bus) &&
+           p4host_budget_ok(host);
+}
+
+BOOL FNAME_P4SDBUS(RecoveryFinish)(struct sdcard_Bus *bus, BOOL success)
+{
+    struct p4sd_private *priv = P4SD_PRIV(bus);
+    struct P4SDMMCHost *host = priv->host;
+    BOOL result;
+    if (!host || host->lock.ss_Owner != FindTask(NULL))
+        return FALSE;
+    result = success && priv->recovery_budget && priv->host_ready &&
+             priv->powered && priv->card_rca &&
+             priv->host_generation == host->generation &&
+             host->host_div >= 1 && host->host_div <= 16 &&
+             !host->dma_faulted && !host->dma_length &&
+             host->slot_clock[0] == priv->clock_hz && priv->clock_hz &&
+             p4host_budget_ok(host);
+    if (priv->recovery_budget)
+    {
+        p4sd_configure_pins(1);
+        /* GPIO/cache/observer callbacks may consume the remaining budget. */
+        result = result && p4sd_card_present() && p4host_budget_ok(host);
+        if (!host->set_budget(host, 0))
+            result = FALSE;
+        priv->recovery_budget = FALSE;
+    }
+    if (!result)
+    {
+        /* SameCard mismatch and every failed preparation stay unavailable.
+         * A later ordinary StartUnit cannot use the mounted cached RCA. */
+        priv->host_ready = FALSE;
+        priv->card_rca = 0;
+    }
+    return result;
 }
 
 /* Generic SDHCI SetClock is linked into sdcard.device even though this bus
@@ -506,7 +368,7 @@ ULONG FNAME_SDCBUS(GetClockDiv)(ULONG speed, struct sdcard_Bus *bus)
     return 0;
 }
 
-void FNAME_P4SDBUS(SoftReset)(UBYTE mask, struct sdcard_Bus *bus)
+static void p4sd_soft_reset_locked(UBYTE mask, struct sdcard_Bus *bus)
 {
     struct p4sd_private *priv = P4SD_PRIV(bus);
 
@@ -519,7 +381,8 @@ void FNAME_P4SDBUS(SoftReset)(UBYTE mask, struct sdcard_Bus *bus)
             bus->sdcb_BusNum);
         priv->host_ready = FALSE;
 
-        p4sd_module_reset();
+        priv->card_rca = 0;
+        p4sd_module_reset(bus);
         if (!p4sd_host_init(bus))
         {
             bug("[P4SD%02u] full-reset host initialization failed\n",
@@ -536,6 +399,9 @@ void FNAME_P4SDBUS(SoftReset)(UBYTE mask, struct sdcard_Bus *bus)
     if (!(mask & (SDHCI_RESET_CMD | SDHCI_RESET_DATA)))
         return;
 
+    if (!priv->host_ready)
+        return;
+
     p4sd_set(P4SD_RINTSTS, 0xFFFFFFFFUL);
     if (!p4sd_reset_fifo(bus))
     {
@@ -544,7 +410,7 @@ void FNAME_P4SDBUS(SoftReset)(UBYTE mask, struct sdcard_Bus *bus)
     }
 }
 
-void FNAME_P4SDBUS(SetClock)(ULONG speed, struct sdcard_Bus *bus)
+static void p4sd_set_clock_locked(ULONG speed, struct sdcard_Bus *bus)
 {
     if (!P4SD_PRIV(bus)->host_ready)
         return;
@@ -552,7 +418,7 @@ void FNAME_P4SDBUS(SetClock)(ULONG speed, struct sdcard_Bus *bus)
         bug("[P4SD%02u] failed to change card clock\n", bus->sdcb_BusNum);
 }
 
-void FNAME_P4SDBUS(SetPowerLevel)(ULONG levels, BOOL lowest,
+static void p4sd_set_power_locked(ULONG levels, BOOL lowest,
                                   struct sdcard_Bus *bus)
 {
     struct p4sd_private *priv = P4SD_PRIV(bus);
@@ -560,7 +426,7 @@ void FNAME_P4SDBUS(SetPowerLevel)(ULONG levels, BOOL lowest,
 
     (void)levels;
     (void)lowest;
-    if (priv->powered)
+    if (!priv->host_ready || priv->powered)
         return;
 
     /* D1001 board sequence: external switch low, LDO4 at the 3.3-V
@@ -588,9 +454,13 @@ void FNAME_P4SDBUS(SetPowerLevel)(ULONG levels, BOOL lowest,
     priv->powered = TRUE;
 }
 
-void FNAME_P4SDBUS(SetBusWidth)(UBYTE width, struct sdcard_Bus *bus)
+static void p4sd_set_width_locked(UBYTE width, struct sdcard_Bus *bus)
 {
-    ULONG ctype = p4sd_reg(P4SD_CTYPE);
+    ULONG ctype;
+
+    if (!P4SD_PRIV(bus)->host_ready)
+        return;
+    ctype = p4sd_reg(P4SD_CTYPE);
 
     /* MicroSD has four data lines, and on the D1001 GPIO45/46 occupy the
        native D4/D5 pins: eight-bit mode is forbidden. */
@@ -606,230 +476,45 @@ void FNAME_P4SDBUS(SetBusWidth)(UBYTE width, struct sdcard_Bus *bus)
     p4sd_set(P4SD_CTYPE, ctype);
 }
 
-static void p4sd_store_fifo_word(UBYTE *data, ULONG length, ULONG *done,
-                                 ULONG word)
-{
-    unsigned int byte;
 
-    for (byte = 0; byte < 4 && *done < length; ++byte)
-    {
-        data[*done] = (UBYTE)(word >> (byte * 8));
-        ++*done;
-    }
-}
-
-static void p4sd_drain_read_fifo(UBYTE *data, ULONG length, ULONG *done)
-{
-    ULONG status = p4sd_reg(P4SD_STATUS);
-    ULONG available = (status >> P4SD_STATUS_FIFO_COUNT_S) &
-                       P4SD_STATUS_FIFO_COUNT_M;
-
-#if P4_SDCARD_TRACE
-    /* The reported fill level is the value under suspicion: a read side that
-       believes a nearly empty FIFO is full pops the same word repeatedly.
-       Record what it claimed against how much the card had actually
-       delivered, which is what TCBCNT counts. */
-    if (p4sd_fifo_trace_budget != 0)
-    {
-        --p4sd_fifo_trace_budget;
-        bug("[P4SD] drain: claims %u words, empty=%u full=%u, ciu=%u "
-            "biu=%u, copied %u of %u\n", (unsigned)available,
-            (status & P4SD_STATUS_FIFO_EMPTY) ? 1u : 0u,
-            (status & P4SD_STATUS_FIFO_FULL) ? 1u : 0u,
-            (unsigned)p4sd_reg(P4SD_TCBCNT), (unsigned)p4sd_reg(P4SD_TBBCNT),
-            (unsigned)*done, (unsigned)length);
-    }
-#endif
-
-    while (available-- != 0 && *done < length)
-        p4sd_store_fifo_word(data, length, done,
-                             p4sd_reg(P4SD_BUFFIFO));
-}
 
 static BOOL p4sd_reset_fifo(struct sdcard_Bus *bus)
 {
-#if P4_SDCARD_TRACE
-    ULONG status;
-#endif
-
-    p4sd_set(P4SD_CTRL, p4sd_reg(P4SD_CTRL) | P4SD_CTRL_FIFO_RESET);
-    if (!p4sd_wait_clear(P4SD_CTRL, P4SD_CTRL_FIFO_RESET,
-                         P4SD_CMD_TIMEOUT_US))
-    {
-        bug("[P4SD%02u] FIFO reset timed out\n", bus->sdcb_BusNum);
-        return FALSE;
-    }
-
-    /* The cleared CTRL bit is not the end of the reset.  See
-       P4SD_FIFO_RESET_SETTLE_US for why the pointers need longer, and what
-       reading them too early produced. */
-    sdcard_Udelay(P4SD_FIFO_RESET_SETTLE_US);
-
-#if P4_SDCARD_TRACE
-    /* Observe rather than enforce.  The caller in p4sd_dma_complete_read()
-       resets while an open-ended CMD18 may still be streaming, so an
-       immediately refilling FIFO is legitimate there and must not fail. */
-    status = p4sd_reg(P4SD_STATUS);
-    if (p4sd_fifo_trace_budget != 0)
-    {
-        --p4sd_fifo_trace_budget;
-        bug("[P4SD%02u] fifo reset settled: status=%08x count=%u empty=%u "
-            "full=%u\n", bus->sdcb_BusNum, status,
-            (unsigned)((status >> P4SD_STATUS_FIFO_COUNT_S) &
-                       P4SD_STATUS_FIFO_COUNT_M),
-            (status & P4SD_STATUS_FIFO_EMPTY) ? 1u : 0u,
-            (status & P4SD_STATUS_FIFO_FULL) ? 1u : 0u);
-    }
-#endif
-    return TRUE;
+    struct P4SDMMCHost *host = P4SD_PRIV(bus)->host;
+    return host->fifo_reset(host);
 }
 
 static BOOL p4sd_reset_dma(struct sdcard_Bus *bus)
 {
-    p4sd_set(P4SD_BMOD, p4sd_reg(P4SD_BMOD) | P4SD_BMOD_SWR);
-    if (!p4sd_wait_clear(P4SD_BMOD, P4SD_BMOD_SWR,
-                         P4SD_CMD_TIMEOUT_US))
-    {
-        bug("[P4SD%02u] IDMAC reset timed out\n", bus->sdcb_BusNum);
-        return FALSE;
-    }
-
-    p4sd_set(P4SD_CTRL, p4sd_reg(P4SD_CTRL) | P4SD_CTRL_DMA_RESET);
-    if (!p4sd_wait_clear(P4SD_CTRL, P4SD_CTRL_DMA_RESET,
-                         P4SD_CMD_TIMEOUT_US))
-    {
-        bug("[P4SD%02u] DMA interface reset timed out\n", bus->sdcb_BusNum);
-        return FALSE;
-    }
-
-    p4sd_set(P4SD_IDSTS, 0xFFFFFFFFUL);
-    p4sd_set(P4SD_CTRL, p4sd_reg(P4SD_CTRL) &
-             ~(P4SD_CTRL_DMA_ENABLE | P4SD_CTRL_USE_INTERNAL_DMA));
-    return TRUE;
+    struct P4SDMMCHost *host = P4SD_PRIV(bus)->host;
+    return host->dma_reset(host);
 }
 
-static BOOL p4sd_dma_prepare_read(UBYTE *data, ULONG length,
-                                  struct sdcard_Bus *bus)
-{
-    ULONG index, offset = 0;
-    ULONG descriptors = (length + P4SD_DMA_DESC_BYTES - 1) /
-                        P4SD_DMA_DESC_BYTES;
 
-    if (descriptors == 0 || descriptors > P4SD_DMA_DESC_COUNT)
-        return FALSE;
 
-    memset(p4sd_dma_desc, 0, sizeof(p4sd_dma_desc));
-    for (index = 0; index < descriptors; ++index)
-    {
-        ULONG bytes = length - offset;
-        struct p4sd_dma_desc *desc = &p4sd_dma_desc[index];
 
-        if (bytes > P4SD_DMA_DESC_BYTES)
-            bytes = P4SD_DMA_DESC_BYTES;
-        desc->control = P4SD_DESC_CHAIN | P4SD_DESC_OWN;
-        if (index == 0)
-            desc->control |= P4SD_DESC_FIRST;
-        if (index + 1 == descriptors)
-            desc->control |= P4SD_DESC_LAST;
-        desc->size = bytes;
-        desc->buffer = data + offset;
-        desc->next = (index + 1 == descriptors) ? NULL :
-                     &p4sd_dma_desc[index + 1];
-        offset += bytes;
-    }
-
-    /* P4 SDMMC explicitly supports PSRAM DMA.  Make descriptor ownership and
-       the complete destination range visible before DBADDR is armed.  The
-       ROM range operations work on whole cache lines, so round up: the
-       caller guarantees either a line-aligned destination of a whole number
-       of lines, or the bounce buffer, which has room to spare. */
-    p4sd_cache_writeback(p4sd_dma_desc, sizeof(p4sd_dma_desc));
-    p4sd_cache_writeback(data, (length + 63UL) & ~63UL);
-
-    if (!p4sd_reset_dma(bus))
-        return FALSE;
-    p4sd_set(P4SD_DBADDR, (ULONG)(IPTR)p4sd_dma_desc);
-    p4sd_set(P4SD_IDINTEN, 0);
-    /* The P4 needs both halves of the DesignWare DMA gate: the controller
-       DMA interface/internal-DMAC bits and BMOD's enable/fixed-burst bits. */
-    p4sd_set(P4SD_CTRL, p4sd_reg(P4SD_CTRL) | P4SD_CTRL_DMA_ENABLE |
-             P4SD_CTRL_USE_INTERNAL_DMA);
-    p4sd_set(P4SD_BMOD, P4SD_BMOD_DE | P4SD_BMOD_FB | P4SD_BMOD_PBL_8);
-    p4sd_set(P4SD_PLDMND, 1);
-    return TRUE;
-}
-
-static BOOL p4sd_dma_complete_read(UBYTE *data, ULONG length,
-                                   struct sdcard_Bus *bus)
-{
-    ULONG index;
-
-    /* IDMAC owns and clears descriptor words.  Do not inspect a stale cached
-       OWN bit after DTO. */
-    p4sd_cache_invalidate(p4sd_dma_desc, sizeof(p4sd_dma_desc));
-    if (p4sd_reg(P4SD_IDSTS) & P4SD_IDSTS_ERRORS)
-        return FALSE;
-    for (index = 0; index < P4SD_DMA_DESC_COUNT; ++index)
-    {
-        if (p4sd_dma_desc[index].control & P4SD_DESC_OWN)
-        {
-            bug("[P4SD%02u] IDMAC retained descriptor %u\n",
-                bus->sdcb_BusNum, index);
-            return FALSE;
-        }
-        if (p4sd_dma_desc[index].control & P4SD_DESC_LAST)
-            break;
-    }
-    if (index == P4SD_DMA_DESC_COUNT)
-        return FALSE;
-
-    p4sd_set(P4SD_BMOD, 0);
-    /* Leave the controller out of internal-DMA mode between transfers.
-       p4sd_dma_prepare_read() selects it and nothing used to clear it, so
-       after the first CMD18 every later command ran with CTRL.dma_enable and
-       CTRL.use_internal_dma still set. */
-    p4sd_set(P4SD_CTRL, p4sd_reg(P4SD_CTRL) &
-             ~(P4SD_CTRL_DMA_ENABLE | P4SD_CTRL_USE_INTERNAL_DMA));
-    /* The generic owner next sends physical CMD12.  Discard a prefetched
-       FIFO tail before that stop command, after all requested bytes reached
-       completed descriptors. */
-    if (!p4sd_reset_fifo(bus))
-        return FALSE;
-    p4sd_cache_invalidate(data, (length + 63UL) & ~63UL);
-    return TRUE;
-}
-
-static BOOL p4sd_dma_read_ready(ULONG length)
-{
-    ULONG descriptors = (length + P4SD_DMA_DESC_BYTES - 1) /
-                        P4SD_DMA_DESC_BYTES;
-
-    if (descriptors == 0 || descriptors > P4SD_DMA_DESC_COUNT)
-        return FALSE;
-    p4sd_cache_invalidate(p4sd_dma_desc,
-                          descriptors * sizeof(p4sd_dma_desc[0]));
-    return !(p4sd_dma_desc[descriptors - 1].control & P4SD_DESC_OWN);
-}
-
-static void p4sd_dma_dump(ULONG length, struct sdcard_Bus *bus)
-{
-    ULONG index;
-
-    (void)length;
-    p4sd_cache_invalidate(p4sd_dma_desc, sizeof(p4sd_dma_desc));
-    for (index = 0; index < P4SD_DMA_DESC_COUNT; ++index)
-        bug("[P4SD%02u] IDMAC desc %u ctrl=%08x size=%08x buf=%p next=%p\n",
-            bus->sdcb_BusNum, index, p4sd_dma_desc[index].control,
-            p4sd_dma_desc[index].size, p4sd_dma_desc[index].buffer,
-            p4sd_dma_desc[index].next);
-}
 
 static ULONG p4sd_card_rca(struct sdcard_Bus *bus)
 {
-    if (bus->sdcb_BusUnits == NULL || bus->sdcb_BusUnits->sdcbu_Units == NULL)
-        return 0;
+    return P4SD_PRIV(bus)->card_rca;
+}
 
-    return bus->sdcb_BusUnits->sdcbu_Units[0].sdcu_CardRCA;
+/* CMD3 has SD R6 for argument zero, MMC R1 for an assigned RCA. Both share
+ * response encoding flags, so distinguish by argument, never by RSPTYPE.
+ * Called only after controller completion under the shared host owner. */
+static BOOL p4sd_adopt_rca(struct p4sd_private *priv, ULONG argument,
+                           ULONG response)
+{
+    ULONG rca = argument ? argument >> 16 : response >> 16;
+    ULONG errors = argument ? MMC_STATUS_MASK : 0xE000UL;
+    if (!rca || (argument & 0xFFFFUL) || (response & errors))
+    {
+        priv->card_rca = 0;
+        priv->host_ready = FALSE;
+        return FALSE;
+    }
+    priv->card_rca = rca;
+    return TRUE;
 }
 
 /* CMD12 is only a successful recovery when the card subsequently reports
@@ -862,7 +547,8 @@ static BOOL p4sd_confirm_tran(struct sdcard_Bus *bus)
         return FALSE;
 
     status = status_tags[3].ti_Data;
-    if ((status & MMC_STATUS_STATE_MASK) != MMC_STATUS_STATE_TRAN ||
+    if ((status & MMC_STATUS_MASK) ||
+        (status & MMC_STATUS_STATE_MASK) != MMC_STATUS_STATE_TRAN ||
         !(status & MMC_STATUS_RDY_FOR_DATA))
     {
         bug("[P4SD%02u] CMD13 state is not TRAN/ready: %08x\n",
@@ -915,34 +601,13 @@ failed:
     bug("[P4SD%02u] multi-block recovery failed; disabling host\n",
         bus->sdcb_BusNum);
 #if P4_SDCARD_TRACE
-    p4sd_trace_take(&p4sd_trace, "recover");
+    p4sd_trace_take(&p4sd_trace, "recover", bus);
     p4sd_trace_dump(&p4sd_trace, bus);
 #endif
     priv->host_ready = FALSE;
     return FALSE;
 }
 
-static void p4sd_copy_response(struct TagItem *response, ULONG rsp_type)
-{
-    if (response == NULL || !(rsp_type & MMC_RSP_PRESENT))
-        return;
-
-    if (rsp_type & MMC_RSP_136)
-    {
-        ULONG *rsp = (ULONG *)(IPTR)response->ti_Data;
-
-        if (rsp != NULL)
-        {
-            /* Generic Rsp136Unpack expects the most significant word first. */
-            rsp[0] = p4sd_reg(P4SD_RESP3);
-            rsp[1] = p4sd_reg(P4SD_RESP2);
-            rsp[2] = p4sd_reg(P4SD_RESP1);
-            rsp[3] = p4sd_reg(P4SD_RESP0);
-        }
-    }
-    else
-        response->ti_Data = p4sd_reg(P4SD_RESP0);
-}
 
 static BOOL p4sd_media_mutating_command(ULONG command)
 {
@@ -971,15 +636,169 @@ static BOOL p4sd_media_mutating_command(ULONG command)
     }
 }
 
-enum p4sd_request_state
+#if P4_SDCARD_TRACE
+/* Hook runs under the shared owner. Record a bounded set of changed states,
+ * without issuing commands or changing controller/cache ownership. Payload
+ * samples are CPU views only, not proof of DMA cache coherence. */
+static void p4sd_command_observe(void *context,
+                                 const struct P4HostCommand *request,
+                                 enum P4HostCommandObservation event,
+                                 const struct P4HostCommandResult *result)
 {
-    P4SD_SENDING_CMD,
-    P4SD_SENDING_DATA,
-    P4SD_BUSY,
-    P4SD_IDLE
-};
+    struct sdcard_Bus *bus = context;
+    ULONG tcbcnt, tbbcnt;
+    struct p4sd_trace_sample *last;
+    (void)request;
+    if (!p4sd_trace.active || p4sd_trace.count == P4SD_TRACE_SAMPLES)
+        return;
+    if (event == P4HOST_OBSERVE_START || event == P4HOST_OBSERVE_FINISH)
+    {
+        p4sd_trace_take(&p4sd_trace,
+                         event == P4HOST_OBSERVE_START ? "start" : "finish", bus);
+        return;
+    }
+    tcbcnt = p4sd_reg(P4SD_TCBCNT);
+    tbbcnt = p4sd_reg(P4SD_TBBCNT);
+    last = p4sd_trace.count ? &p4sd_trace.sample[p4sd_trace.count - 1] : NULL;
+    if (!last || last->rintsts != result->raw || last->idsts != result->idstatus ||
+        last->tcbcnt != tcbcnt || last->tbbcnt != tbbcnt)
+        p4sd_trace_take(&p4sd_trace, "state", bus);
+}
+#endif
 
-ULONG FNAME_P4SDBUS(SendCmd)(struct TagItem *tags, struct sdcard_Bus *bus)
+/* Every build uses the shared motor. Card policy, diagnostic selection,
+ * CMD18 workaround permission and physical card recovery stay in this client. */
+static ULONG p4sd_shared_command(struct sdcard_Bus *bus, ULONG index,
+                                 ULONG argument, ULONG rsp_type,
+                                 struct TagItem *response, UBYTE *data,
+                                 ULONG data_len, ULONG data_flags)
+{
+    struct p4sd_private *priv = P4SD_PRIV(bus);
+    struct P4HostCommand request;
+    struct P4HostCommandResult result;
+
+    memset(&request, 0, sizeof(request));
+    request.slot = 0;
+    request.generation = priv->host_generation;
+    request.index = index;
+    request.argument = argument;
+    request.response_flags = rsp_type;
+    /* A block read without DATA would leave the card protocol active while
+     * the controller reports a completed no-data command. */
+    if (!data_len && (index == MMC_CMD_READ_SINGLE_BLOCK ||
+                      index == MMC_CMD_READ_MULTIPLE_BLOCK))
+        return (ULONG)-1;
+    /* This storage client configures 512-byte sectors. CMD17 transfers exactly
+     * one of them; multi-block transfers require CMD18 and its stop path. */
+    if (index == MMC_CMD_READ_SINGLE_BLOCK && data_len != 512)
+        return (ULONG)-1;
+    if (data_len)
+    {
+        if (!data || data_len > P4SD_MAX_DATA_LEN ||
+            !(data_flags & MMC_DATA_READ) ||
+            (data_flags & (MMC_DATA_WRITE | MMC_DATA_STREAM)))
+            return (ULONG)-1;
+        request.block_size = data_len > 512 ? 512 : data_len;
+        if (data_len % request.block_size ||
+            (index == MMC_CMD_READ_MULTIPLE_BLOCK &&
+             (data_len < 1024 || data_len % 512)))
+            return (ULONG)-1;
+        request.data = data;
+        request.length = data_len;
+        /* Known storage-only workaround, never enable for CMD17/SCR/radio.
+         * The generic outer transaction must still issue physical CMD12/13. */
+        request.early_cmd18 = index == MMC_CMD_READ_MULTIPLE_BLOCK;
+    }
+#if P4_SDCARD_TRACE
+    if (index == MMC_CMD_READ_MULTIPLE_BLOCK && argument == P4SD_TRACE_LBA &&
+        data_len == 1024)
+    {
+        memset(&p4sd_trace, 0, sizeof(p4sd_trace));
+        p4sd_trace.active = TRUE;
+        p4sd_trace.data = priv->host->bounce;
+    }
+    if (p4sd_trace.active)
+    {
+        request.observe = p4sd_command_observe;
+        request.observe_context = bus;
+    }
+#endif
+#if P4_SDCARD_FAULT_INJECT != P4SD_FAULT_NONE
+#if P4_SDCARD_FAULT_INJECT < P4SD_FAULT_CMD_CRC || P4_SDCARD_FAULT_INJECT > P4SD_FAULT_TIMEOUT
+#error Unsupported SD fault injection mode
+#endif
+    if (index == MMC_CMD_READ_MULTIPLE_BLOCK && !p4sd_fault_injected)
+        request.diagnostic_fault = (enum P4HostCommandFault)P4_SDCARD_FAULT_INJECT;
+#endif
+    /* Preserve legacy card-status policy: no generic R1 mask is added here. */
+    if (index == MMC_CMD_GO_IDLE_STATE || index == MMC_CMD_SET_RELATIVE_ADDR)
+        priv->card_rca = 0;
+    if (!priv->host->command(priv->host, &request, &result))
+    {
+#if P4_SDCARD_FAULT_INJECT != P4SD_FAULT_NONE
+        if (result.injected_fault != P4HOST_FAULT_NONE)
+        {
+            p4sd_fault_injected = TRUE;
+            bug("[P4SD%02u] injecting fault mode %u in shared motor\n",
+                bus->sdcb_BusNum, (unsigned)result.injected_fault);
+        }
+#endif
+        bug("[P4SD%02u] shared CMD%u failed: status=%u started=%u "
+            "raw=%08x idmac=%08x injected=%u\n", bus->sdcb_BusNum, index,
+            (unsigned)result.status, (unsigned)result.started,
+            result.raw, result.idstatus, (unsigned)result.injected_fault);
+        if (index == MMC_CMD_GO_IDLE_STATE || index == MMC_CMD_SET_RELATIVE_ADDR ||
+            priv->host->dma_faulted ||
+            priv->host_generation != priv->host->generation)
+            priv->host_ready = FALSE;
+        else if (data_len && result.started)
+        {
+            /* DMA/FIFO reset is not card protocol recovery. A started read
+             * needs a confirmed stop/TRAN before this transaction can end. */
+            if (index == MMC_CMD_READ_MULTIPLE_BLOCK)
+                (void)p4sd_recover_multiblock(bus);
+            else if (!p4sd_confirm_tran(bus))
+                priv->host_ready = FALSE;
+        }
+        else if (index == MMC_CMD_STOP_TRANSMISSION)
+            priv->host_ready = FALSE;
+#if P4_SDCARD_TRACE
+        /* Dump collected samples even when a shared fault makes card recovery
+         * unsafe. This does not read MMIO after ownership became uncertain. */
+        p4sd_trace_dump(&p4sd_trace, bus);
+#endif
+        return (ULONG)-1;
+    }
+    if (index == MMC_CMD_SET_RELATIVE_ADDR &&
+        !p4sd_adopt_rca(priv, argument, result.response[0]))
+        return (ULONG)-1;
+    if (index == MMC_CMD_STOP_TRANSMISSION && !p4sd_confirm_tran(bus))
+    {
+        priv->host_ready = FALSE;
+#if P4_SDCARD_TRACE
+        p4sd_trace_dump(&p4sd_trace, bus);
+#endif
+        return (ULONG)-1;
+    }
+#if P4_SDCARD_TRACE
+    if (index == MMC_CMD_STOP_TRANSMISSION)
+        p4sd_trace_dump(&p4sd_trace, bus);
+#endif
+    if (response && (rsp_type & MMC_RSP_PRESENT))
+    {
+        if (rsp_type & MMC_RSP_136)
+        {
+            ULONG *words = (ULONG *)(IPTR)response->ti_Data;
+            if (words)
+                memcpy(words, result.response, sizeof(result.response));
+        }
+        else
+            response->ti_Data = result.response[0];
+    }
+    return 0;
+}
+
+static ULONG p4sd_send_cmd_locked(struct TagItem *tags, struct sdcard_Bus *bus)
 {
     ULONG command_index = GetTagData(SDCARD_TAG_CMD, 0, tags);
     ULONG argument = GetTagData(SDCARD_TAG_ARG, 0, tags);
@@ -988,290 +807,26 @@ ULONG FNAME_P4SDBUS(SendCmd)(struct TagItem *tags, struct sdcard_Bus *bus)
     ULONG data_len = GetTagData(SDCARD_TAG_DATALEN, 0, tags);
     ULONG data_flags = GetTagData(SDCARD_TAG_DATAFLAGS, 0, tags);
     struct TagItem *response = FindTagItem(SDCARD_TAG_RSP, tags);
-    ULONG command = command_index & 0x3F;
     struct p4sd_private *priv = P4SD_PRIV(bus);
-    ULONG started, transferred = 0;
-    enum p4sd_request_state state = P4SD_SENDING_CMD;
-    BOOL busy_response = (rsp_type & MMC_RSP_BUSY) != 0;
-    BOOL multi_read = command_index == MMC_CMD_READ_MULTIPLE_BLOCK;
-    BOOL dma_read = FALSE;
-    BOOL bounce_read = FALSE;
-    UBYTE *receive = data;
-    ULONG decided_raw = 0;
-    BOOL command_started = FALSE;
-    ULONG timeout = data_len ? P4SD_DATA_TIMEOUT_US : P4SD_CMD_TIMEOUT_US;
-#if P4_SDCARD_TRACE
-    ULONG trace_rintsts = ~0UL, trace_idsts = ~0UL;
-    ULONG trace_tcbcnt = ~0UL, trace_tbbcnt = ~0UL;
-#endif
 
     if (!priv->host_ready)
         return (ULONG)-1;
-
-    /* Do not let an out-of-range command alias a permitted six-bit command
-       in the hardware encoding (in particular, a denied write command). */
+    /* Refuse before the engine encodes six bits: never alias a denied write. */
     if (command_index > 0x3F)
     {
         bug("[P4SD%02u] refusing invalid CMD%u\n",
             bus->sdcb_BusNum, command_index);
         return (ULONG)-1;
     }
-
     if (p4sd_media_mutating_command(command_index))
     {
         bug("[P4SD%02u] refusing media-mutating CMD%u\n",
             bus->sdcb_BusNum, command_index);
         return (ULONG)-1;
     }
-
-    if (data_len != 0)
-    {
-        ULONG block_size;
-
-        /* Hard read-only boundary.  There is no FIFO transmit code below,
-           and no command can set the controller's R/W bit. */
-        if (data == NULL || data_len > P4SD_MAX_DATA_LEN ||
-            !(data_flags & MMC_DATA_READ) ||
-            (data_flags & (MMC_DATA_WRITE | MMC_DATA_STREAM)))
-        {
-            bug("[P4SD%02u] refusing CMD%u data flags %08x len %u\n",
-                bus->sdcb_BusNum, command_index, data_flags, data_len);
-            return (ULONG)-1;
-        }
-
-        if (!p4sd_reset_fifo(bus))
-            return (ULONG)-1;
-
-        block_size = data_len > 512 ? 512 : data_len;
-        if (data_len % block_size != 0)
-            return (ULONG)-1;
-
-        if (multi_read && (data_len < 2 * 512 || data_len % 512 != 0))
-        {
-            bug("[P4SD%02u] refusing malformed CMD18 length %u\n",
-                bus->sdcb_BusNum, data_len);
-            return (ULONG)-1;
-        }
-        p4sd_set(P4SD_BLKSIZ, block_size);
-        p4sd_set(P4SD_BYTCNT, data_len);
-
-        /* The cache maintenance around the descriptor chain works on whole
-           64-byte lines.  A destination that does not start on one, or does
-           not cover a whole number of them, goes through the aligned bounce
-           buffer if it fits there. */
-        if ((((IPTR)data & 63) != 0 || (data_len & 63) != 0))
-        {
-            if (data_len > sizeof(p4sd_bounce))
-            {
-                /* Unreachable while the bounce is P4SD_MAX_DATA_LEN and the
-                   length check above enforces the same bound; kept because
-                   the two constants could drift apart, and because a silent
-                   overrun here would be a memory corruption rather than a
-                   refused read. */
-                bug("[P4SD%02u] refusing unaligned CMD%u receive of %u bytes "
-                    "at %p\n", bus->sdcb_BusNum, command_index, data_len,
-                    data);
-                return (ULONG)-1;
-            }
-            bounce_read = TRUE;
-            receive = p4sd_bounce;
-        }
-
-#if P4_SDCARD_TRACE
-        if (multi_read && argument == P4SD_TRACE_LBA && data_len == 2 * 512)
-        {
-            memset(&p4sd_trace, 0, sizeof(p4sd_trace));
-            p4sd_trace.active = TRUE;
-            p4sd_trace.data = receive;
-        }
-#endif
-        if (!p4sd_dma_prepare_read(receive, data_len, bus))
-        {
-            bug("[P4SD%02u] cannot prepare CMD%u IDMAC receive\n",
-                bus->sdcb_BusNum, command_index);
-            return (ULONG)-1;
-        }
-        dma_read = TRUE;
-        command |= P4SD_CMD_DATA;
-    }
-
-    if (rsp_type & MMC_RSP_PRESENT)
-        command |= P4SD_CMD_RESP;
-    if (rsp_type & MMC_RSP_136)
-        command |= P4SD_CMD_RESP_LONG;
-    if (rsp_type & MMC_RSP_CRC)
-        command |= P4SD_CMD_RESP_CRC;
-
-    /* Match Espressif's native-host command encoding.  CMD0 sends the
-       initial clocks without wait_complete; CMD12 is a stop/abort and must
-       be issuable while the data state machine is active. */
-    if (command_index == MMC_CMD_GO_IDLE_STATE)
-        command |= P4SD_CMD_SEND_INIT;
-    else if (command_index == MMC_CMD_STOP_TRANSMISSION)
-        command |= P4SD_CMD_STOP_ABORT;
-    else
-        command |= P4SD_CMD_WAIT_DATA;
-
-    command |= P4SD_CMD_USE_HOLD | P4SD_CMD_START;
-    if (!p4sd_wait_clear(P4SD_CMD, P4SD_CMD_START, P4SD_CMD_TIMEOUT_US))
-        return (ULONG)-1;
-
-    p4sd_set(P4SD_RINTSTS, 0xFFFFFFFFUL);
-    p4sd_set(P4SD_CMDARG, argument);
-    p4sd_set(P4SD_CMD, command); /* never P4SD_CMD_WRITE */
-    command_started = TRUE;
-#if P4_SDCARD_TRACE
-    p4sd_trace_take(&p4sd_trace, "start");
-#endif
-    started = sdcard_CurrentTime();
-
-    while (!p4sd_timed_out(started, timeout))
-    {
-        ULONG raw = p4sd_reg(P4SD_RINTSTS);
-        ULONG idstatus = dma_read ? p4sd_reg(P4SD_IDSTS) : 0;
-
-        decided_raw = raw;
-
-        if (!dma_read && raw)
-            p4sd_set(P4SD_RINTSTS, raw);
-
-#if P4_SDCARD_TRACE
-        if (p4sd_trace.active &&
-            (raw != trace_rintsts || idstatus != trace_idsts ||
-             p4sd_reg(P4SD_TCBCNT) != trace_tcbcnt ||
-             p4sd_reg(P4SD_TBBCNT) != trace_tbbcnt))
-        {
-            p4sd_trace_take(&p4sd_trace, "state");
-            trace_rintsts = raw;
-            trace_idsts = idstatus;
-            trace_tcbcnt = p4sd_reg(P4SD_TCBCNT);
-            trace_tbbcnt = p4sd_reg(P4SD_TBBCNT);
-        }
-#endif
-
-        /* This exercises the exact error branch without a media write. */
-        /* A data error can only be acted on once the request has reached
-           SENDING_DATA, so injecting one earlier does nothing: the bit is
-           checked under `state == P4SD_SENDING_DATA` and the local raw value
-           is rebuilt on the next iteration.  It appeared to work only while
-           CMD_DONE happened to be set in the same iteration that injected
-           it, which changed when the core's timing changed.  Hold the data
-           case back until the state is right; the other two act immediately
-           and are state-independent. */
-        if (multi_read && !p4sd_fault_injected &&
-            P4_SDCARD_FAULT_INJECT != P4SD_FAULT_NONE &&
-            (P4_SDCARD_FAULT_INJECT != P4SD_FAULT_DATA_CRC ||
-             state == P4SD_SENDING_DATA))
-        {
-            p4sd_fault_injected = TRUE;
-            /* Name the injected mode.  The failure line below prints the
-               real RINTSTS, which cannot show a software-injected bit, so
-               without this the three fault cases are indistinguishable in a
-               log and the gate's recovery evidence would be unverifiable. */
-            bug("[P4SD%02u] injecting fault mode %u in state %u\n",
-                bus->sdcb_BusNum, (unsigned)P4_SDCARD_FAULT_INJECT,
-                (unsigned)state);
-            if (P4_SDCARD_FAULT_INJECT == P4SD_FAULT_CMD_CRC)
-                raw |= P4SD_INT_RCRC;
-            else if (P4_SDCARD_FAULT_INJECT == P4SD_FAULT_DATA_CRC)
-                raw |= P4SD_INT_DCRC;
-            else
-                break;
-            decided_raw = raw;
-        }
-
-        /* This is the v5.4.2 SENDING_CMD -> SENDING_DATA transition. */
-        if (state == P4SD_SENDING_CMD && (raw & P4SD_INT_CMD_ERRORS))
-            goto failed;
-        if (state == P4SD_SENDING_CMD && (raw & P4SD_INT_CMD_DONE))
-        {
-            p4sd_copy_response(response, rsp_type);
-            state = data_len ? P4SD_SENDING_DATA : P4SD_IDLE;
-        }
-
-        /* The documented, bounded fallback completes at the final receive
-           descriptor and lets generic sdcard.device send physical CMD12.
-           The rejected v5.4.2 DATA_OVER/auto-stop experiment is retained in
-           the roadmap rather than left active on the development board. */
-        if (dma_read && state == P4SD_SENDING_DATA &&
-            p4sd_dma_read_ready(data_len))
-        {
-            if (!p4sd_dma_complete_read(receive, data_len, bus))
-                goto failed;
-            if (bounce_read)
-                memcpy(data, receive, data_len);
-            return 0;
-        }
-
-        if (!dma_read && data_len && (raw & P4SD_INT_RXDR))
-            p4sd_drain_read_fifo(data, data_len, &transferred);
-        /* CMD51's eight-byte SCR response can reach the FIFO only with its
-           terminal DATA_OVER indication.  The old PIO path drained that
-           tail; retain it while CMD18 itself uses IDMAC. */
-        if (!dma_read && data_len && (raw & P4SD_INT_DATA_OVER))
-            p4sd_drain_read_fifo(data, data_len, &transferred);
-
-        if (state == P4SD_SENDING_DATA)
-        {
-            if ((raw & P4SD_INT_DATA_ERRORS) ||
-                (idstatus & P4SD_IDSTS_ERRORS))
-                goto failed;
-            if (dma_read && (idstatus & (P4SD_IDSTS_TI | P4SD_IDSTS_RI |
-                                         P4SD_IDSTS_NI)))
-                state = P4SD_BUSY;
-            if (raw & (P4SD_INT_SBE | P4SD_INT_DATA_OVER))
-                state = P4SD_IDLE;
-            else if (!dma_read && (raw & P4SD_INT_DATA_OVER))
-                state = (transferred == data_len) ? P4SD_IDLE : P4SD_SENDING_DATA;
-        }
-        if (state == P4SD_BUSY && (raw & P4SD_INT_DATA_OVER))
-            state = P4SD_IDLE;
-
-        if (state != P4SD_IDLE)
-            continue;
-
-        if (dma_read && !p4sd_dma_complete_read(receive, data_len, bus))
-            goto failed;
-        if (dma_read && bounce_read)
-            memcpy(data, receive, data_len);
-        if (!dma_read && data_len && transferred != data_len)
-            goto failed;
-
-        if (busy_response)
-        {
-            ULONG busy_started = sdcard_CurrentTime();
-
-            while (p4sd_reg(P4SD_STATUS) & P4SD_STATUS_DATA_BUSY)
-                if (p4sd_timed_out(busy_started, P4SD_BUSY_TIMEOUT_US))
-                    goto failed;
-        }
-
-        if (command_index == MMC_CMD_STOP_TRANSMISSION &&
-            !p4sd_confirm_tran(bus))
-            goto failed;
-        return 0;
-    }
-
-failed:
-    /* State and the decision-time raw value, not just the register.  A
-       software-injected error bit never appears in RINTSTS, so without these
-       two the three fault-injection modes produce identical failure lines and
-       the gate's recovery evidence cannot say which branch fired. */
-    bug("[P4SD%02u] CMD%u failed in state %u: decided on raw=%08x, "
-        "rintsts=%08x idmac=%08x status=%08x bytes=%u/%u\n",
-        bus->sdcb_BusNum, command_index, (unsigned)state, decided_raw,
-        p4sd_reg(P4SD_RINTSTS),
-        dma_read ? p4sd_reg(P4SD_IDSTS) : 0, p4sd_reg(P4SD_STATUS),
-        transferred, data_len);
-    if (dma_read)
-        p4sd_dma_dump(data_len, bus);
-    if (multi_read && command_started)
-        (void)p4sd_recover_multiblock(bus);
-    else if (data_len && !p4sd_reset_fifo(bus))
-        priv->host_ready = FALSE;
-    else if (command_index == MMC_CMD_STOP_TRANSMISSION)
-        priv->host_ready = FALSE;
-    return (ULONG)-1;
+    /* Diagnostics annotate this same request; there is no alternate motor. */
+    return p4sd_shared_command(bus, command_index, argument, rsp_type,
+                               response, data, data_len, data_flags);
 }
 
 /* SendCmd completes the whole transaction synchronously. */
@@ -1300,12 +855,8 @@ ULONG FNAME_P4SDBUS(FinishData)(struct TagItem *tags,
     return 0;
 }
 
-void FNAME_P4SD(BusInit)(struct sdcard_Bus *bus)
+static void p4sd_bus_init_locked(struct sdcard_Bus *bus)
 {
-    FNAME_P4SDBUS(SetPowerLevel)(bus->sdcb_Power, FALSE, bus);
-    /* IDF starts strongly while identifying the card. */
-    p4sd_configure_pins(3);
-
     if (!p4sd_host_init(bus))
     {
         bug("[P4SD%02u] host clock/reset initialization failed\n",
@@ -1313,12 +864,16 @@ void FNAME_P4SD(BusInit)(struct sdcard_Bus *bus)
         return;
     }
 
+    /* Power's ready guard requires successful host initialization first. */
+    FNAME_P4SDBUS(SetPowerLevel)(bus->sdcb_Power, FALSE, bus);
+    /* IDF starts strongly while identifying the card. */
+    p4sd_configure_pins(3);
     FNAME_P4SDBUS(SetBusWidth)(1, bus);
     bug("[P4SD%02u] slot 0 polling IDMAC receive, 1-bit/400 kHz, read-only\n",
         bus->sdcb_BusNum);
 }
 
-void FNAME_P4SD(BusPostIRQInit)(struct sdcard_Bus *bus)
+static void p4sd_bus_post_init_locked(struct sdcard_Bus *bus)
 {
     struct sdcard_Unit *unit;
 
@@ -1345,4 +900,68 @@ void FNAME_P4SD(BusPostIRQInit)(struct sdcard_Bus *bus)
     unit = (&bus->sdcb_BusUnits->sdcbu_Units)[0];
     if (unit != NULL)
         unit->sdcu_Flags |= AF_Card_WriteProtect;
+}
+
+/* Standalone vtable calls own the host too, but never wait: OpenDevice may
+ * call them under Forbid. Generic chunk/enumeration hooks
+ * hold one outer acquisition through all dependent calls. Recovery's CMD12
+ * and status probes nest in the same task, never release the outer owner. */
+void FNAME_P4SDBUS(SoftReset)(UBYTE mask, struct sdcard_Bus *bus)
+{
+    if (!FNAME_P4SDBUS(BeginTransaction)(bus, FALSE))
+        return;
+    p4sd_soft_reset_locked(mask, bus);
+    FNAME_P4SDBUS(EndTransaction)(bus);
+}
+
+void FNAME_P4SDBUS(SetClock)(ULONG speed, struct sdcard_Bus *bus)
+{
+    if (!FNAME_P4SDBUS(BeginTransaction)(bus, FALSE))
+        return;
+    p4sd_set_clock_locked(speed, bus);
+    FNAME_P4SDBUS(EndTransaction)(bus);
+}
+
+void FNAME_P4SDBUS(SetPowerLevel)(ULONG levels, BOOL lowest,
+                               struct sdcard_Bus *bus)
+{
+    if (!FNAME_P4SDBUS(BeginTransaction)(bus, FALSE))
+        return;
+    p4sd_set_power_locked(levels, lowest, bus);
+    FNAME_P4SDBUS(EndTransaction)(bus);
+}
+
+void FNAME_P4SDBUS(SetBusWidth)(UBYTE width, struct sdcard_Bus *bus)
+{
+    if (!FNAME_P4SDBUS(BeginTransaction)(bus, FALSE))
+        return;
+    p4sd_set_width_locked(width, bus);
+    FNAME_P4SDBUS(EndTransaction)(bus);
+}
+
+ULONG FNAME_P4SDBUS(SendCmd)(struct TagItem *tags, struct sdcard_Bus *bus)
+{
+    ULONG result;
+    if (!FNAME_P4SDBUS(BeginTransaction)(bus, FALSE))
+        return (ULONG)-1;
+    result = p4sd_send_cmd_locked(tags, bus);
+    FNAME_P4SDBUS(EndTransaction)(bus);
+    return result;
+}
+
+void FNAME_P4SD(BusInit)(struct sdcard_Bus *bus)
+{
+    /* BusTask boundary, unlike the leaf vtable calls below OpenDevice. */
+    if (!FNAME_P4SDBUS(BeginTransaction)(bus, TRUE))
+        return;
+    p4sd_bus_init_locked(bus);
+    FNAME_P4SDBUS(EndTransaction)(bus);
+}
+
+void FNAME_P4SD(BusPostIRQInit)(struct sdcard_Bus *bus)
+{
+    if (!FNAME_P4SDBUS(BeginTransaction)(bus, TRUE))
+        return;
+    p4sd_bus_post_init_locked(bus);
+    FNAME_P4SDBUS(EndTransaction)(bus);
 }

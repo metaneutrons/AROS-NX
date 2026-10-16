@@ -577,6 +577,7 @@
 #define  P4_HP_SDMMC_CLK_EN     (1U << 14)
 #define P4_HP_REF_CLK_CTRL2     0x002C
 #define  P4_HP_REF_160M_CLK_EN  (1U << 0)
+#define  P4_HP_REF_20M_CLK_EN   (1U << 8)
 #define P4_HP_PERI_CLK_CTRL01   0x0034
 #define  P4_HP_SDIO_HS_MODE     (1U << 22)
 #define  P4_HP_SDIO_CLK_SRC     (1U << 23)

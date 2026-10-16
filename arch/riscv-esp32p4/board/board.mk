@@ -4,6 +4,17 @@
 # mmake does not notice a changed P4_BOARD, so each board needs its own
 # build tree (README.md, "Board profiles").
 P4_BOARD ?= d1001
+P4_FLASH_LAYOUT ?= legacy
+
+ifeq ($(filter $(P4_FLASH_LAYOUT),legacy ab),)
+$(error Unsupported P4_FLASH_LAYOUT '$(P4_FLASH_LAYOUT)'; supported: legacy, ab)
+endif
+ifneq ($(words $(P4_FLASH_LAYOUT)),1)
+$(error P4_FLASH_LAYOUT must be exactly one of: legacy, ab)
+endif
+
+P4_BOARD_LAYOUT_FLAGS :=
+P4_BOARD_BOOTLOADER_OFFSET := 0x2000
 
 # Guition JC1060P470C (shops: JC1060WP470C) comes with two JD9165 panel
 # batches that need different init tables, so the board ID names the batch:
@@ -25,7 +36,9 @@ P4_BOARD_REV_MIN := 100
 P4_BOARD_REV_MAX := 199
 P4_BOARD_PARTITION_OFFSET := 0x8000
 P4_BOARD_PKG_LIMIT := 4063232
+P4_BOARD_CORE_LIMIT := 0x800000
 P4_BOARD_FLASHDISK_SIZE_MB := 4
+P4_BOARD_FLASHDISK_SIZE_BYTES := 0x00400000
 P4_BOARD_FLASHDISK_OFFSET := 0xc00000
 P4_BOARD_TOUCH_FW_FILENAME := gsl3670-d1001.fw
 # Portable driver in the package (workbench/hidds/gsl3670), wired up with
@@ -51,7 +64,9 @@ P4_BOARD_REV_MIN := 100
 P4_BOARD_REV_MAX := 199
 P4_BOARD_PARTITION_OFFSET := 0x8000
 P4_BOARD_PKG_LIMIT := 4063232
+P4_BOARD_CORE_LIMIT := 0x800000
 P4_BOARD_FLASHDISK_SIZE_MB := 4
+P4_BOARD_FLASHDISK_SIZE_BYTES := 0x00400000
 P4_BOARD_FLASHDISK_OFFSET := 0xc00000
 # The GT911 runs from its own ROM; nothing to install.
 P4_BOARD_TOUCH_FW_FILENAME :=
@@ -68,4 +83,36 @@ P4_BOARD_PARTITION_CSV := $(P4_BOARD_DIR)/partition-table.csv
 P4_BOARD_SDKCONFIG := $(P4_BOARD_DIR)/sdkconfig.defaults
 else
 $(error Unsupported ESP32-P4 board '$(P4_BOARD)'; supported: d1001, jc1060p470c-v1, jc1060p470c-v2)
+endif
+
+# A/B remains opt-in. It relocates the partition table and selects a matched
+# table/config pair; legacy keeps every existing value above unchanged.
+ifeq ($(P4_FLASH_LAYOUT),ab)
+P4_BOARD_LAYOUT_FLAGS := -DP4_FLASH_LAYOUT_AB=1
+P4_BOARD_CPPFLAGS += $(P4_BOARD_LAYOUT_FLAGS)
+P4_BOARD_PARTITION_OFFSET := 0x20000
+P4_BOARD_BOOT_REGION_BYTES := 0x40000
+P4_BOARD_KERNEL_SLOT_BYTES := 0x80000
+P4_BOARD_BSP_SLOT_BYTES := 0x600000
+P4_BOARD_PKG_LIMIT := 0x600000
+P4_BOARD_CORE_LIMIT := 0x80000
+P4_BOARD_FLASHDISK_SIZE_BYTES := 0x002c0000
+# Informational MiB value only; formatter callers must use exact bytes.
+P4_BOARD_FLASHDISK_SIZE_MB := 2.75
+P4_BOARD_FLASHDISK_OFFSET := 0xd40000
+P4_BOARD_PARTITION_CSV := $(P4_BOARD_DIR)/partition-table-ab.csv
+P4_BOARD_SDKCONFIG := $(P4_BOARD_DIR)/ab-sdkconfig.defaults
+else
+P4_BOARD_BOOT_REGION_BYTES := 0
+P4_BOARD_KERNEL_SLOT_BYTES := 0
+P4_BOARD_BSP_SLOT_BYTES := 0
+endif
+
+# mmake does not invalidate objects when board/layout CPP flags change.
+# Bind real build trees once; profile-inspection Make snippets have no TOP.
+ifneq ($(strip $(TOP)),)
+P4_BUILD_PROFILE_CHECK := $(shell $(PYTHON) "$(SRCDIR)/arch/riscv-esp32p4/tools/check-build-profile.py" "$(TOP)" "$(P4_BOARD)" "$(P4_FLASH_LAYOUT)" 2>&1)
+ifneq ($(strip $(P4_BUILD_PROFILE_CHECK)),OK)
+$(error $(P4_BUILD_PROFILE_CHECK))
+endif
 endif

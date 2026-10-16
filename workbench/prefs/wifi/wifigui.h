@@ -10,6 +10,7 @@
 #include <exec/types.h>
 #include <exec/ports.h>
 #include <exec/tasks.h>
+#include "volatile_config.h"
 
 #define WIFI_MAX_NETS       40
 #define WIFI_MAX_DEVS       8       /* radios offered in the chooser */
@@ -18,13 +19,17 @@
 #define WIFI_SSID_MAX       33      /* 32 octets plus terminator */
 #define WIFI_KEY_MAX        64      /* 63-character passphrase plus terminator */
 
+#ifndef WIFI_VOLATILE_DEFAULT
+#define WIFI_VOLATILE_DEFAULT 0
+#endif
+
 /* One scan result, as the window wants to show it. */
 struct WifiNet
 {
     TEXT    wn_SSID[WIFI_SSID_MAX];
     LONG    wn_Signal;              /* dBm */
     LONG    wn_Channel;
-    TEXT    wn_Protection[8];       /* "open", "WPA", "WPA2" */
+    TEXT    wn_Protection[8];       /* "open", "WPA", "WPA2", "WPA3", "?" */
     LONG    wn_Known;               /* already in Wireless.prefs */
 };
 
@@ -74,6 +79,7 @@ struct WifiMsg
     /* CONNECT input, STATUS output */
     TEXT            wm_SSID[WIFI_SSID_MAX];
     TEXT            wm_Key[WIFI_KEY_MAX];
+    enum WifiSecurityProfile wm_SecurityProfile;
     LONG            wm_Protected;
 
     /* STATUS output. Everything the details window shows is gathered here, so
@@ -97,6 +103,8 @@ struct WifiMsg
 /* Set up by the worker before it signals the window that it is ready. */
 extern struct MsgPort *WifiWorkerPort;
 extern struct Task *WifiMainTask;
+/* Set once, before starting the worker; no mutable cross-task policy. */
+extern BOOL WifiVolatile;
 
 VOID WifiWorker(VOID);
 

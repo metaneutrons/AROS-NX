@@ -1,0 +1,9 @@
+include $(SRCDIR)/config/aros.cfg
+
+# Ownership initializes before sdcard.device (priority 4). No hardware
+# initialization here: the first slot owner configures the controller.
+%build_module mmake=kernel-esp32p4sdmmc \
+    modname=esp32p4sdmmc modtype=resource version=$(AROS_TARGET_PLATFORM) \
+    files="host clock clock_plan dma command"
+
+%common

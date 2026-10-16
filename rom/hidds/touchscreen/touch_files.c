@@ -186,8 +186,10 @@ static void touch_apply_prefs(struct TouchData *data, struct TouchFiles *f)
     ++data->generation;
     ReleaseSemaphore(&data->lock);
 
+#if TOUCHSCREEN_DIAGNOSTICS
     bug("[Touch] %s: prefs %s, %ld bytes, found 0x%x\n", data->name,
         TOUCH_PREFS_PATH, (long)length, prefs.have);
+#endif
 }
 
 /*

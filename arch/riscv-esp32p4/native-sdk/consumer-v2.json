@@ -52,7 +52,7 @@
     },
     {
       "path": "arch/riscv-esp32p4/board/board.mk",
-      "sha256": "d4467f7f00b8d6e7d9f735234511b7addc35ff17562f8e2e0074dee30a6abe4d"
+      "sha256": "ee556a30787d955cda6c900e5f7ca0826de7c9021fe4fc121a510f1474c4c4a5"
     },
     {
       "path": "arch/riscv-esp32p4/exec/mmakefile.src",

@@ -113,12 +113,14 @@ OOP_Object *Touch__Root__New(OOP_Class *cl, OOP_Object *o,
         AddTail((struct List *)&TSB(cl)->tsb_Drivers,
                 (struct Node *)&data->node.tdn_Node);
         ReleaseSemaphore(&TSB(cl)->tsb_Lock);
+#if TOUCHSCREEN_DIAGNOSTICS
         bug("[Touch] %s: %lux%lu, default calibration X %lu..%lu "
             "Y %lu..%lu flags 0x%lx\n", data->name,
             (unsigned long)width, (unsigned long)height,
             (unsigned long)cal->x_min, (unsigned long)cal->x_max,
             (unsigned long)cal->y_min, (unsigned long)cal->y_max,
             (unsigned long)cal->flags);
+#endif
     }
     return o;
 }
@@ -127,8 +129,10 @@ VOID Touch__Root__Dispose(OOP_Class *cl, OOP_Object *o, OOP_Msg msg)
 {
     struct TouchData *data = OOP_INST_DATA(cl, o);
 
+#if TOUCHSCREEN_DIAGNOSTICS
     bug("[Touch] %s: disposed; worker %p running %u\n", data->name,
         data->worker, (unsigned int)data->running);
+#endif
     ObtainSemaphore(&TSB(cl)->tsb_Lock);
     Remove((struct Node *)&data->node.tdn_Node);
     ReleaseSemaphore(&TSB(cl)->tsb_Lock);
