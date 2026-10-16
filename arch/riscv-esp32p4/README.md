@@ -249,6 +249,10 @@ view now identify the user's enclosed connectors without opening it: in his
 photo silver/left is HS, black/right is FS/Debug. Earlier inability to map
 the connectors from the enclosure photo is corrected; board revision and
 module-internal power remain unverified. No cable move required.
+Fresh bootloader readback again matches22544B27b99e03...; no missing custom-
+bootloader USB step established. A same-instrumentation PIO control is now
+installed/readback verified196112B3891f3b2..., replacing DMA diagnostic only.
+It awaits physical RESET; no PIO runtime or enumeration result yet.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
