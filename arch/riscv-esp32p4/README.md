@@ -300,6 +300,13 @@ RXFLVL0, FIFO pops0, SETUP_RX/DONE/EP0-stage0; reset2/setup0/xfer0. No native
 Mac device. Thus no SETUP status reached the PIO RX handler in this run; this
 does not prove whether the host sent packets or establish a hardware defect.
 Reference remains installed and ROM-stopped; exact AROS recovery retained.
+Host audit2026-10-17: paired port counters from the prior EP0 Debug-reset
+window show only drd2 (HS-associated host connector) increasing connect,
+address-failure and enumeration-failure by2. This correlates with reset2 but
+is not a packet capture or proof of host SETUP transmission. The later RX run
+has no matching per-port baseline; do not reuse these deltas as its result.
+Next isolate cable/host data path or obtain a bus trace before further endpoint
+or PHY changes; opening the enclosure is not required for that comparison.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
