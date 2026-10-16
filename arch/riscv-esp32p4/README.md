@@ -271,6 +271,14 @@ before further ROM attempts; this is not evidence of a PIO firmware fault.
 After Fabian reseats Debug at the Mac,1101 and the expected USB serial return.
 One no-reset ROM connection receives no serial response; no reset or write
 performed. Debug physical recognition is restored, ROM entry still unproven.
+After explicitly authorized single Debug USB-reset, ROM identity succeeds and
+PIO trace is retrieved intact:13 valid records/sample6_complete, queued
+reset8/setup0/xfer0, mounted0; reconnect skipped due to activity.
+debug_sof0 establishes this saved execution lacked Debug host contact, so
+do not call it a matched two-cable DMA comparison. Bus-reset events originate
+at ENUMDNE (end-of-reset/speed detection), not successful USB enumeration.
+The open boundary is reset/speed completion to first received EP0 SETUP;
+sent-versus-lost packets remain indistinguishable. PIO retained, ROM-stopped.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
