@@ -23,6 +23,16 @@
 #include "progress.h"
 _Static_assert(CONFIG_TINYUSB_CDC_COUNT==1,"Progress trace slot budget requires one CDC interface");
 #endif
+#if defined(HS_REFERENCE_EP0_TRACE)
+#include "ep0_trace.h"
+static struct hs_ep0_capture ep0_capture;
+static struct hs_ep0_snapshot ep0_snapshot(void);
+#if CONFIG_TINYUSB_MODE_DMA
+static const bool ep0_dma=true;
+#else
+static const bool ep0_dma=false;
+#endif
+#endif
 #if defined(HS_REFERENCE_RECONNECT)
 struct reconnect_run { bool detach_called; };
 #include "link_reconnect.h"
@@ -40,12 +50,19 @@ _Static_assert(DCD_EVENT_BUS_RESET==1 && DCD_EVENT_SETUP_RECEIVED==6 &&
                DCD_EVENT_XFER_COMPLETE==7 && USBD_EVENT_FUNC_CALL==8,
                "Pinned USB event semantics changed");
 static struct hs_link_events link_events;
-/* queue_event invokes this only AFTER successful enqueue. No MMIO, logging,
- * flash I/O, allocation or scheduler call in this potentially ISR callback. */
+/* queue_event invokes this only AFTER successful enqueue. Default callback
+ * is counters only; EP0 mode adds one publish-once read-only reset snapshot.
+ * No logging, flash I/O, allocation or scheduler call in this callback. */
 void tud_event_hook_cb(uint8_t rhport,uint32_t eventid,bool in_isr)
 {
     (void)in_isr;
     hs_link_events_record(&link_events,rhport,eventid);
+#if defined(HS_REFERENCE_EP0_TRACE)
+    if(rhport==1 && eventid==DCD_EVENT_BUS_RESET && hs_ep0_begin(&ep0_capture)) {
+        const struct hs_ep0_snapshot snapshot=ep0_snapshot();
+        hs_ep0_publish(&ep0_capture,&snapshot);
+    }
+#endif
 }
 #endif
 
@@ -69,6 +86,17 @@ static uint32_t reg(uintptr_t address)
 {
     return *(volatile const uint32_t *)address;
 }
+
+#if defined(HS_REFERENCE_EP0_TRACE)
+static struct hs_ep0_snapshot ep0_snapshot(void)
+{
+    /* GRXSTSR at1c peeks without popping. Never read GRXSTSP at20 or FIFO. */
+    return (struct hs_ep0_snapshot){reg(0x5000000c),reg(0x50000800),
+        reg(0x50000808),reg(0x50000014),reg(0x50000018),reg(0x50000b00),
+        reg(0x50000b10),reg(0x50000b08),reg(0x5000001c),reg(0x50000024),
+        hs_ep0_local(reg(0x50000814),reg(0x50000818),reg(0x5000081c))};
+}
+#endif
 
 #if defined(HS_REFERENCE_LINK_TRACE)
 static void link_phy_note(const char *stage)
@@ -261,8 +289,26 @@ static void observer(void *argument)
 #if defined(HS_REFERENCE_PERSIST)
         /* Capture before writing flash/logging; never reclassify a later FS
          * boot as the preceding HS execution. Wrapper attempts once only. */
+#if defined(HS_REFERENCE_EP0_TRACE)
+        if(sample==6) {
+#else
         if(sample>=6) {
-#if defined(HS_REFERENCE_PROGRESS)
+#endif
+#if defined(HS_REFERENCE_EP0_TRACE)
+            const struct hs_ep0_snapshot late=ep0_snapshot();
+            struct hs_ep0_snapshot first={0};
+            bool captured=hs_ep0_read(&ep0_capture,&first);
+            char compact[HS_TRACE_SAMPLE_CHUNK+1u];
+            int bytes=hs_ep0_format(compact,sizeof(compact),captured?'R':'N',
+                ep0_dma,(bool)tud_mounted(),counts.event[1],
+                counts.event[6],counts.event[7],&first);
+            if(bytes>0 && (unsigned)bytes<=HS_TRACE_SAMPLE_CHUNK)
+                (void)hs_reference_trace_checkpoint(compact,(size_t)bytes);
+            bytes=hs_ep0_format(compact,sizeof(compact),'L',ep0_dma,
+                (bool)tud_mounted(),counts.event[1],counts.event[6],counts.event[7],&late);
+            if(bytes>0 && (unsigned)bytes<=HS_TRACE_SAMPLE_CHUNK)
+                hs_reference_trace_sample(compact,(size_t)bytes);
+#elif defined(HS_REFERENCE_PROGRESS)
             const struct hs_progress_sample snapshot={
                 (unsigned)tud_mounted(),reg(0x50000800),reg(0x50000804),
                 reg(0x50000808),reg(0x500e515c),counts.event[1],
@@ -329,6 +375,10 @@ static esp_err_t observed_install(const tinyusb_config_t *config)
 static void observed_check(esp_err_t error,const char *file,int line,
                            const char *function,const char *expression)
 {
+#if defined(HS_REFERENCE_EP0_TRACE)
+    /* Reserve slots for both EP0 snapshots. Error behavior remains unchanged. */
+    if(error!=ESP_OK)
+#endif
     hs_reference_trace_event(error==ESP_OK?"example_check_ok":"example_error",error,line);
     (void)file;(void)function;(void)expression;
     if(error==ESP_OK)return;
@@ -359,6 +409,9 @@ static void observed_check(esp_err_t error,const char *file,int line,
 
 void app_main(void)
 {
+#if defined(HS_REFERENCE_EP0_TRACE)
+    hs_ep0_init(&ep0_capture);
+#endif
 #if defined(HS_REFERENCE_LINK_TRACE)
     hs_link_events_init(&link_events);
 #endif

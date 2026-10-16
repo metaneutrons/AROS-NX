@@ -278,7 +278,15 @@ debug_sof0 establishes this saved execution lacked Debug host contact, so
 do not call it a matched two-cable DMA comparison. Bus-reset events originate
 at ENUMDNE (end-of-reset/speed detection), not successful USB enumeration.
 The open boundary is reset/speed completion to first received EP0 SETUP;
-sent-versus-lost packets remain indistinguishable. PIO retained, ROM-stopped.
+sent-versus-lost packets remain indistinguishable.
+EP0 follow-up2026-10-17: default-off first-reset/late read-only register
+snapshots pass sanitized host tests, independent review and native ON/OFF
+builds. PIO candidate196512B52c1d2c6... is now installed at0x20000 with
+independent full readback; old trace preserved, pristine scratch restored and
+readback verified. ROM-stopped pending synchronized physical RESET, both
+cables retained. No new runtime result, endpoint/PHY fix or enumeration pass.
+Exact AROS recovery remains retained; RC0-TW and all native acceptance gates
+stay open.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual

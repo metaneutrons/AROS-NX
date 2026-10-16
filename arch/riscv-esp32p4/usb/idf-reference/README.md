@@ -68,6 +68,21 @@ journal: it can create the first trace if the preceding HS boot never did.
 
 ## Optional single-cable diagnostic journal (default OFF)
 
+`HS_REFERENCE_EP0_TRACE=ON` requires progress mode and adds two compact
+read-only snapshots: the first successfully queued reset-end event (R), and
+the late sample6 state (L). N means no reset snapshot was published. Counters
+on both lines are sampled at report time, not at the first reset. Publication
+is once-only and lock-free; the callback performs no flash or console I/O.
+Registers are individually observed, not a coherent bus transaction history.
+G/D/S/I/M are GUSBCFG/DCFG/DSTS/GINTSTS/GINTMSK; O/Z/E are EP0 OUT
+control/size/interrupt; R/F are non-pop GRXSTSR and GRXFSIZ. K low16 is
+DOEPMSK, bits16/17 EP0 OUT pending/mask and bits18/19 EP0 IN pending/mask.
+GRXSTSP and data FIFOs are never read. Three successful check messages are
+omitted, not the checks or errors, keeping the maximum at14 of16 trace slots.
+An already drained SETUP cannot be reconstructed from these snapshots.
+The default OFF build retains its previous behavior. This is instrumentation,
+not an endpoint-arming fix or a native USB acceptance result.
+
 `HS_REFERENCE_RECONNECT=ON` is a separate diagnostic, requiring persistent
 link trace, normal HS speed and no injected error. At the first five-second
 observer tick it skips permanently if mounted/connected or any queued bus
