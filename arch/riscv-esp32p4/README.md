@@ -268,6 +268,9 @@ Confirmed BOOT+RESET still yields no board interface. New host evidence maps
 the former Debug host port to Type-C@2, ConnectionActive=false/transports[];
 HS-side Type-C@3 reports CC+USB2. Host-side Debug continuity must be checked
 before further ROM attempts; this is not evidence of a PIO firmware fault.
+After Fabian reseats Debug at the Mac,1101 and the expected USB serial return.
+One no-reset ROM connection receives no serial response; no reset or write
+performed. Debug physical recognition is restored, ROM entry still unproven.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual

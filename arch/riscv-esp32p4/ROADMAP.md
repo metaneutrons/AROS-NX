@@ -47027,3 +47027,18 @@ remain open. No partial stage is a complete A/B update system.
   contradicts an assumed unchanged direct two-board-cable host connection.
   Next verify Debug cable's host endpoint/contact without opening enclosure,
   unplugging HS, rewriting flash or repeating ineffective firmware resets.
+
+### 2026-10-16 - RC0 Debug host recognition restored, no-reset ROM read unavailable
+
+- Fabian confirms Debug fully inserted at Mac, HS retained, no additional
+  RESET. devserial now lists1101; IOKit shows USB JTAG_serial debug unit with
+  expected serial80:F1:B2:D3:3B:A6. This resolves absent physical Debug
+  recognition; do not classify that absence as PIO failure.
+- One no-reset/no-stub/connect-attempts1 security-info request fails with
+  no serial data received. No command response, valid identity, trace read,
+  host reset or flash write. Aggregate command exit0 reflects following cat,
+  not the failed esptool request. Output explicitly retained as failure.
+- host-reseated-usb.txt/host-reseated-identity.log saved in
+  hs-pio-trace-2026-10-16.a1DlYx. PIO trace remains unread/unmodified;
+  next establish ROM entry with Debug host connection actually present,
+  both cables unchanged, before further diagnosis or a new experiment.
