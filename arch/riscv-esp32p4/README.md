@@ -143,6 +143,11 @@ same Mac. Future comparisons use that documented two-cable warm-start setup,
 not the single-cable cold-start gate; electrical power isolation is unqualified.
 No hardware action occurred during this preparation. Physical RESET readiness
 is required before the first installed comparison; no more cable moves planned.
+Following fresh readiness, FS-on-HS197776B4b943580... is now installed with
+independent exact readbackb38afa01.... One captured Debug/FS reset still yields
+ROM DOWNLOAD, not application execution. Manual RESET-only is now requested;
+both cables remain. AROS is temporarily replaced, exact recovery retained.
+No Full-Speed runtime/enumeration acceptance from installation alone.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
