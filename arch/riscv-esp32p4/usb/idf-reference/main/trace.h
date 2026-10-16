@@ -6,6 +6,7 @@
 #define HS_TRACE_RECORD 256u
 #define HS_TRACE_TEXT_MAX 236u
 #define HS_TRACE_SLOTS 16u
+#define HS_TRACE_SAMPLE_CHUNK 180u
 
 struct hs_trace_state {
     unsigned next;

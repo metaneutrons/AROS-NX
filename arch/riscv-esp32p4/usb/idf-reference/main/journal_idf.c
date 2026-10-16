@@ -100,15 +100,23 @@ void hs_reference_trace_event(const char *stage,int error,int line)
     xSemaphoreGive(trace_lock);
 }
 /* Task-context diagnostic only; never called by the USB ISR hook. */
+bool hs_reference_trace_checkpoint(const char *text,size_t n)
+{
+    if(!text || !n || n>HS_TRACE_TEXT_MAX || !work || !trace_lock)return false;
+    if(xSemaphoreTake(trace_lock,pdMS_TO_TICKS(100))!=pdTRUE) {
+        ESP_LOGE("HSTrace","note omitted: mutex timeout");return false;
+    }
+    int result=HS_TRACE_INACTIVE;
+    if(state.active) {
+        result=hs_trace_append(&store,&state,text,n,work,HS_JOURNAL_SECTOR);
+        report(result);
+    }
+    xSemaphoreGive(trace_lock);
+    return result==HS_TRACE_WRITTEN;
+}
 void hs_reference_trace_note(const char *text,size_t n)
 {
-    if(!text || !n || n>HS_TRACE_TEXT_MAX || !work || !trace_lock)return;
-    if(xSemaphoreTake(trace_lock,pdMS_TO_TICKS(100))!=pdTRUE) {
-        ESP_LOGE("HSTrace","note omitted: mutex timeout");return;
-    }
-    if(state.active)
-        report(hs_trace_append(&store,&state,text,n,work,HS_JOURNAL_SECTOR));
-    xSemaphoreGive(trace_lock);
+    (void)hs_reference_trace_checkpoint(text,n);
 }
 void hs_reference_trace_sample(const char *text,size_t n)
 {
@@ -122,7 +130,7 @@ void hs_reference_trace_sample(const char *text,size_t n)
     unsigned part=0;
     for(;n && state.active;++part) {
         char record[HS_TRACE_TEXT_MAX+1];
-        size_t take=n>180?180:n;
+        size_t take=n>HS_TRACE_SAMPLE_CHUNK?HS_TRACE_SAMPLE_CHUNK:n;
         int bytes=snprintf(record,sizeof(record),"stage=sample6 part=%u\n%.*s",
             part,(int)take,text);
         if(bytes<=0 || (size_t)bytes>=sizeof(record))break;

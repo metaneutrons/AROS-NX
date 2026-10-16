@@ -15,7 +15,13 @@
 #include "tinyusb_cdc_acm.h"
 #include "tusb.h"
 #include "sdkconfig.h"
+#include "esp_timer.h"
+#if defined(HS_REFERENCE_PROGRESS)
+#include "progress.h"
+_Static_assert(CONFIG_TINYUSB_CDC_COUNT==1,"Progress trace slot budget requires one CDC interface");
+#endif
 #if defined(HS_REFERENCE_RECONNECT)
+struct reconnect_run { bool detach_called; };
 #include "link_reconnect.h"
 #endif
 #if defined(HS_REFERENCE_FORCE_FS_HSPHY)
@@ -53,6 +59,7 @@ void hs_reference_trace_start(void);
 void hs_reference_trace_event(const char *,int,int);
 void hs_reference_trace_sample(const char *,size_t);
 void hs_reference_trace_note(const char *,size_t);
+bool hs_reference_trace_checkpoint(const char *,size_t);
 #endif
 
 static uint32_t reg(uintptr_t address)
@@ -89,13 +96,55 @@ static void link_phy_note(const char *stage)
 #endif
 
 #if defined(HS_REFERENCE_RECONNECT)
-static bool reconnect_disconnect(void *ctx) { (void)ctx;return tud_disconnect(); }
-static bool reconnect_connect(void *ctx) { (void)ctx;return tud_connect(); }
+#if defined(HS_REFERENCE_PROGRESS)
+static bool progress_checkpoint(const char *stage,bool ok)
+{
+    char text[237];
+    /* No USB MMIO before the checkpoint: a missing return bounds the API or
+     * the following checkpoint write, not a diagnostic USB-register read. */
+    int n=snprintf(text,sizeof(text),"stage=%s us=%lld api_ok=%u stack_free=%u\n",
+        stage,(long long)esp_timer_get_time(),(unsigned)ok,
+        (unsigned)uxTaskGetStackHighWaterMark(NULL));
+    return n>0 && (size_t)n<sizeof(text) &&
+        hs_reference_trace_checkpoint(text,(size_t)n);
+}
+#endif
+static bool reconnect_disconnect(void *ctx)
+{
+    (void)ctx;
+#if defined(HS_REFERENCE_PROGRESS)
+    if(!progress_checkpoint("soft_detach_enter",false))return false;
+    ((struct reconnect_run *)ctx)->detach_called=true;
+#endif
+    bool ok=tud_disconnect();
+#if defined(HS_REFERENCE_PROGRESS)
+    (void)progress_checkpoint("soft_detach_return",ok);
+#endif
+    return ok;
+}
+static bool reconnect_connect(void *ctx)
+{
+    (void)ctx;
+#if defined(HS_REFERENCE_PROGRESS)
+    if(!((struct reconnect_run *)ctx)->detach_called)return false;
+    (void)progress_checkpoint("soft_attach_enter",false);
+#endif
+    /* Always attempt restoration, even if logging failed after disconnect. */
+    bool ok=tud_connect();
+#if defined(HS_REFERENCE_PROGRESS)
+    (void)progress_checkpoint("soft_attach_return",ok);
+#endif
+    return ok;
+}
 static void reconnect_wait(void *ctx,unsigned ms)
 { (void)ctx;vTaskDelay(pdMS_TO_TICKS(ms)); }
 static void reconnect_note(void *ctx,bool attached,bool ok)
 {
     (void)ctx;
+#if defined(HS_REFERENCE_PROGRESS)
+    /* Progress wrappers already stored return outcomes without MMIO. */
+    (void)attached;(void)ok;
+#else
     char text[237];
     int n=snprintf(text,sizeof(text),
         "stage=soft_%s api_ok=%u dctl=%08lx usbctl=%08lx\n",
@@ -104,6 +153,7 @@ static void reconnect_note(void *ctx,bool attached,bool ok)
     if(n<=0 || (size_t)n>=sizeof(text))return;
     hs_reference_trace_note(text,(size_t)n);
     ESP_LOGI("HSReconnect","%s",text);
+#endif
 }
 #endif
 
@@ -113,8 +163,16 @@ static void observer(void *argument)
     unsigned sample=0;
 #if defined(HS_REFERENCE_RECONNECT)
     bool reconnect_attempted=false;
-    const struct hs_reconnect_ops reconnect_ops={NULL,reconnect_disconnect,
+    struct reconnect_run reconnect_run={false};
+    const struct hs_reconnect_ops reconnect_ops={&reconnect_run,reconnect_disconnect,
         reconnect_connect,reconnect_wait,reconnect_note};
+#if defined(HS_REFERENCE_PROGRESS)
+    /* Preserved/failed traces cannot authorize another unlogged detach. */
+    if(!progress_checkpoint("observer_enter",false)) {
+        reconnect_attempted=true;
+        ESP_LOGW("HSProgress","no fresh writable trace; reconnect skipped");
+    }
+#endif
 #endif
     for(;;) {
         vTaskDelay(pdMS_TO_TICKS(5000));
@@ -192,7 +250,20 @@ static void observer(void *argument)
 #if defined(HS_REFERENCE_PERSIST)
         /* Capture before writing flash/logging; never reclassify a later FS
          * boot as the preceding HS execution. Wrapper attempts once only. */
-        if(sample>=6)hs_reference_trace_sample(text,(size_t)n);
+        if(sample>=6) {
+#if defined(HS_REFERENCE_PROGRESS)
+            const struct hs_progress_sample snapshot={
+                (unsigned)tud_mounted(),reg(0x50000800),reg(0x50000804),
+                reg(0x50000808),reg(0x500e515c),counts.event[1],
+                counts.event[6],counts.event[7]};
+            char compact[HS_PROGRESS_SAMPLE_MAX+1u];
+            int bytes=hs_progress_format(compact,sizeof(compact),&snapshot);
+            if(bytes>0 && (unsigned)bytes<=HS_PROGRESS_SAMPLE_MAX)
+                hs_reference_trace_sample(compact,(size_t)bytes);
+#else
+            hs_reference_trace_sample(text,(size_t)n);
+#endif
+        }
 #endif
         ESP_LOGI("HSReference","%s",text);
         if(tud_cdc_n_connected(0)) {

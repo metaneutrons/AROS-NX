@@ -90,6 +90,28 @@ pairs, ordering, one-second request, once-only behavior and invalid inputs.
 Run strict C11 O0/O2 ASan/UBSan, including NDEBUG; assertions must not erase
 test actions. The runtime stimulus is diagnostic-only, not a production fix.
 
+`HS_REFERENCE_PROGRESS=ON` further scopes the experiment to control-flow
+diagnosis. It requires reconnectON (therefore link+persistenceON, forcedFS/
+injectionOFF) and exactly one CDC interface. It stores observer_enter before
+the first delay, then pure pre/post checkpoints around both public USB calls,
+with timestamps/API result/stack high-water mark and no diagnostic USB MMIO
+ahead of these markers. A missing return bounds the API/reset/return-append
+region, not proof of a hung API. Observer-entry and observer-create order can
+invert across cores; the trace mutex serializes writes, not task scheduling.
+
+Only a fresh successfully written observer-entry marker permits the stimulus.
+If the pre-detach marker fails, no disconnect or connect MMIO is attempted.
+Once disconnect was actually called, connect is attempted even if later trace
+writes fail, to restore the link. Preserved old prefixes therefore cannot
+cause unrecorded repeat detaches on later recovery boots in this mode.
+
+Progress mode stores a compact one-chunk sample6 plus its terminal marker,
+not the full PHY reference snapshot. Shared HS_TRACE_SAMPLE_CHUNK bounds it
+to180 bytes, tested with maximum-width values. Nine initial records + observer
+entry + four call boundaries + one sample + terminal =16; no spare slots.
+Stack/USB progress from a preserved prefix does not prove later boot history;
+flash writes still disturb timing and RC0-TW remains a diagnostic workaround.
+
 `HS_REFERENCE_LINK_TRACE=ON` adds read-only UTMI FC00..FC07 snapshots before
 and after installer execution and queued TinyUSB event counters to sample6.
 The option defaults OFF; the original example/PHY/DWC configuration is not

@@ -199,6 +199,14 @@ Fresh return now reaches graphics updates, GT911, USB owner remote closed
 and CPU1 WiFi. Fabian reconnects HS afterward; passive host inventory still
 has Debug only, no native CDC. Both cables retained again; no host reset or
 flash on this reattachment, no visual or HS acceptance inferred.
+Progress follow-up is now installed/readback verified:198816B31585ceb...,
+payload9f77d13a.... Default-off HS_REFERENCE_PROGRESS adds observer entry and
+pre/post USB call markers with no diagnostic USB MMIO ahead of them. Only a
+fresh writable trace permits detach; recovery boots with preserved prefixes
+skip it. Compact sample6 keeps the trace at16 slots but is not a full PHY
+reference dump. Host/native ON/OFF builds pass; first synchronized RESET is
+pending, both cables unchanged. AROS temporarily replaced, recovery retained;
+no runtime outcome or HS fix claimed.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
