@@ -46988,3 +46988,21 @@ remain open. No partial stage is a complete A/B update system.
 - Request BOOT held before Debug reconnect, release after3s, no RESET, HS
   unchanged; await confirmation before reading. Existing PIO firmware retained,
   no AROS restore or scratch reset. Preserve trace before deciding next test.
+
+### 2026-10-16 - RC0 Debug reattachment still absent; ROM entry unproven
+
+- Fabian confirms BOOT held for Debug reconnection/released after3s, no RESET,
+  HS remains attached. devserial inventory and independent IOKit USB tree
+  still show no board interface. One no-reset/no-stub identity command fails
+  to open1101 (ENOENT), not a ROM connection or trace result. No further
+  connection retry, application reset, trace read or flash write performed.
+- Evidence reconnect-identity.log/reconnect-usb-tree.txt/reconnect-typec.plist
+  retained in hs-pio-trace-2026-10-16.a1DlYx. Combined shell command ends with
+  cat, so its aggregate exit0 is not the failed esptool command's success.
+  Inspect actual failure output; no successful identity claimed.
+- Correct recovery procedure: HS keeps board powered, so BOOT held during
+  Debug insertion alone does not prove a new strap-sampling reset or ROM
+  entry. Prior instruction was insufficient under retained HS power. Request
+  BOOT held plus one RESET pulse, then release BOOT after3s, both cables
+  unchanged. Await completion. PIO diagnostic remains installed, execution
+  state unknown; preserved prior DMA traces/exact AROS recovery retained.
