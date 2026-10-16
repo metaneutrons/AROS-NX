@@ -179,6 +179,11 @@ claim. Reconnect198304B7a5c86a9... is now installed/readback verified50ba6c00...
 after exact pristine-scratch restoration, with no intervening app boot.
 It awaits fresh physical RESET readiness; no reconnect result yet. Both cables
 remain, AROS temporarily replaced and exact recovery retained.
+After fresh readiness and RESET confirmation, neither board USB interface is
+currently visible on the Mac; passive repeat agrees. Reconnect execution and
+its cause remain unclassified until the persisted trace can be retrieved.
+No further reset/write attempted. Candidate remains installed; AROS recovery
+is retained but restoration awaits Debug/FS recovery and trace preservation.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
