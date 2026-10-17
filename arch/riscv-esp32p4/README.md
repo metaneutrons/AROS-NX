@@ -325,6 +325,11 @@ field39, HS reference source0/enabled1. HPCLK0e090000 is a different register
 and did not prove the SPLL gate. These are configuration readings, not physical
 frequency/PLL-lock measurements. No IRQ/RX/reset or native Mac device; no fix.
 Reference retained/ROM-stopped, exact AROS recovery retained.
+The subsequent IDF audit finds SPLL-only hardware calibration, not a direct
+USB12MHz-ref measurement. Its private API changes TIMG0 calibration state and
+does not fully restore it. No such test was added/run; do not promote correct
+digital configuration to actual USB reference-frequency proof. Exact cable/
+host-end swap chronology needs clarification before a host-port comparison.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
