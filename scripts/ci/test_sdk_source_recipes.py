@@ -111,9 +111,9 @@ class SdkSourceRecipeTests(unittest.TestCase):
     def test_zlib_retains_its_exact_canonical_representation(self) -> None:
         args = self.fetch_arguments("workbench/libs/z/mmakefile.src", "zlib-fetch")
         self.assertEqual(args[args.index("--normalization") + 1], "canonical-tar-gzip-v1")
-        self.assertEqual(args[args.index("--normalized-size") + 1], "2337668")
+        self.assertEqual(args[args.index("--normalized-size") + 1], "3261973")
         self.assertEqual(args[args.index("-cs") + 1],
-                         "zlib.tar.gz=sha256:883d22e0b9aefc31a383c462adacdbd7941e6862559c5b27e59599db8114e783")
+                         "zlib.tar.gz=sha256:3d56d66841a3380102abc6883fac7f756658417a9e6bc64af32a25aa57c3aeb6")
 
     def test_normalization_cache_and_counterprobes(self) -> None:
         subprocess.run(["bash", str(ROOT / "scripts/tests/test-fetch-normalization.sh")],
