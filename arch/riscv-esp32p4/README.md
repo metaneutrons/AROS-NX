@@ -307,6 +307,17 @@ is not a packet capture or proof of host SETUP transmission. The later RX run
 has no matching per-port baseline; do not reuse these deltas as its result.
 Next isolate cable/host data path or obtain a bus trace before further endpoint
 or PHY changes; opening the enclosure is not required for that comparison.
+Cable-swap follow-up2026-10-17: Fabian swaps the existing cables; Debug data
+still works, so do not keep treating them as unqualified charge-only cables.
+First no-write rerun confirms app/USB install but preserves the old journal;
+its old RX counts are not a new result. After preserving that trace and
+resetting only the4096B diagnostic scratch, the unchanged RX reference yields
+15 valid records/sample6_complete: both reconnect APIs return and DCTL toggles,
+but IRQ/reset/RX/pop/SETUP all0. Mac has no native CDC and no per-port counter
+deltas in that fresh window. This is no fix and differs from the earlier
+reset2 run; host endpoint/orientation chronology is not fully specified by
+"cables swapped". General cable-data functionality is established, HS-specific
+reception/parent clock remains unresolved. Reference retained/ROM-stopped.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual
