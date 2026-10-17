@@ -33,14 +33,17 @@ static inline void hs_rx_record(struct hs_rx_counters *s, unsigned port,
     }
 }
 /* Independent relaxed counter loads; wrapping counts, not a coherent snapshot. */
-static inline int hs_rx_format(char *text,size_t size,const struct hs_rx_counters *s)
+static inline int hs_rx_format(char *text,size_t size,const struct hs_rx_counters *s,
+                              uint32_t parent,uint32_t divider,uint32_t reference)
 {
     if(!text || !s || size<HS_TRACE_SAMPLE_CHUNK+1u)return -1;
     unsigned v[9];
     for(unsigned i=0;i<9;i++)v[i]=atomic_load_explicit(&s->v[i],memory_order_relaxed);
     return snprintf(text,size,
         "RX irq=%08x rx=%08x pop=%08x sr=%08x sd=%08x ep=%08x\n"
-        "last=%08x kinds=%08x ints=%08x\n",
-        v[0],v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8]);
+        "last=%08x kinds=%08x ints=%08x\n"
+        "clk=%08x div=%08x ref=%08x\n",
+        v[0],v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8],
+        (unsigned)parent,(unsigned)divider,(unsigned)reference);
 }
 #endif

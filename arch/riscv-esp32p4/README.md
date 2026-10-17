@@ -318,6 +318,13 @@ deltas in that fresh window. This is no fix and differs from the earlier
 reset2 run; host endpoint/orientation chronology is not fully specified by
 "cables swapped". General cable-data functionality is established, HS-specific
 reception/parent clock remains unresolved. Reference retained/ROM-stopped.
+Digital-clock follow-up2026-10-17: extended RX observation now installed and
+readback verified196944B4fa74cff..., complete15-record trace. LP_CLKRST
+clk0f050005/div09c4c260/ref40000000 shows SPLL output gate1,12MHz divisor
+field39, HS reference source0/enabled1. HPCLK0e090000 is a different register
+and did not prove the SPLL gate. These are configuration readings, not physical
+frequency/PLL-lock measurements. No IRQ/RX/reset or native Mac device; no fix.
+Reference retained/ROM-stopped, exact AROS recovery retained.
 The trace writes app_main entry before USB initialization and appends checked
 install/error/observer/sample outcomes in the same retained4096B sector. Old
 captures are never overwritten on a later boot. Debug/FS is allowed for actual

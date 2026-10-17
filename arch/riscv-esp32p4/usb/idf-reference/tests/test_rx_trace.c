@@ -19,12 +19,13 @@ int main(void)
     for(unsigned i=0;i<9;i++)CHECK(atomic_load(&s.v[i])==expected[i]);
     for(unsigned i=0;i<9;i++)atomic_store(&s.v[i],UINT32_MAX);
     char text[HS_TRACE_SAMPLE_CHUNK+1u];
-    int n=hs_rx_format(text,sizeof(text),&s);
+    int n=hs_rx_format(text,sizeof(text),&s,UINT32_MAX,UINT32_MAX,UINT32_MAX);
     CHECK(n>0 && (unsigned)n<=HS_TRACE_SAMPLE_CHUNK);
     CHECK(strstr(text,"sr=ffffffff sd=ffffffff ep=ffffffff"));
-    CHECK(hs_rx_format(text,sizeof(text)-1,&s)==-1);
-    CHECK(hs_rx_format(NULL,sizeof(text),&s)==-1);
-    CHECK(hs_rx_format(text,sizeof(text),NULL)==-1);
+    CHECK(strstr(text,"clk=ffffffff div=ffffffff ref=ffffffff"));
+    CHECK(hs_rx_format(text,sizeof(text)-1,&s,0,0,0)==-1);
+    CHECK(hs_rx_format(NULL,sizeof(text),&s,0,0,0)==-1);
+    CHECK(hs_rx_format(text,sizeof(text),NULL,0,0,0)==-1);
     hs_rx_record(&s,1,HS_RX_IRQ,0);
     CHECK(atomic_load(&s.v[0])==0); /* Defined modulo32 wrap. */
     CHECK(6u+1u+4u+2u+1u+1u<=HS_TRACE_SLOTS);

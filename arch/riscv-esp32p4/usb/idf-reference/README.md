@@ -93,6 +93,11 @@ RXFLVL, pop all popped statuses, sr/sd EP0 SETUP_RX/SETUP_DONE, ep EP0
 setup-phase branch; last/kinds retain last popped value/status-kind bitmap,
 ints ORs masked IRQ status. These are wrapping independent relaxed counters,
 not an atomic packet trace. Default OFF leaves the original DCD selected.
+The same RX record includes digital `clk/div/ref` observations at LP_CLKRST
+offsets0x40/44/48 (base0x50111000), not the similarly named HP_SYS_CLKRST
+sample at0x500e6018. They report parent gates, USB dividers and HS reference
+mux/gate configuration, not actual frequency or analog PLL lock. The extended
+record is at most163 characters, within180; no extra trace slot or USB write.
 
 `HS_REFERENCE_RECONNECT=ON` is a separate diagnostic, requiring persistent
 link trace, normal HS speed and no injected error. At the first five-second

@@ -35,6 +35,11 @@ static const bool ep0_dma=false;
 #endif
 #if defined(HS_REFERENCE_RX_TRACE)
 #include "rx_trace.h"
+#include "soc/lp_clkrst_reg.h"
+_Static_assert(LP_CLKRST_HP_CLK_CTRL_REG==0x50111040u &&
+               LP_CLKRST_HP_USB_CLKRST_CTRL0_REG==0x50111044u &&
+               LP_CLKRST_HP_USB_CLKRST_CTRL1_REG==0x50111048u,
+               "Reviewed clock observation addresses changed");
 struct hs_rx_counters hs_rx_state;
 #endif
 #if defined(HS_REFERENCE_RECONNECT)
@@ -309,7 +314,10 @@ static void observer(void *argument)
             if(bytes>0 && (unsigned)bytes<=HS_TRACE_SAMPLE_CHUNK)
                 (void)hs_reference_trace_checkpoint(compact,(size_t)bytes);
 #if defined(HS_REFERENCE_RX_TRACE)
-            bytes=hs_rx_format(compact,sizeof(compact),&hs_rx_state);
+            bytes=hs_rx_format(compact,sizeof(compact),&hs_rx_state,
+                reg(LP_CLKRST_HP_CLK_CTRL_REG),
+                reg(LP_CLKRST_HP_USB_CLKRST_CTRL0_REG),
+                reg(LP_CLKRST_HP_USB_CLKRST_CTRL1_REG));
             if(bytes>0 && (unsigned)bytes<=HS_TRACE_SAMPLE_CHUNK)
                 (void)hs_reference_trace_checkpoint(compact,(size_t)bytes);
 #endif

@@ -195,7 +195,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C1P | Graphical boot/update performance | `hardware partial; runtime hang gate open` | Rotation/mirror: 140 sanitizer cases; actual producer: 400 submissions/1,677 guarded IRQs. CPU90 synchronous full update 2.776 s; CPU360 synchronous 0.617 s; v2 coalesced submission 0.296 s. Paired v2 core/HIDD initially passes headless Wanderer and flash checks. Fabian observes speedup then slowdown/hang. Console-only nonblocking runtime fix now sanitizer-tested, flashed and verified; explanation of the observed hang remains unconfirmed. On 2026-10-01 Fabian reports drawing is fine so far after requester-free RAM Disk opening; duration unspecified. Sustained no-reader/stress and complete interactive regression gates remain open. |
 | CQ1 | Bounded queued SMP debug console | `hardware partial (JC1060); default-plain deployed/readback/headless; D1001 open` | 2026-10-13 framed core showed both harts/108 consecutive records and reader recovery. 2026-10-14: P4_CONSOLE_RECORD_PREFIX defaults0, optional1 keeps framing; overflow warnings always active. Clean native193024Ba68ca519.../independent readback and111.929s fresh218-row headless export show no normal prefix,22 touch heartbeats and CPU1 WLAN owner. Twelve sanitized USB/UART default/0/1 host runs pass; old-header mutation rejected. Plain logs cannot prove sequence continuity. Native overload/physical disconnect and fresh interactive gates remain open. Early/fatal direct output and timer-failure backlog loss remain explicit limits. |
-| RC0 | Permanent HS port and USB remote diagnostic MVP | `HS blocked after cable swap` | 2026-10-17: unchanged RX PIO7f14f2f7... fresh cable-swap trace complete15 records; DCTL detach/attach observed, IRQ/reset/RX/pop/SETUP0, no native Mac device or port counter delta. Debug confirms swapped cable data function; no general cable-defect claim. HS link/PHY/clock unresolved. Reference retained/ROM-stopped; RC0-TW/CDC/remote/writer OPEN. |
+| RC0 | Permanent HS port and USB remote diagnostic MVP | `HS blocked; digital clock setup observed` | 2026-10-17: PIO196944B4fa74cff... installed/readback verified, trace complete15 records; LP clk0f050005/div09c4c260/ref40000000 shows SPLL gate1,12MHz divider39/ref enabled. Configuration, not physical frequency/lock proof. No IRQ/reset/RX/native Mac USB. Swapped cables work for Debug. Reference retained/ROM-stopped; RC0-TW/CDC/remote/writer OPEN. |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware verified` | Complete GB0 evidence: correctly oriented persistent Wanderer with title/icons/four edges, bounded graphical recovery without SD, 20/20 controlled EN-reset boots, a 30-minute desktop soak explicitly composed with B5's active concurrent SD/scanout stress, and an exact raw-card gate.  The latter used hardware-locked first host insertions around one normal D1001 boot; prepared image, pre-run readback and post-run readback are byte-identical at SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Two earlier comparisons remain documented as macOS `.fseventsd` contamination, not hidden as passes |
 | C4 | Touch as an absolute mouse HIDD | `hardware partial` | Since 2026-10-04 the touch path is the portable stack of D3 (`touchscreen.hidd`, `gsl3670.hidd`, `esp32p4board.resource`); the D1001 has not run it yet, so everything below describes the former kernel GSL driver and `p4touch.hidd`. D1001 identification, bounded firmware load/status and contact transport are hardware verified. The absolute mouse HIDD and nearest-contact continuity pass synchronized one-/two-contact tests; hardware IDs are not stable. A stationary pointer recovered after USB reset; its prior cause remains unknown. The tap policy defaults to button-free motion, tap-to-click and 400-ms hold-drag, preserving selectable direct mode and the right-button latch. Fabian confirms movement, tap and hold-drag with zero errors and clean release. A consented perimeter trace measures X=16..1638/Y=15..874; board-specific calibration now maps that range to the full surface. Its 3,863 host checks, build and package audit pass. A fresh synchronized run confirms four-edge reachability and menu-dropdown opening, with zero I2C errors and clean release at Y=5. Rapid double-tap reliability is reported poor; first-empty short-tap release (50-ms idle gap restored after renewed graphics slowdown) now pass 3,892 sanitizer checks and are a flashed candidate, not interactive acceptance; a volume requester precedes successful RAM Disk opening (name reported as TENEME, possibly THEME; unconfirmed). Theme assignments, Ice assets and PNG registration now pass a 167-entry host image verification; SD image now written/readback-verified/ejected; visible gate fails with missing png.library>=52; 171-entry runtime-library closure correction is now SD written/readback-verified/ejected (2026-10-01); synchronized 55-second boot reaches Wanderer and attempts the new runtime libraries; Fabian confirms requester-free RAM Disk opening and one visible toolbar symbol; complete toolbar and sustained performance are not yet accepted. Menu-item execution, bounded recovery, intermittent startup reliability and the 1,000-cycle gates remain open |
@@ -4584,6 +4584,15 @@ Acceptance gate:
 ## Track RC: independent remote diagnostic access
 
 ### RC0 - USB investigation and diagnostic-MVP slice
+
+Digital clock follow-up2026-10-17: three LP_CLKRST observations added within
+existing RX record (max163/180 bytes, no new slot); correct hw_ver1 addresses
+are0x50111040/44/48. Installed/readback-verified196944B4fa74cff... gives full
+15-record trace with clk0f050005/div09c4c260/ref40000000, expected parent gate/
+divider/mux configuration. This does not measure actual SPLL/reference frequency
+or analog lock. HPCLK500e6018 was not the SPLL gate register; do not mix them.
+IRQ/reset/RX0 and no native Mac device. No clock/PHY setting changed or fix
+established. Reference retained/ROM-stopped, recovery retained.
 
 Cable-swap follow-up2026-10-17: Debug works with swapped cables, establishing
 general cable data function. First no-write Debug restart preserves old trace,
@@ -47293,3 +47302,46 @@ remain open. No partial stage is a complete A/B update system.
   prerequisites rather than another unchanged cable request. Native HS/CDC/
   remote/writer still unverified. Actual firmware reference retained, ROM-
   stopped after retrieval; no AROS restoration between diagnostic runs.
+
+### 2026-10-17 - RC0 digital clock observations: expected gates/dividers, no USB
+
+- Corrected source-audit distinction: HPCLK in prior USB snapshots reads
+  HP_SYS_CLKRST_SOC_CLK_CTRL1 at0x500e6018, not LP_CLKRST_HP_CLK_CTRL. Its
+  bit27 cannot establish SPLL output gate state. Verified effective build uses
+  SELECTS_REV_LESS_V3/minrev1.0 and hw_ver1 register headers. The LP HS ref mux
+  source0 denotes12MHz; separate48MHz fields feed the FS PHYs. No previously
+  documented hardware gate pass is inferred from the similarly named HP value.
+- Added only safe task-context digital reads of LP_CLKRST HP_CLK_CTRL0x40,
+  USB_CLKRST_CTRL0x44 and CTRL1x48, base0x50111000; static address assertions
+  and existing RX formatter carry clk/div/ref in same record. Maximum163/180
+  bytes, unchanged15-slot bound. Strict O0/O2-NDEBUG ASan/UBSan formatter tests
+  pass with all fields max-width; independent source audit confirms hw_ver1
+  mapping and size. No analog-I2C read, PLL/USB setting or ISR change.
+- Native build exits0/regenerates196944B image SHA256
+  4fa74cff08f393c6b05aa703edaba0445135d5d5244850a11aeb0219a283029a.
+  First invocation failed127 due missing orchestration variables, no artifact
+  claimed from it; corrected explicit IDF/tool environment builds successfully.
+  Same prior IDF6.0.1/P4rev1.x/PIO/diagnostic switches, RX trace enabled.
+  Expected MAC/P4v1.3/flags0 verified no-reset. Prior cable-swap trace reread/
+  cmp preserved before scratch restoration. Fresh0x31000 app preimage, offline
+  plan, one bounded0x20000 write and independent read/cmp pass; payload SHA256
+  4143d9b65c66629b2a7602d426a5a02d609a671e8eee82eb058f997ec0de1481.
+  Pristine4096B scratch0x57000 restored/readback verified; metadata, bootloader,
+  table, BSP/helper/SD/C6 unchanged. Exact AROS recovery retained, RC0-TW OPEN.
+- Fresh live devserial follow capture boundary34529, one Debug RTS pulse and
+ 35s+ observation; live console reaches sample16 at81s. Follow reader stopped
+  only, scoped close then single ROM USB reset/retrieval verifies identity.
+  Decoder exits0:15 valid records/sample6_complete. Post-run app0x31000
+  read/cmp exits0. Host still Debug only. Evidence in
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/hs-clock-2026-10-17.CCEa2H.
+  Trace SHA256
+  b776e0f0e04f6ce9ca01a15ae15d8cfc3755607396f67084a5beea6dceefd3b9.
+- App entry15605us/reset11/debug_sof1, install52453/return0at59024us;
+  observer62357us. Detach/attach return1/DCTL0->2->2->0. No first-reset
+  snapshot (N); IRQ/RX/pop/SETUP/reset0. Digital clk0f050005: SPLL output
+  gate bit27=1; div09c4c260:12MHz field39,25MHz19,48MHz9; ref40000000:
+  source0/internal12MHz, gate1. No missing digital clock-setting demonstrated.
+  These values do not measure real frequency or prove analog PLL lock.
+  Next audit bounded hardware frequency calibration, if source supports it,
+  before assuming a PHY defect. Current reference remains installed/ROM-
+  stopped; native USB/CDC/remote/writer and RC0-TW gates OPEN.
