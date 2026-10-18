@@ -8,6 +8,10 @@ CFILES          := \
 # The smp variant's scheduler list helpers (SMP.md, S2)
 CFILES += exec_smp
 
+# The common Exec header aggregate selects this architecture-first endpoint.
+# Keep its kernel API prerequisite explicit, as in the other native ports.
+#MM- kernel-exec-includes-esp32p4-riscv : kernel-kernel-includes
+
 %set_archincludes mainmmake=kernel-exec maindir=rom/exec \
   modname=exec pri=2 arch=esp32p4-riscv \
   includes="-I$(SRCDIR)/$(CURDIR)"

@@ -177,7 +177,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | N2U | Credential-free WLAN image defaults and first-use selection | `matched ABI8 candidate BSP/image build and host verification; deployment/runtime open` | Existing AROS WiFi/Network preferences, WirelessManager, AROSTCP and dhclient only; device/unit0, DHCP RAM paths, empty Wireless.prefs, autostart off. Five defaults/eighteen stage tests pass. WLAN-only whitelist includes ESP32Board/icon; actual85-file overlay, tracked Wanderer defaults, no saved build Env-Archive. Fresh static-linked resource282952B/device67584B, audited42-member BSP3971508B,41 other payloads unchanged. Final64MiB AROSDefault image has332 manifest entries; historical loader failures/artifacts retained in dated evidence. Installed baseline backup/full-span recovery, native discovery, single-manager lifetime, clock/routing/resolver/GUI/radio acceptance remain open. Both privacy assertions0; credentials excluded and SYS/SD read-only. |
 | N2E | Caller-visible asynchronous association failure | `generic caller/native binding/Close model+build verified; runtime open` | Native76cc32560a owned cookies/opener failure latches and message-ACK/token fence are bound; independent source review clear, clean72936B RV32 device build and all six scoped macOS/Linux O0/O2 sanitizer suites pass. Caller Close9a0a0d8346 integratedd50ca3ba1e passes independent review/macOS/Linux models and full679652B RV32 rebuild. Capability advertisement remains disabled. SUMMARY-only and privacy assertions0 unchanged. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
-| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | GNU recipe and SDK source-input corrections are being integrated on current AROS-NX main without changing SMP or board runtime. Source-owned pins, normalized cache contracts and explicit header prerequisites have fixture coverage. Libinit literal commands now retain target flags once; six GenMF/GNU Make dry-run regressions cover aggregate and overridden CFLAGS without rebuilding a compiler. Release object paths and applicable GCC/GDB markers distinguish Classic and SDK-selector state. Clean source/runtime-bound compiler and complete SDK replay, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
+| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | The source-owned LLVM/RV32 SDK contracts, reproducible generator and GNU recipe corrections are prepared against current protected main; fresh source/product qualification is pending. Current board/runtime history is preserved. Source-owned pins, normalized cache contracts and explicit header prerequisites have fixture coverage. Libinit literal commands retain target flags once; six GenMF/GNU Make dry-run regressions cover aggregate and overridden CFLAGS without rebuilding a compiler. Historical local SDK/link probes are not qualification of this main-based candidate. Clean source/runtime-bound compiler and complete SDK replay, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
@@ -2430,6 +2430,73 @@ that a similarly named AROS driver matches the P4 MAC generation.
 
 ## Track TC: RV32 compiler and SDK publication
 
+### 2026-10-17 - TC0 prepare checked main-based SDK integration
+
+- Baseline: checked main `405fcfc2ddf1d6bfdd8ecdb395330eca7f0db4d5`
+  and the diagnostic SDK chain through `dbccc87aa4934b6357f2f858a1ec1663f05dd1db`.
+  This normal integration preserves both histories. Reconcile only SDK evidence
+  in this roadmap and README; retain main's newer board/runtime source and
+  hardware status. The existing feature-base PR had no product checks and was
+  not protected-main qualification.
+- Scope: source-owned LLVM and RV32 SDK graphs/exporters/probes, their target
+  declarations and include ordering, GNU checksum/path reproducibility,
+  deterministic genmodule dates, reviewed architecture/build declarations and
+  popupmenu archive ownership. Mesa transport, Darwin Make and libinit fixes
+  already match checked main and are not reimplemented.
+- Input binding: retain main's `arch/riscv-esp32p4/board/board.mk` unchanged and
+  refresh only its derived native consumer seal to SHA-256
+  `ee556a30787d955cda6c900e5f7ca0826de7c9021fe4fc121a510f1474c4c4a5`.
+  No source ABI, SDK roots, application probes, configure seal or runtime guard
+  is weakened to accept this integration.
+- Validation: all 77 source CI tests, six LLVM exporter tests and sixteen
+  native exporter tests pass on this main-based candidate. Both exporters'
+  read-only seal checks, GNU header/layout/zstd gates and all 24,632 tracked
+  path checks pass. The actual patched GCC checksum-option rule and complete
+  libcody object/library probes pass with their semantic and Classic
+  counterprobes; this is not a complete compiler rebuild. An initial local
+  source-suite invocation omitted LLVM's archive tools from PATH and failed
+  setup; selecting the existing LLVM tools fixed the environment without
+  changing the tests or production code.
+- Independent review found no actionable findings. Clean integration commit
+  `8f94c114072cc729fa3e67b0b9caf64e889d32f0` passed all sixteen actual source
+  preflight stages with the measured runtime and locked Zlib/Mesa cache inputs.
+  Wrong-source and wrong-runtime counterprobes failed before output creation.
+  This evidence remains tied to that commit; record a final-head preflight
+  after this evidence update rather than transferring the source identity.
+- Next step: the existing PR now targets protected main. Its workflow excludes
+  base-edit events, so push this measured evidence update as the normal
+  synchronization event selecting complete product CI. Require final-head
+  source preflight and every selected product check before merge.
+  Historical local compiler/SDK evidence remains tied to its original source;
+  no new compiler build or full diagnostic is authorized by this preparation.
+- Safety: no firmware, media, historical run, tag or published artifact changed.
+  TC0 remains `in development`; complete three-host compiler/SDK qualification,
+  authentication and publication gates remain open.
+
+### 2026-10-16 - TC0 compose the checked libinit flag correction
+
+- Baseline: diagnostic source `eb4b922c9636f94c29f0034780fa8e282270af1a`;
+  failed nonpublishing run `38777083911` retains all 24 successful compiler
+  owners but no successful SDK. Fabian authorized necessary AROS-NX corrections.
+- Change: replay only the libinit recipes and six command regressions from
+  checked source PR96, commit `41ffa9f65e96776f25905ac14e6a187e1cbde460`.
+  Preserve mandatory target prefixes and filter their duplicates from aggregate
+  CFLAGS, without changing source ABI or strict consumer validation.
+- Binding: refresh only `compiler/libinit/mmakefile.src` in all four SDK
+  input seals to SHA-256
+  `c5d1c0200ad3b7544484c37c7b3bde0d5e6b137e2b5244ca2da8c2c3e6b20ea2`.
+  Configure seals, SDK roots, probes, runtime and board code remain unchanged.
+- Validation: this composition passes all 77 source CI tests, including the
+  six actual GenMF/GNU Make dry-run regressions and duplicate-prefix/missing-ABI
+  counterprobes. All six LLVM exporter tests, the three GNU recipe gates and
+  tracked-path hygiene pass. The four source seals are current. The isolated
+  exact-commit producer preflight remains required before changing producer
+  pins. No compiler rebuild or new diagnostic is authorized by this composition.
+- Safety and next step: no firmware, media, historical run or published artifact
+  changed. Complete the isolated exact-commit preflight and bounded composition
+  review, then bind qualified producer inputs. TC0
+  remains `in development`; complete SDK and release qualification remain open.
+
 TC0 separates the host compiler package from the target/ABI SDK. Both use
 generic aros-tools infrastructure; the SDK contract remains source-owned.
 The first GNU release profile is RV32/ESP32-P4, not RV64. Existing LLVM
@@ -2442,6 +2509,162 @@ native P4 integration, and independent signed release/download audits.
 Recipe tests or declaration checks do not close this gate. A build does not
 change any board's hardware acceptance state.
 
+### 2026-10-13 - TC0 isolate and map libcody's diagnostic prefix
+
+- Baseline: clean source `8343d370db0d8feefe1e794fa06688e02f54155b`
+  and nonpublishing producer run `38324809550`. Compiler comparison failed
+  with AX0702; no SDK or release acceptance follows from that run.
+- Measured cause: of 80 ordered retained checksum inputs, only input 73,
+  `../libcody/libcody.a`, differs. Both archives are 388,244 bytes; their
+  SHA-256 values are
+  `7d5202caec89a53bd7dc4af6dabd4fb163985e14487bf6d9a85efcb40c70d8dd`
+  and `00227748ecaa28b79ee4910c945fd2c47a41d1c680a14d7506151a213c50ee5d`.
+  All 79 other raw inputs, including checksum-options bytes, match. Libcody's
+  `fatal.cc` receives a literal physical `SRCDIR` not remapped by compiler flags.
+- Correction: source-owned release recipes map that diagnostic prefix through
+  declared file/macro maps. Every matching map must yield the same directory;
+  ambiguous mappings fail instead of assuming host compiler precedence.
+  Debug-only maps are ignored. Classic retains the upstream macro assignment;
+  compiler flags, raw library hashing and final byte-comparison gates are unchanged.
+- Procedure: run `tools/crosstools/gnu/tests/test-cody-srcdir.sh` against the
+  locked GCC 16.2.0 source archive and native GCC `genchecksum`, using macOS
+  Bash 3.2. Apply the actual Makefile patch with zero fuzz and build `fatal.o`
+  under two physical source roots. Compile identical callers using actual
+  `__FILE__`, verify both SIGABRT statuses and shortened diagnostics, and run
+  malformed, missing, ambiguous and Classic counterprobes. GenMF/child-make
+  forwarding regressions also pass.
+- Observed: retained probe `aros-gcc-cody-srcdir.6Nd3bp` has separately preserved
+  release objects, each 1,856 bytes and SHA-256
+  `c92075a607992248cea87f82ab91143a49e60d9ae923c0ac0d50623aac3c19fe`.
+  Direct comparison passes. Native checksum output files match with SHA-256
+  `a8f36ec0b9c386419cf1b06ee58acb3886483ceb6afc2f149bd0611445c8a277`.
+  Both real callers return 134 and report `assertion.cc:271`. Release objects
+  are preserved before Classic rebuilds its working object; that Classic
+  object is not represented as release evidence. Bounded test exits zero;
+  independent static review found no blocker.
+- Safety: isolated local source changes only; no existing build, firmware,
+  media, hardware, tag, release or published asset mutation.
+- Extended observed evidence: the locked-archive regression now also builds
+  complete libcody archives under both roots. Retained probe
+  `aros-gcc-cody-srcdir.OxXiYL` has two 257,184-byte release archives with SHA-256
+  `d51a7729fc1c1eb756b241b8df51d843f3a0c189486fc8d9813160ec6783b2c2`.
+  Native checksum output files agree with SHA-256
+  `23ae0ff5b20cea25177238e69503ef982a03bf7bd80ec58f3e79fbbaea80c8b4`.
+  Classic archive comparison returns 1 as expected; preserved release archives
+  remain unchanged. Darwin deterministic archive timestamps are explicit.
+  The complete bounded regression passes on Bash 3.2; this is macOS host-library
+  evidence, not a replay of the original Linux compiler build.
+- Remaining risk and next step: complete compiler A/B is not proven by
+  this library probe. Qualify a clean pinned source through fresh native GNU
+  A/B, then all three-host compiler/SDK execution, relocation and authenticated
+  release gates. TC0 remains `in development`; no hardware status changes.
+
+### 2026-10-12 - TC0 deterministic GCC checksum-option records
+
+- Baseline: source `a5bcf7032896c76c8ccd9f1e17682ba82b849866` and
+  nonpublishing producer run `38301163273`. Both GNU RV32 compiler builds
+  and package verification passed; exact A/B comparison failed with AX0702.
+- Measured output: each package has 1,215 entries; only `cc1` and `cc1plus`
+  differ. Each ELF has 16 differing bytes at `executable_checksum` and 20
+  at the GNU build ID; all other bytes match. Raw intermediate objects were
+  not retained, so their equality cannot be inferred from the final ELF.
+- Cause demonstrated: GCC records literal linker/CXXFLAGS in
+  `checksum-options`, including distinct producer physical prefix-map roots.
+  The actual native GCC checksum generator independently reproduced a
+  checksum change when only those roots changed. A changed logical map
+  destination remained distinct after explicit physical-root canonicalization.
+- Correction: release recipes forward the exact declared maps to
+  a source-owned record helper. Only those physical map inputs are canonicalized;
+  kinds, order, destinations, other flags and raw object/library hashing remain
+  intact. Unknown, missing, duplicate and malformed declarations are errors.
+  Classic builds retain the upstream record. No final binary is rewritten and
+  exact A/B comparison remains mandatory.
+- Procedure: `tests/test-checksum-options.sh` executes the patched GCC make
+  rule from the locked pristine archive and can use an actual native
+  `genchecksum`. `tests/test-release-layout.sh` checks configure and child-make
+  forwarding of both map declarations and helper path. These bounded tests
+  are not complete compiler or SDK qualification.
+- Observed: the patched GCC rule and semantic counterprobes passed using the
+  actual native GCC checksum generator; GenMF/child-make forwarding and the
+  existing recorded-metadata regressions passed. An initial test reused an
+  already generated record; forcing each isolated make invocation corrected
+  the harness before counting any counterprobe as evidence.
+- Safety: isolated source worktree only; no existing build, firmware, media,
+  hardware, tag or release mutation. Hardware acceptance is unchanged.
+- Remaining gate: fresh native A/B with
+  retained checksum inputs if a mismatch remains; complete three-host compiler
+  and SDK release qualification stays open. TC0 remains `in development`.
+
+### 2026-10-15 - TC0 diagnostic Darwin configure-input seal
+
+- Baseline: diagnostic source `abf4ad848e0bf336eb4e37b223e33b81c3d310da`,
+  with only the reviewed Mesa CI-cache and Darwin host-Make corrections
+  replayed. The SDK source chain, target configuration and runtime code remain
+  unchanged. This diagnostic composition is not protected-main qualification.
+- The native SDK exporter correctly rejected the stale `configure.in` seal:
+  the Darwin host case now selects installed GNU make for response-file rules.
+  Refresh only that reviewed input digest in all four SDK contracts to
+  `715d96905d246e8286c5cd187b88fc22b7c7fb1245f5641125831735373bfd5a`.
+  No SDK roots, probes, ABI, source inventory or verification policy change.
+- Validation: 68 source CI tests passed after the native seal refresh. The
+  isolated producer preflight then correctly rejected the same stale input
+  in the three LLVM SDK contracts, before any compiler fan-out. Refresh their
+  identical digest too and repeat both source-owned exporter checks and the
+  exact-source producer preflight. These gates do not prove new
+  compiler A/B equality, SDK execution, relocation or hardware acceptance.
+- Safety: source metadata only; no existing build, board, firmware, media,
+  tag, release or diagnostic-run mutation. TC0 remains `in development`;
+  complete mixed-host diagnostic and publication gates remain open.
+
+### 2026-10-12 - TC0 refresh the RV32 SDK profile-input seal
+
+- Baseline: local source `8c7828d8d73f7ef20fbf0889dca9dde7c4592876`.
+  Adding the three LLVM SDK declarations changed `aros-targets.toml`, but
+  the RV32 consumer contract retained its earlier input hash. Native SDK
+  source verification correctly rejected that stale seal before any build.
+- Correction: refresh only this reviewed input digest to
+  `6151204a2b21f05c11440b85bc2d88c441d87605f9222dfc8462affd81286505`.
+  RV32 ISA, ABI, SMP, roots, probes and build policy remain unchanged.
+  No runtime guard is bypassed and no hash is supplied by the producer.
+- Procedure: the source exporter check and all 16 exporter regressions passed;
+  repeat
+  the native four-product source/input preparation against a clean commit.
+  Declaration validation does not qualify compiler A/B, SDK execution,
+  relocation, release admission or hardware. TC0 remains `in development`.
+- Safety: local source metadata/documentation only; no firmware, media,
+  existing build tree, tag, publication or board mutation.
+
+### 2026-10-10 - TC0 complete SDK source-input integration
+
+- Baseline: protected main `0c15f90eb34ce6b58089847f84b2b7a763ed6106`;
+  branch `fix/native-sdk-source-inputs`. Only source fetch/header-context
+  fixes are selected from the retained native SDK proof, not its old board
+  history, RV64 profile or SDK feature declaration. GNU recipe integration
+  remains a separate checked change.
+- Changes: pin the 14 fetch recipes in the complete SDK source closure;
+  preserve verified FreeType/GLU suffix candidates; select TIFF's HTTPS
+  origin. Codesets explicitly depends on its headers; GSM explicitly
+  declares its empty private header list rather than an undefined variable.
+- Normalization: zlib selects canonical-tar-gzip-v1, 2,337,668 bytes, SHA-256
+  `883d22e0b9aefc31a383c462adacdbd7941e6862559c5b27e59599db8114e783`.
+  GenMF forwards the representation fields. The shell fetch helper accepts
+  only an existing regular local canonical cache entry verified before locks,
+  extraction or network access, and rechecks it before extraction. It does
+  not canonicalize a remote response. Ordinary exact-byte fetches keep their
+  prior path. Product CI's existing locked zlib staging mapping is unchanged.
+- Procedure: the CI authoring regressions expand all 14 real recipes through
+  GenMF and GNU make, require an exact pin for every selected archive format,
+  and reject missing pins or unpinned fallbacks. The normalization regression
+  exercises actual local extraction and rejects corrupted hash, wrong size,
+  absent cache, incomplete/unknown metadata and multiple suffix candidates.
+  GSM generation is checked independently of a complete SDK build.
+- Evidence: 13 recipe inputs were rehashed against the retained prepared SDK
+  cache on macOS ARM64; zlib uses the independently verified repository seed.
+  This is input/fixture evidence, not fresh compiler/SDK qualification. No
+  hardware, media, existing build tree, tag or release was changed.
+- Next: required source CI and independent review, integrate the separate
+  GNU fixes, then bind the native SDK contract to the final exact source and
+  qualified runtime before clean mixed-host release qualification.
 ### 2026-10-16 - TC0 libinit literal compiler-flag closure
 
 - Evidence: nonpublishing Producer diagnostic `38777083911`, source
@@ -2543,38 +2766,403 @@ change any board's hardware acceptance state.
   evidence or hardware qualification. TC0 remains `in development`.
 - Next: final independent review and required product CI, followed by a clean
   source/runtime-bound compiler/SDK replay and full mixed release gates.
+### 2026-10-10 - TC0 source-owned native SDK declaration
 
-### 2026-10-10 - TC0 complete SDK source-input integration
+- Starting point: local integration commit
+  `158dc7a3b77fb4f19c5a3522649779d677a75418`, combining the separately reviewed
+  GNU recipe and SDK source-input prerequisites. This is not protected-main
+  acceptance or a qualified new release source. No existing board runtime or
+  OpenSBI/RV64 target is imported.
+- Contract: `esp32p4-riscv-gnu` selects compiler profile `rv32-esp32p4`,
+  RV32 `rv32imafc_zicsr_zifencei_zaamo_zalrsc`, `ilp32f`, `medany`, standalone,
+  MMU off and mandatory platform SMP. Exec SMP is separately enabled in the
+  generated include template. The full `includes` and `linklibs` roots remain
+  selected with ordinary `ports-includes` and SDK selector 0.
+- Configuration: compiler/archive executables are native-engine roles; the
+  sysroot is the build's Developer tree. The existing source-owned d1001 board
+  selection supplies shared-header compilation flags, not a kernel or media
+  readiness claim. The 44 regular source inputs are freshly hash-sealed.
+  Three host projections select host generators without changing the target ABI.
+- Procedure: source-seal `export.py --check`, the exporter positive/invalid-input
+  regressions, CI-discovered declaration tests, and the actual aros-common
+  `p4_source_consumer` opt-in Rust loader test against this checkout. The Rust
+  counterprobes use isolated copies to reject width, MMU, SMP, source-profile
+  and linker-input substitutions.
+- Observed: the exact Rust loader test passed on macOS ARM64 against tools
+  `04ad2f40dccc2a08d1582dfd3d707bb0217ae797`; exporter checks and all ten exporter
+  regressions passed. These are declaration/authoring results, not a fresh
+  complete native SDK, compiler A/B, relocation, firmware or hardware proof.
+- Release boundary: published tools v0.3.19 lacks native-consumer support.
+  Source feature activation and product CI must use only the measured new
+  qualified runtime. The declared baseline does not replace actual clean
+  qualification source identity. Standalone SDK distribution/installation
+  is separate from this compiler-consumer contract.
+- Next: independent declaration review and prerequisite merges; qualify the
+  tools runtime, bind exact source/producer inputs, then complete native SDK
+  C/C++ final links, P4 integration and mixed three-host release qualification.
 
-- Baseline: protected main `0c15f90eb34ce6b58089847f84b2b7a763ed6106`;
-  branch `fix/native-sdk-source-inputs`. Only source fetch/header-context
-  fixes are selected from the retained native SDK proof, not its old board
-  history, RV64 profile or SDK feature declaration. GNU recipe integration
-  remains a separate checked change.
-- Changes: pin the 14 fetch recipes in the complete SDK source closure;
-  preserve verified FreeType/GLU suffix candidates; select TIFF's HTTPS
-  origin. Codesets explicitly depends on its headers; GSM explicitly
-  declares its empty private header list rather than an undefined variable.
-- Normalization: zlib selects canonical-tar-gzip-v1, 2,337,668 bytes, SHA-256
-  `883d22e0b9aefc31a383c462adacdbd7941e6862559c5b27e59599db8114e783`.
-  GenMF forwards the representation fields. The shell fetch helper accepts
-  only an existing regular local canonical cache entry verified before locks,
-  extraction or network access, and rechecks it before extraction. It does
-  not canonicalize a remote response. Ordinary exact-byte fetches keep their
-  prior path. Product CI's existing locked zlib staging mapping is unchanged.
-- Procedure: the CI authoring regressions expand all 14 real recipes through
-  GenMF and GNU make, require an exact pin for every selected archive format,
-  and reject missing pins or unpinned fallbacks. The normalization regression
-  exercises actual local extraction and rejects corrupted hash, wrong size,
-  absent cache, incomplete/unknown metadata and multiple suffix candidates.
-  GSM generation is checked independently of a complete SDK build.
-- Evidence: 13 recipe inputs were rehashed against the retained prepared SDK
-  cache on macOS ARM64; zlib uses the independently verified repository seed.
-  This is input/fixture evidence, not fresh compiler/SDK qualification. No
-  hardware, media, existing build tree, tag or release was changed.
-- Next: required source CI and independent review, integrate the separate
-  GNU fixes, then bind the native SDK contract to the final exact source and
-  qualified runtime before clean mixed-host release qualification.
+### 2026-10-10 - TC0 strict SDK graph closure
+
+- State: TC0 remains `in development`; selected SDK graph audit passed, not
+  complete SDK construction, compiler publication or hardware acceptance.
+- Source: local integration baseline `158dc7a3b77fb4f19c5a3522649779d677a75418`
+  plus the reviewed native SDK declaration. The consumer contract SHA-256 is
+  `f995ff42e9190fd53714f771bda1fe1e6964b07624e4c4f61e7ff1c0bd05baec`.
+  Its 44 regular source inputs remain individually sealed.
+- Correction: remove the erroneous optional Exec selector declaration. Common
+  Exec prerequisites remain mandatory. Declare the missing P4 endpoint
+  `kernel-exec-includes-esp32p4-riscv` with `kernel-kernel-includes`, following
+  the existing native RISC-V/ARM ports. No endpoint is invented by Rust and no
+  mandatory edge is waived. The internal normalized selector names are correct
+  and remain unchanged.
+- Procedure: initialize the four selected catalog submodules at their exact
+  source gitlinks; run exporter checks and all 45 CI-authoring tests (passed).
+  Run the real local transpiler against the complete `includes` and `linklibs`
+  selection, GNU/RV32 `ilp32f`, MMU off, SMP variant and retained sealed ports.
+  The runtime also rejects mandatory-source optionality, with valid virtual,
+  mandatory and colliding-selector counterprobes. Those are runtime safeguards,
+  not P4-specific graph compensation.
+- Observed: 2,250 reachable endpoints; zero missing endpoints, selected
+  capability failures, partial projections, unowned failures or unproven Make
+  providers. Root/dependency/strict validation errors are absent. The diagnostic
+  invocation published neither a build graph nor a source inventory.
+- Safety/limits: no compiler build, firmware, media or hardware mutation. The
+  local runtime is not a newly qualified public release. This measurement is
+  not a complete native SDK, final C/C++ link, relocation or three-host result.
+- Next: integrate the checked source prerequisites and qualified runtime, then
+  build the clean native SDK, test C/C++ final links and relocation, and qualify
+  the full mixed compiler/SDK release set on all three hosts.
+
+### 2026-10-10 - TC0 ordered archive preparation and next SDK blocker
+
+- State: TC0 remains `in development`. The OpenURL component is build-verified;
+  the complete SDK, C/C++ final links and relocation remain unverified.
+- Inputs: native SDK source commit `319eeae161265cf9b0d4d8945b0da26f420baf26`,
+  consumer digest
+  `f995ff42e9190fd53714f771bda1fe1e6964b07624e4c4f61e7ff1c0bd05baec`,
+  retained relocated GNU compiler and local tools runtime. The executing CLI
+  SHA-256 was
+  `56101098c77d0e481fcb66380a7c168473a328f408c8d43959d6214519b84dc8`;
+  the transpiler SHA-256 was
+  `45a5b4d8fc53702652a46a1f62aa6bcd755f3c8304c0d8cb2425230f9e592b1b`.
+- Cause: MetaMake visits `includes` before the ordinary OpenURL quick archive
+  synchronously. The native graph had scheduled them as parallel siblings.
+  The tools correction binds source-local preceding prerequisites to exact
+  archive compiler producers; it does not patch OpenURL's source or invent
+  missing endpoints. Exact source/producer joins, omission proofs, cycle
+  rejection and a bounded work budget have regression coverage.
+- Procedure: continue the same `esp32p4-riscv-gnu` build with `--jobs 12`,
+  `--compiler-cache off` and `--require-fetch-checksums`; no clean reset and
+  no concurrent second build. The recorded Ninja continuation contained
+  7,111 pending actions, not the original full action count.
+- Observed: the generated header was produced before its compiler consumer;
+  `libopenurl.a` completed at action 3,699. Header SHA-256:
+  `e58059f694dbdfb33badcab7c3d037c5cde0359814ebf19666ab62e6c3a6922f`.
+  `autoinit-aros.o` SHA-256:
+  `22abb6566d9f58694ebccf3f773f5352eafbe8f711d99ed8ef4de1d2f6c759a1`.
+  Archive SHA-256:
+  `b3dd173083b27f5c1d785361af92eb73f642d8ac5ae900d90489be469b92ae36`.
+  Fifteen ordered-preparation unit tests and a fresh physical C/C++ compiler
+  fixture with the missing-edge counterprobe passed. The source-coupled
+  transpiler suite passed 1,114 tests, with five existing ignored tests and
+  the historical Mesa 20 inventory test explicitly excluded.
+- Remaining failure: action 4,554 failed compiling Zune `balance.c`. Its
+  `<string.h>` resolves to the private muimaster classes header because the
+  native engine adds implicit module directories as `-I`; Classic uses
+  `-iquote`. Correct the generic include classification, not `STACKED` or
+  the source include spelling, and requalify the same incremental tree.
+- Safety: no board driver, SMP runtime, firmware, media or hardware change.
+  The local runtime is not a newly qualified public release. Focused tests
+  and archive output do not qualify the complete SDK or three-host release.
+- Next: prove quote/angle lookup with real C/C++ compilers and invalid-path
+  counterprobes, then finish native SDK construction, final links, relocation
+  and the full release qualification without changing immutable history.
+
+### 2026-10-10 - TC0 quote-only implicit module include correction
+
+- State: TC0 remains `in development`; complete native SDK construction is
+  being requalified in the existing tree. No full SDK or hardware pass.
+- Cause: Classic `config/make.tmpl` passes implicit module source/build
+  directories through `CFLAGS_IQUOTE`. The native engine had additionally
+  added these directories as ordinary `-I`, letting Zune's local `string.h`
+  shadow `<string.h>`. The source recipe and include spelling are correct.
+- Correction: tools commit `02ea41b78064fd2ee184b14bc697899f9efe3555`
+  keeps implicit generated/module directories quote-only. Explicit source
+  `INCLUDES` and architecture include paths retain angle-header lookup. No
+  Zune-specific exception, invented macro or AROS source correction is used.
+  Ordered archive preparation is separately committed as
+  `9b8ed87d45a40c1e94bb6d8941978a466af2699f`.
+- Procedure/results: all 41 engine tests passed on the final fixture in
+  30.39 seconds. Real LLVM and retained RV32 GCC/G++ compile probes preserve
+  quoted private headers and explicit source angle includes. C/C++ attempts
+  to use module-only headers through angle lookup fail with the expected
+  missing-header diagnostic. Isolated old-policy copies reproduce the LLVM
+  module-root leak and the GNU private-header collision. Disposable fixture
+  trees were removed after verification; workspace Clippy and secret guards
+  passed before pushing the functional fixes.
+- Native requalification: use source baseline
+  `73f65915e39c434523b1bdbd7624d4f21dedb622` and the unchanged sealed SDK
+  contract. Rebuilt CLI SHA-256:
+  `c0bb9ee59c5aa82170d312016a9ce86322a2c05ae65c06beff1753bf9032b2a5`;
+  transpiler SHA-256:
+  `5ae01a7b87058ebe02a43db7a1d1024e3d1f7adac2d2649b32b201601ad97f63`.
+  Continue `esp32p4-riscv-gnu` with the retained relocated compiler,
+  `--jobs 12 --compiler-cache off --require-fetch-checksums`. The continuation
+  was confirmed running, not terminal success; no clean reset or second
+  concurrent native build was started.
+- Safety/remaining risk: no board, SMP runtime, firmware, media or hardware
+  change. A local runtime and synthetic header probes do not qualify the full
+  SDK or public release. Next inspect the actual native outcome, then prove
+  final C/C++ links and relocation and complete three-host qualification.
+
+### 2026-10-10 - TC0 native replay and POSIXC exit declaration
+
+- State: TC0 remains `in development`. Native SDK run 79526 exited 1 at
+  action 7453/8284; the action count is not a release completion percentage.
+- Inputs: source baseline `a64bcb1f7275fbfe3e861ecf31a476fbd0ea47ec`,
+  tools `02ea41b78064fd2ee184b14bc697899f9efe3555`, the retained relocated
+  GNU RV32 compiler and unchanged sealed native SDK declaration. The existing
+  `esp32p4-riscv-gnu` tree was continued without a clean reset or concurrent build.
+- Observed: OpenURL's archive was rebuilt at action 4903. Zune `balance.c`
+  compiled at action 5728; its object is 17,548 bytes, SHA-256
+  `0cf2304e27a1cc5a79bfcf6e64fda97219588814d54bf020ab83f87df53da8bc`.
+  The two previously failing components therefore pass the real native replay.
+- Next source failure: `compiler/crt/posixc/_exit.c` calls `_Exit` without
+  including `<stdlib.h>`, which declares it. Classic POSIXC recipe flags do
+  not supply that declaration implicitly. Add only the standard include;
+  vfork interception, normal termination, ABI and warning policy are unchanged.
+- Verification: use the exact generated RV32 GCC command with dependency/output
+  flags removed for syntax-only probes and `-Werror=implicit-function-declaration`.
+  The unmodified committed source fails specifically at `_Exit` (exit 1);
+  the corrected source passes (exit 0). Independent source/header review
+  confirms this is a missing source declaration, not a transpiler workaround.
+- Safety/remaining risk: no board, firmware, media, SMP implementation, tag or
+  release changed. Focused compilation does not qualify the entire Developer
+  SDK. Next finish this same build, then prove native C/C++ links and relocation
+  before the complete three-host release qualification.
+
+### 2026-10-10 - TC0 full SDK build and Popupmenu archive ownership
+
+- State: TC0 remains `in development`. Native SDK continuation 76826 passed
+  in 273.81 seconds on source `58deb413a532c409bddaf6240d4cf84bbb7125d5`
+  and tools `02ea41b78064fd2ee184b14bc697899f9efe3555`. Its retained log is
+  4,775,575 bytes, SHA-256
+  `3c4acb70fa9197f6b6464ea86a8948e75141f8ae46cce5a73946050d1d971872`.
+- Application probes: ordinary C linking passed. Ordinary C++ linking failed
+  because `-lm` had no public SDK archive. The source's ordinary `libm` recipe
+  correctly uses the default Developer library directory; the transpiler did
+  not publish selected default archives without an in-tree link consumer.
+  The generic correction is tools `e9fcc03`, with focused regressions and
+  1,116 source-coupled transpiler tests passed (five existing ignored tests and
+  one explicitly filtered historical Mesa20 test).
+- Next observed source fault: native configure 28374 rejected two owners of
+  `SYS/Developer/lib/libpopupmenu.a`. Classic's generated library recipe
+  publishes both the module and explicit `linklibname` spellings, while a
+  separate Popupmenu recipe independently publishes the module spelling.
+  Suppressing an alias in aros-tools would conceal the ownership conflict.
+- Source correction: move the ten existing static-client inputs into the main
+  module's `linklibfiles`, retain `staticlib/autoinit.c` and its minimum library
+  version 10, and state `options noautoinit` to disable only the duplicate
+  generated client initializer. Generated stubs/getlibbase remain selected.
+  The historical `linklibs-popupmenu` endpoint now requires the module's
+  client archive. Runtime implementation inputs are unchanged; its unneeded
+  self-client dependency is removed. Both public archive names remain required.
+- Procedure: continue the same native tree with the same relocated RV32 GCC,
+  `--jobs 12 --compiler-cache off --require-fetch-checksums`; no clean reset or
+  concurrent native build. Replay 16341 exited 1 before compilation because
+  the rewritten `linklibs-popupmenu` still claimed a nonvirtual own recipe.
+  Its source declaration is now a virtual `#MM-` aggregate requiring the
+  actual module client archive; no transpiler provider check was weakened.
+  Replay 21949 is running; do not infer success yet.
+- Safety/remaining risk: no board, firmware, media, SMP implementation, tag or
+  release mutation. Native archive contents and initialization need inspection,
+  followed by ordinary C/C++ links, relocation and durable release-gate coverage.
+  Full three-host qualification and public verification remain required.
+
+### 2026-10-10 - TC0 complete native SDK and ordinary application relocation
+
+- Identity: source `953f3b96431a64a7c9fae80cb2a5c70c0c69f4a3`, tools
+  `e162b98e8b43e42c2c350f78401ecbc98450f149`, same relocated GNU RV32 compiler
+  and same native build tree as the preceding experiment. SDK source contract
+  remains SHA-256 `f995ff42e9190fd53714f771bda1fe1e6964b07624e4c4f61e7ff1c0bd05baec`.
+- Build: session 21949 exited 0 after 7,025 Ninja actions in 411.26 seconds.
+  The retained log is 4,940,186 bytes, SHA-256
+  `87ca9909c5e493672683428a0976ac78099ebc6405dc6fe25e0378512af27b4e`.
+  Both public Popupmenu archive names are byte-identical, SHA-256
+  `3275735708cb5739471f7b557f5d0c726dd9909d30c91cb1e1c4963c67e5e284`.
+  Their 12 members contain ten handwritten client inputs, generated API stubs
+  and getlibbase, with exactly one base registration. The existing version-10
+  weak requirements remain; no generated client initializer is duplicated.
+- Application procedure: ordinary GCC/G++ compilation and driver linking with
+  the explicit Developer sysroot, `rv32imafc_zicsr_zifencei_zaamo_zalrsc`,
+  `ilp32f`, `medany`, strict alignment and C++17. No `-nostdlib`,
+  `-nostartfiles` or manually requested `-r`. Link maps attribute `NewList`
+  to the selected SDK's `libamiga.a` and out-of-line C++ string symbols to the
+  selected compiler's `libstdc++.a`. AROS's normal ELF REL result is not a
+  substitution of an explicitly requested partial link.
+- Relocation: a mode-preserving APFS clone matched all 19,831 SDK inventory
+  entries (regular-file bytes/sizes/modes, directories and symlink targets).
+  Both driver links repeated successfully at the new root. C output is
+  38,156 bytes, SHA-256
+  `d92833604711265bcd24d269b169d75fcf9641eb908895fccf65c97379cf9063`;
+  C++ is 6,207,072 bytes, SHA-256
+  `6cacf405d2715ff6dfa9c074c801e4f6b24aca9ae9550f6d64bdd4261f2c35b8`.
+  Each is byte-identical before/after relocation. SDK inventories remained
+  unchanged; relocated maps/traces reject original SDK/build/sysroot paths.
+- Counterprobes: empty SDK fails at its missing public AROS header; `ilp32d`
+  fails the ISA/ABI contract; an injected original SDK path fails validation.
+  The initial copy without permission preservation was correctly rejected
+  for 48 mode-only differences, then replaced by the mode-preserving clone.
+- Retained local receipt: 14,516 bytes, SHA-256
+  `37f48792963b728d17427dd75672a87d94848230685462b0bea67c694b14628d`;
+  complete inventory JSON: 3,930,629 bytes, SHA-256
+  `2d5b2d488b95916f748fba1c6fcb9ba2ff374a943096a94fd9b52d74cda3a98b`.
+- Safety/status: local macOS ARM64 build/link evidence only. No hardware,
+  firmware, release/tag or protected-main mutation. The local Python harness
+  is not the public Rust release gate. TC0 remains `in development` until
+  durable source-declared C/C++ probes, retained read-back/admission, a released
+  runtime, all three host lanes and isolated public artifacts are qualified.
+
+### 2026-10-10 - TC0 source-owned v2 C/C++ probe declaration and loader tests
+
+- Identity: source checkout HEAD `7534dd13ae02a623817596c29f4ccb419cfb2111`
+  with the v2 declaration, exporter, profile selection and probe fixtures in
+  the working tree. `consumer-v2.json` SHA-256 is
+  `18d2c40c3013c2efc6d235ce26b7453d31feacf02ae5d4d86215ae7077e481f6`; C and
+  C++ fixture SHA-256 values are `4d717957353364882cf5b14c6e4a33489c1f6f759734619c7b8766e11ebc5c79`
+  and `7b6625c87e203b70003d67fa5962c621f079e51b928e3c39305e12cf3d519f41`;
+  tools checkout HEAD `e162b98e8b43e42c2c350f78401ecbc98450f149` with the v2
+  loader and tests in the working tree. The preceding local SDK build, links
+  and relocation remain the separate source `953f3b96431a64a7c9fae80cb2a5c70c0c69f4a3`
+  / tools `e162b98e8b43e42c2c350f78401ecbc98450f149` evidence above.
+- Scope: source profile selects `consumer-v2.json`; the source contract seals
+  ordinary `.c` and `.cpp` application fixtures with empty additional-library
+  lists, leaving normal driver runtime defaults in scope. The opt-in source
+  test asserts both typed declarations and verifies that an altered sealed
+  probe copy and missing v2 probe metadata are rejected in an isolated tree.
+- Procedure/configuration: on macOS ARM64, run
+  `python3 arch/riscv-esp32p4/native-sdk/export.py --check`,
+  `python3 arch/riscv-esp32p4/native-sdk/test_export.py` (10 tests), and
+  `AROS_TEST_P4_SOURCE=/Volumes/Dev/Source/Amiga/AROS-NX-gnu-release-integration CARGO_TARGET_DIR=/private/tmp/aros-family-v2-test.KLAdiZ CARGO_INCREMENTAL=0 cargo test -p aros-common --test p4_source_consumer -- --ignored` (1 test).
+  These checks validate source metadata and hashes only; they do not build the
+  SDK or execute either compiler/linker.
+- Evidence: exporter checks and the opt-in loader test passed. The isolated
+  digest counterprobe rejected the changed C fixture, and the loader rejected
+  a v2 contract with `native_sdk_link_probes` removed. No original source input
+  was changed by the counterprobes.
+- Safety/remaining risk: no board, firmware, media, native SDK build tree,
+  release artifact or hardware state was changed or qualified. The earlier
+  local SDK and relocation result is not yet a durable tools receipt gate.
+  Generic native execution, relocated inventory/replay, retained read-back and
+  release admission, qualified runtime, three-host comparison and publication
+  remain open. No hardware claim.
+- Next: integrate the generic ordinary C/C++ link and relocation proof with
+  bounded retained receipt, read-back and source-independent release admission;
+  then qualify the released runtime and all three host lanes.
+
+### 2026-10-10 - TC0 source CI follows the mandatory v2 SDK probes
+
+- Baseline: source `f4231ae46063c219f5f8fcca5e474bb3f32e5fee`; the selected
+  SDK contract remains SHA-256
+  `18d2c40c3013c2efc6d235ce26b7453d31feacf02ae5d4d86215ae7077e481f6`.
+  Before correction the CI-discovered declaration suite failed with two
+  missing-v1-file errors and one stale profile-path assertion. The exporter
+  itself and source profile already selected v2 correctly.
+- Correction: declaration tests read the selected v2 contract, require exactly
+  the ordinary C/C++ probe paths and empty additional-library lists, and verify
+  both fixture hashes against the source-input seals. Exporter counterprobes
+  reject absent SDK probe metadata and an unsealed C++ probe without changing
+  the rejected contract or its source inputs.
+- Procedure: `python3 scripts/ci/test_native_sdk_declaration.py` and
+  `python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v`.
+- Result: five declaration tests and all 46 discovered source CI tests passed
+  on macOS ARM64. The declaration suite also executes all 12 isolated exporter
+  tests. These are source-authoring checks, not SDK compiler/link execution,
+  A/B, publication or hardware evidence.
+- Safety: no source implementation, compiler package, source contract seal,
+  retained build tree, board, firmware, media, tag or release changed. The live
+  integrated SDK diagnostic retains its independently frozen f4231ae source.
+- Remaining gate: actual owning SDK execution and relocation/read-back, exact
+  qualified source/runtime integration, then mixed three-host qualification
+  and independent public artifact verification. TC0 remains `in development`.
+
+### 2026-10-11 - TC0 explicit standard-library SDK root
+
+- Failed replay: source `f4231ae46063c219f5f8fcca5e474bb3f32e5fee`,
+  consumer contract SHA-256
+  `18d2c40c3013c2efc6d235ce26b7453d31feacf02ae5d4d86215ae7077e481f6`,
+  local tools `7854b43966ec7e75b0bb8f869bb9cff5d6dc8da4` on macOS ARM64.
+  The native and Classic `includes`/`linklibs` stages passed, including
+  OpenURL. The first ordinary SDK C link then failed: 26 default client/runtime
+  archives, including `libposixc.a`, `libstdc.a` and `libexec.a`, were absent.
+  No complete application-link/relocation receipt was produced.
+- Cause: the SDK declaration selected only `includes` and `linklibs`.
+  The source's `core-linklibs` aggregate owns the missing runtime/client
+  archives; it is not a dependency of the ordinary `linklibs` aggregate.
+  GCC's default library specification is correct and the measured SDK `lib`
+  directory appears in its actual search paths. Both native and Classic SDK
+  outputs lack these archives; this is not a `-shared` naming discrepancy.
+- Correction: explicitly select sorted roots `core-linklibs`, `includes`,
+  `linklibs` in the source-owned contract. The invocation projection, ABI,
+  compiler defaults and empty extra-library probe lists remain unchanged.
+  No Rust fallback manufactures prerequisites, and no default library is waived.
+- Procedure: source exporter round-trip and missing/duplicate/unexpected-root
+  counterprobes; complete source CI authoring tests; bound tools loader test;
+  then a fresh complete SDK compatibility execution with all four normal
+  C/C++ original/relocated links. Record results before qualifying execution.
+- Observed authoring results: `export.py --check` passed, all 16 exporter
+  tests and all 46 source CI tests passed on macOS ARM64. The tools opt-in
+  source loader test first rejected the corrected three-root declaration
+  against its stale two-root assertion; after updating that test expectation,
+  it passed with the existing source-input, ABI and probe counterprobes.
+  Corrected consumer contract SHA-256:
+  `8ff48622ed870c376a204c99eeed19259864ec44fbc6c4b916f7b8401506fc63`.
+  These results verify declaration policy, not SDK build or application links.
+- Safety and remaining risk: no board, SMP implementation, firmware, media,
+  compiler archive, historical evidence or published artifact changed.
+  The contract correction is not a completed SDK, A/B or hardware gate.
+  TC0 remains `in development`; fresh complete SDK and mixed release evidence
+  are still required.
+
+### 2026-10-11 - TC0 fresh SDK links and reproducible generator dates
+
+- Fresh local SDK evidence: source `f0ef11bddad7484219fecc826becc995e724eb8e`,
+  tools `7854b43966ec7e75b0bb8f869bb9cff5d6dc8da4`, consumer contract
+  `8ff48622ed870c376a204c99eeed19259864ec44fbc6c4b916f7b8401506fc63`.
+  The native compatibility receipt SHA-256 is
+  `253d146b7d13ea1a9ceb4c08b0469d847754bf7d2bb455fa7c117410d0f3bf2c`;
+  the application-link receipt SHA-256 is
+  `0af96282489962cb40561b796033549b661ce07d9f848496167f97470e61046f`.
+  Six compatibility phases and four default C/C++ original/relocated links
+  passed. The SDK inventory contains 19,788 entries; both links are
+  byte-identical after relocation. This receipt explicitly qualifies local
+  links, not release admission. It remains bound to its original source.
+- Generator correction: `tools/genmodule/config.c` now uses one selected
+  `SOURCE_DATE_EPOCH` for the UTC banner year and missing module date;
+  explicitly declared module dates remain unchanged. Unset epoch retains
+  the historical UTC banner year and local default date. Invalid decimal,
+  overflow, host time representation and four-digit calendar values fail
+  before generation opens output files. The corrected file SHA-256 is
+  `b689b7309c3ac71ebadedc707067bd40c740e9add0e83a1f0a53f17d3832ad9a`.
+- Procedure and results: `python3 scripts/ci/test_genmodule_epoch.py -v`
+  builds the actual host generator in automatically cleaned temporary
+  directories; eight tests passed on macOS ARM64. Tests compare all six
+  generated files across four time zones, changed epochs, epoch zero,
+  leading zeroes, year 9999, explicit dates, unset behavior, and invalid
+  values for both output commands. The pre-fix generator countercontrol
+  ignored epoch `946684800`, emitting year 2026 and date `11.10.2026`.
+  The complete source CI authoring suite passed 54 tests.
+- Build limitation: strict whole-generator Apple Clang warning-as-error
+  compilation still encounters pre-existing warnings outside the new
+  epoch handling. The regression builds without suppressing warnings;
+  it is not a new strict-warning qualification.
+- Safety and next gate: this is a local source correction, with no push,
+  PR, native SDK regeneration, board, firmware, media or published artifact
+  mutation. The sealed native compatibility environment does not yet pass
+  `SOURCE_DATE_EPOCH`; the source patch alone does not qualify SDK
+  reproducibility. Bind and record that runtime input, regenerate and
+  package the SDK, then perform the mixed three-host release gates. TC0
+  remains `in development`.
 
 ## Track E: ESP32-P4 / RV32 SMP
 

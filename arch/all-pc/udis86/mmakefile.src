@@ -28,6 +28,8 @@ $(GENDIR)/$(CURDIR)/libudis86/itab.c: $(OPTABLE) \
                $(SRCDIR)/$(CURDIR)/scripts/ud_opcode.py | $(GENDIR)/$(CURDIR)/libudis86
 	$(PYTHON) $(SRCDIR)/$(CURDIR)/scripts/ud_itab.py $(OPTABLE) $(GENDIR)/$(CURDIR)/libudis86
 
+# This target aggregates generated files; it is not an implicit-rule output.
+.PHONY: udis86-genfiles
 #MM
 udis86-genfiles : $(GENDIR)/$(CURDIR)/libudis86/itab.c
 
