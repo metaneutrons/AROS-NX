@@ -142,11 +142,13 @@ assert_contains 'release build root survives the make boundary' "$release_child"
 assert_contains 'release source root survives the make boundary' "$release_child" "metadata-source-root=$source_root"
 assert_contains 'release checksum maps survive the make boundary' "$release_child" 'metadata-prefix-maps=-ffile-prefix-map=/src=/mapped -fdebug-prefix-map=/build=/mapped'
 assert_contains 'release checksum helper survives the make boundary' "$release_child" "metadata-checksum-helper=$source_root/tools/crosstools/gnu/aros-checksum-options.awk"
+assert_contains 'release libcody SRCDIR helper survives the make boundary' "$release_child" "metadata-cody-srcdir-helper=$source_root/tools/crosstools/gnu/aros-cody-srcdir.awk"
 assert_contains 'release recorded metadata opt-in reaches configure' "$release_env" 'AROS_GCC_RELEASE_LAYOUT=yes'
 assert_contains 'release recorded metadata gets the actual build root' "$release_env" "AROS_GCC_RELEASE_BUILD_ROOT=\"$test_dir/fixture\""
 assert_contains 'release recorded metadata gets the actual source root' "$release_env" "AROS_GCC_RELEASE_SOURCE_ROOT=\"$source_root\""
 assert_contains 'release checksum maps reach configure' "$release_env" 'AROS_GCC_RELEASE_PREFIX_MAPS="-ffile-prefix-map=/src=/mapped -fdebug-prefix-map=/build=/mapped"'
 assert_contains 'release checksum helper reaches configure' "$release_env" "AROS_GCC_RELEASE_CHECKSUM_HELPER=\"$source_root/tools/crosstools/gnu/aros-checksum-options.awk\""
+assert_contains 'release libcody SRCDIR helper reaches configure' "$release_env" "AROS_GCC_RELEASE_CODY_SRCDIR_HELPER=\"$source_root/tools/crosstools/gnu/aros-cody-srcdir.awk\""
 assert_contains 'release canonical neutral compiler configure prefix' "$release" 'gcc-prefix=/aros-toolchain'
 assert_contains 'release canonical compiler configure namespace' "$release_config" '--prefix=/aros-toolchain --bindir=/aros-toolchain --libdir=/aros-toolchain/lib'
 assert_contains 'release relocatable compiler default sysroot' "$release_config" '--with-sysroot=yes'
