@@ -1,6 +1,8 @@
 {
   "schema": "aros-sdk-consumer-contract-v1",
   "profile": "pc-x86_64",
+  "mesa_configure_target": "pc-x86_64",
+  "mesa_host_python_lock": "compiler/sdk/mesa-host-python-v1.json",
   "source_baseline": "02f46d3147824b0f88090166f52f10fac2af7b40",
   "roots": [
     "core-linklibs",
@@ -119,8 +121,12 @@
       "sha256": "56a358bb70e7b59b51e9cb5c8d3b41eee069ec8452401e5e231b363e611a3a31"
     },
     {
+      "path": "compiler/sdk/mesa-host-python-v1.json",
+      "sha256": "e2e4ae75bedbaa7785c4a344fb429e11115da3478630fb1b233ed0e1a51169fb"
+    },
+    {
       "path": "compiler/sdk/pc-x86_64/metamake-v1.json",
-      "sha256": "49ac593c288f252c7b2e323016ba52b561204a11803418ea7805bb8d2623d25d"
+      "sha256": "dff8fa6472a9916167b1d2e56613b0b2d060b548678c35c10c560bac52c1a45e"
     },
     {
       "path": "compiler/sdk/probes/application.c",
@@ -171,6 +177,10 @@
       "sha256": "55a6fe963d015d11fbd4509f0bf752f1036d9addf251a192fb57d150f974b5f4"
     },
     {
+      "path": "config/make.tail",
+      "sha256": "a41f7759ce714a16dbf0627bc3e392f68b5ee70024a2a72d561f5e14bd895cf0"
+    },
+    {
       "path": "config/make.tmpl",
       "sha256": "8661d2bf16e94d6fdb5b89f26663bb813766afb02209e6e0368b94858812ec75"
     },
@@ -180,7 +190,7 @@
     },
     {
       "path": "configure.in",
-      "sha256": "715d96905d246e8286c5cd187b88fc22b7c7fb1245f5641125831735373bfd5a"
+      "sha256": "88e9c4eed01507964ec571f584e06fba828f5c229d596791b8a7090f9fd9fb69"
     },
     {
       "path": "mmake.config.in",
@@ -192,15 +202,15 @@
     },
     {
       "path": "tools/MetaMake/cache.c",
-      "sha256": "c9a80fec85c0bb2d269578acedf01e9a53c468d404966ec453d6967c042f2f61"
+      "sha256": "d3ea6d1b023636602b489656e66d128ec06ca411f1fc90ad682a92ea4bf5881d"
     },
     {
       "path": "tools/MetaMake/dirnode.c",
-      "sha256": "82c4627c2b66bf9a46d5d5d5e7de7fc95dda962ec51448a604e717a3b0278f84"
+      "sha256": "228281a3cad9fc638d4db0a9f471dd38f1f1e7dc48824f4bb2ad4124883d3ed8"
     },
     {
       "path": "tools/MetaMake/project.c",
-      "sha256": "655a2bfc2a500d02ae5ad4a4201b5568d54ee3312cd831c6b2d98f468354ca77"
+      "sha256": "e9ad75e6ddebc9f3baef8af3262510342a5da6860843cc203a943aa3bc0133c2"
     },
     {
       "path": "tools/MetaMake/var.c",
@@ -221,6 +231,10 @@
     {
       "path": "tools/genmf/genmf.py",
       "sha256": "f5640603dcf6008ab2612daf0b975f17ca349aacc4a03ec25afc9c5cf1c4be52"
+    },
+    {
+      "path": "tools/genmodule/Makefile.deps",
+      "sha256": "1107a4ed21b886f2d04decfcaca9c4b3e510f0f0340cdb03aad10ba6b750c653"
     },
     {
       "path": "workbench/classes/datatypes/wav/gsm/mmakefile.src",

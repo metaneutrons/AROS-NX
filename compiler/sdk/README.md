@@ -9,6 +9,12 @@ Each profile declares:
 
 - The complete `core-linklibs`, `includes` and `linklibs` graph roots.
 - Its compiler triple, ABI and explicit compiler-option policy.
+- Its explicit `mesa_configure_target` for the Mesa 26 preflight, independent
+  of board naming. This configures the selected existing LLVM compiler; it
+  does not request compiler construction or establish SDK qualification.
+- Its sealed `mesa_host_python_lock` for private Mako/MarkupSafe and optional
+  YAML imports. The shared standalone package lock does not claim to be a
+  compiler source lock; ambient site packages are not a substitute.
 - Sealed MetaMake inputs, native configuration and exact optional selector hooks.
 - C and C++ application probes for ordinary original and relocated SDK links.
 
@@ -20,6 +26,12 @@ contract parse does not prove runtime ABI compatibility.
 The shared native configuration preserves recipe-local `ISA_FLAGS` through
 `TARGET_ISA_CFLAGS`, before ordinary `TARGET_CFLAGS`, as in classic Make.
 These source feature flags are separate from the selected compiler/ABI role.
+
+Ordinary Make defaults and MetaMake globals are separate namespaces. The SDK's
+`STARTUP_DEBUG=0` stays in its Make configuration; it is not a MetaMake global
+because the selected MetaMake project does not read that SDK configuration.
+Its MetaMake policy therefore declares the name absent instead of injecting a
+value that the native metadata traversal never receives.
 
 The x86-64 SDK explicitly declares an i386 companion role for its `lib32`
 objects. `cpu32` selects the source recipes; it does not infer a compiler ABI.

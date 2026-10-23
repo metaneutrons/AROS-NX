@@ -4,6 +4,7 @@
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import stat
 import subprocess
@@ -326,6 +327,72 @@ class ExportCLITest(unittest.TestCase):
 
 
 class SourceContractTest(unittest.TestCase):
+    def test_original_include_prerequisite_programs_are_policy_bound_and_sealed(self):
+        root = Path(__file__).resolve().parents[2]
+        required = ("config/aros.cfg", "config/make.tail", "tools/genmodule/Makefile.deps")
+
+        def check_programs(contract, policy):
+            seals = {entry["path"]: entry["sha256"] for entry in contract["inputs"]}
+            for source in required:
+                self.assertIn(source, policy["evidence_sources"])
+                self.assertIn(source, seals)
+                self.assertEqual(seals[source], hashlib.sha256((root / source).read_bytes()).hexdigest())
+
+        targets = tomllib.loads((root / "aros-targets.toml").read_text())["targets"]
+        for target in targets:
+            if "sdk_consumer_contract" not in target:
+                continue
+            contract = json.loads((root / target["sdk_consumer_contract"]).read_text())
+            policy = json.loads((root / contract["metamake_projection"]).read_text())
+            with self.subTest(profile=target["name"]):
+                check_programs(contract, policy)
+                for source in required:
+                    missing_policy = json.loads(json.dumps(policy))
+                    missing_policy["evidence_sources"].remove(source)
+                    with self.assertRaises(AssertionError):
+                        check_programs(contract, missing_policy)
+                    missing_seal = json.loads(json.dumps(contract))
+                    missing_seal["inputs"] = [entry for entry in missing_seal["inputs"]
+                                              if entry["path"] != source]
+                    with self.assertRaises(AssertionError):
+                        check_programs(missing_seal, policy)
+                    wrong_seal = json.loads(json.dumps(contract))
+                    for entry in wrong_seal["inputs"]:
+                        if entry["path"] == source:
+                            entry["sha256"] = "0" * 64
+                    with self.assertRaises(AssertionError):
+                        check_programs(wrong_seal, policy)
+
+    def test_startup_debug_default_is_gnu_make_policy_not_metamake_globals(self):
+        root = Path(__file__).resolve().parents[2]
+        targets = tomllib.loads((root / "aros-targets.toml").read_text())["targets"]
+
+        def check_scope(contract, policy):
+            self.assertEqual(contract["make_variables"]["STARTUP_DEBUG"], "0")
+            self.assertIn("STARTUP_DEBUG", policy["declared_absent"])
+            for snapshot in policy["global_snapshots"]:
+                self.assertIsNone(re.search(
+                    r"(?m)^\s*STARTUP_DEBUG\s*[:?+]?=", snapshot["text"]
+                ))
+
+        for target in targets:
+            if "sdk_consumer_contract" not in target:
+                continue
+            contract = json.loads((root / target["sdk_consumer_contract"]).read_text())
+            policy = json.loads((root / contract["metamake_projection"]).read_text())
+            with self.subTest(profile=target["name"]):
+                check_scope(contract, policy)
+                for snapshot in policy["global_snapshots"]:
+                    self.assertIsNone(re.search(
+                        rb"(?m)^[\t ]*STARTUP_DEBUG[\t ]*[:?+]?=",
+                        (root / snapshot["source"]).read_bytes(),
+                    ))
+                # Recreate the original scope leak without changing any file.
+                leaked = json.loads(json.dumps(policy))
+                leaked["global_snapshots"][-1]["text"] += "STARTUP_DEBUG := 0\n"
+                with self.assertRaises(AssertionError):
+                    check_scope(contract, leaked)
+
     def test_native_sdk_flags_preserve_recipe_local_isa_and_order(self):
         # Execute only the source-owned variable binding in an isolated Make
         # environment; never query Make's database or inherited environment.

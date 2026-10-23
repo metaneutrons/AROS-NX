@@ -2,6 +2,15 @@
   "schema_version": 1,
   "kind": "native-metamake-policy-v1",
   "profile": "arm-raspi",
+  "mesa26_original_producers": [
+    {
+      "source_input": "arch/arm-native/soc/broadcom/2708/hidd/vc4gallium/mmakefile.src",
+      "goal": "linklibs-gallium_vc4-gca",
+      "producer": "$(GCA_GENDIR)/.gca.stamp",
+      "cooutput": "$(GCA_GENDIR)/gca_private.list",
+      "consumer": "$(top_libdir)/libgallium_vc4_gca.a"
+    }
+  ],
   "project": "AROS",
   "configuration_source": "mmake.config.in",
   "template": "config/make.tmpl",
@@ -24,7 +33,7 @@
     {
       "source": "config/target.cfg.in",
       "configured_path": "$(TOP)/bin/$(AROS_TARGET_ARCH)-$(AROS_TARGET_CPU)/gen/config/target.cfg",
-      "text": "CPU := arm\nARCH := raspi\nFAMILY := \nAROS_TARGET_PLATFORM := raspi-arm\nAROS_TOOLCHAIN := llvm\nUSE_MMU := 1\nOPT_MESAGL := 26.0.0\nAROS_TOOLCHAIN_RELEASE := 0\nCROSSTOOLS_PORTS_INCLUDES := ports-includes\nFLAVOUR := standalone\nKERNEL_TOOLCHAIN := llvm\nTARGET_LIBATOMIC := yes\nTARGET_USELOGRES := no\nTARGET_BINUTILS_VER := \nTARGET_GCC_VER := \nAROS_TARGET_ICONSET := Gorilla\nAROS_TARGET_BOOTLOADER := \nAROS_TARGET_TOOLCHAIN := yes\nPCI_HIDD_TARGET := \nJPEGXL_TOOLCHAINSUPPORT := \nNOUVEAU_TOOLCHAINSUPPORT := \nOBJC_TARGET := no-objc\nTARGET_UNITTESTS := no\nSTARTUP_DEBUG := 0\nTARGET_RUST := no\nTARGET_RUST_VER := 1.98.1\nTARGET_LLVM_VER := 11.0.0\nTARGET_LLVM_RUNTIMES_STYLE := separate\n"
+      "text": "CPU := arm\nARCH := raspi\nFAMILY := \nAROS_TARGET_PLATFORM := raspi-arm\nAROS_TOOLCHAIN := llvm\nUSE_MMU := 1\nOPT_MESAGL := 26.0.0\nAROS_TOOLCHAIN_RELEASE := 0\nCROSSTOOLS_PORTS_INCLUDES := ports-includes\nFLAVOUR := standalone\nKERNEL_TOOLCHAIN := llvm\nTARGET_LIBATOMIC := yes\nTARGET_USELOGRES := no\nTARGET_BINUTILS_VER := \nTARGET_GCC_VER := \nAROS_TARGET_ICONSET := Gorilla\nAROS_TARGET_BOOTLOADER := \nAROS_TARGET_TOOLCHAIN := yes\nPCI_HIDD_TARGET := \nJPEGXL_TOOLCHAINSUPPORT := \nNOUVEAU_TOOLCHAINSUPPORT := \nOBJC_TARGET := no-objc\nTARGET_UNITTESTS := no\nTARGET_RUST := no\nTARGET_RUST_VER := 1.98.1\nTARGET_LLVM_VER := 11.0.0\nTARGET_LLVM_RUNTIMES_STYLE := separate\n"
     }
   ],
   "environment": [
@@ -104,7 +113,8 @@
     "OPT_HOST_PULSEAUDIO",
     "OPT_HOST_SDLGFX",
     "OPT_HOST_X11GFX",
-    "OPT_HOST_X11_HOSTGL"
+    "OPT_HOST_X11_HOSTGL",
+    "STARTUP_DEBUG"
   ],
   "evidence_sources": [
     "Makefile.in",
@@ -114,6 +124,9 @@
     "config/make.cfg.in",
     "config/config.h.in",
     "compiler/include/geninc.cfg.in",
+    "config/aros.cfg",
+    "config/make.tail",
+    "tools/genmodule/Makefile.deps",
     "tools/MetaMake/dirnode.c",
     "tools/MetaMake/cache.c",
     "tools/MetaMake/var.c",
@@ -125,6 +138,7 @@
   "architecture_hook_families": [
     "module",
     "linklib",
-    "set-archincludes"
+    "set-archincludes",
+    "quick"
   ]
 }
