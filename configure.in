@@ -82,6 +82,7 @@ srcpwd=`cd ${srcdir} ; ${PWDCMD-pwd}`
 SRCDIR=${srcpwd}
 AC_MSG_RESULT($SRCDIR)
 
+mmake_ignore_dirs=""
 IS_INSUBDIR=`echo $AROS_BUILDDIR | sed "s|$SRCDIR||"`
 if test "x$IS_INSUBDIR" != "x$AROS_BUILDDIR" ; then
     if test "x$IS_INSUBDIR" != "x" ; then
@@ -91,6 +92,28 @@ if test "x$IS_INSUBDIR" != "x$AROS_BUILDDIR" ; then
         AC_MSG_WARN([Detected build inside the source tree - consider building in a separate dir])
     fi
 fi
+
+AC_ARG_WITH([mmake-ignore-directory],
+    [AS_HELP_STRING([--with-mmake-ignore-directory=RELATIVE/PATH],
+        [exclude one exact project-relative generated subtree from MetaMake])],
+    [
+        case "$withval" in
+            ""|yes|no|/*|*/|*//*|*[[!a-zA-Z0-9_./-]]*)
+                AC_MSG_ERROR([MetaMake ignore directory must be a normalized relative path]) ;;
+        esac
+        case "/$withval/" in
+            */./*|*/../*)
+                AC_MSG_ERROR([MetaMake ignore directory must not contain dot components]) ;;
+        esac
+        case "$withval" in
+            */*) ;;
+            *) AC_MSG_ERROR([MetaMake exact ignore directory requires a relative path with a slash]) ;;
+        esac
+        if test "${#withval}" -gt 244; then
+            AC_MSG_ERROR([MetaMake ignore directory exceeds the configuration line bound])
+        fi
+        mmake_ignore_dirs="${mmake_ignore_dirs}${export_newline}ignoredir $withval"
+    ])
 
 # Parse the target field into something useful.
 changequote(<<,>>)
@@ -4719,13 +4742,20 @@ fi
 AC_CONFIG_HEADERS(${aros_geninc_dir}/host-conf.h:config/host-conf.h.in)
 
 # Generic build tools (metamake, etc)
+# An installed toolchain is an immutable input. Keep generated build wrappers
+# in TOOLDIR (already first in the build PATH), not in its external prefix.
+# Toolchain construction still installs uname beside the compiler.
+aros_uname_dir=${aros_tools_dir}
+if test "x$crosstools" = "xyes"; then
+    aros_uname_dir=${AROS_CROSSTOOLSDIR}
+fi
 AC_CONFIG_COMMANDS([genmf-executable-support],
     [
-        chmod a+x ${AROS_CROSSTOOLSDIR}/${aros_target_cpu}-aros-uname
+        chmod a+x ${aros_uname_dir}/${aros_target_cpu}-aros-uname
         chmod a+x ${aros_tools_dir}/genmf.py
     ],
     [
-        AROS_CROSSTOOLSDIR=${AROS_CROSSTOOLSDIR}
+        aros_uname_dir=${aros_uname_dir}
         aros_tools_dir=${aros_tools_dir}
     ]
 )
@@ -4741,7 +4771,7 @@ AC_CONFIG_FILES(
     compiler/include/geninc.cfg:compiler/include/geninc.cfg.in
     ${aros_targetcfg_dir}/make.defaults:config/make.defaults.in
     ${aros_tools_dir}/genmf.py:tools/genmf/genmf.py
-    ${AROS_CROSSTOOLSDIR}/${aros_target_cpu}-aros-uname:scripts/uname.in
+    ${aros_uname_dir}/${aros_target_cpu}-aros-uname:scripts/uname.in
     ${aros_host_gendir}/tools/collect-aros/env.h:tools/collect-aros/env.h.in
     ${aros_gendir}/tools/collect-aros/env.h:tools/collect-aros/env.h.in
 )

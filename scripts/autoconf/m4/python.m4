@@ -589,20 +589,18 @@ AC_DEFUN([PC_PYTHON_CHECK_MODULE],
 m4_define([pc_python_safe_mod], m4_bpatsubsts($1, [\.], [_]))
 AC_CACHE_CHECK([for Python '$1' library],
     [[pc_cv_python_module_]pc_python_safe_mod],
-    [AC_LANG_PUSH(Python)[]dnl
-     AC_RUN_IFELSE(
-	[AC_LANG_PROGRAM([dnl
-import sys
+    [dnl This is a build-side interpreter, not a target executable. Invoke it
+     dnl explicitly: a script-backed PYTHON cannot be a portable shebang target.
+     AS_IF([AC_RUN_LOG(["$PYTHON" -c 'import sys
 try:
     import $1
 except:
     sys.exit(1)
 else:
     sys.exit(0)
-], [])],
+' >&AS_MESSAGE_LOG_FD])],
 	[[pc_cv_python_module_]pc_python_safe_mod="yes"],
 	[[pc_cv_python_module_]pc_python_safe_mod="no"])
-     AC_LANG_POP(Python)[]dnl
     ])
 AS_IF([test "$[pc_cv_python_module_]pc_python_safe_mod" = "no"], [$3], [$2])
 ])# PC_PYTHON_CHECK_MODULE
