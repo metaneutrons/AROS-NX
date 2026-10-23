@@ -47,6 +47,23 @@ Release mode also supplies `AROS_GCC_RELEASE_LAYOUT=yes` and the actual build/so
 
 The native GNU producer replaces both legacy C `collect-aros` destinations with the Rust collector before recording the collector receipt or publishing a completed candidate. That collector resolves sibling tools from its manifests and receives the SDK from the caller. The separate classic C-collector/SDK-install path is unchanged.
 
+Release mode also canonicalizes explicitly declared physical prefix-map roots
+when recording GCC's `checksum-options`. Map kinds, order, logical destinations,
+other compiler flags and all raw object/library checksum inputs remain unchanged.
+Unknown, duplicate, malformed or missing declared maps fail before the record is
+installed. Classic builds retain the upstream record verbatim. This prevents
+physical A/B work directories alone from changing the PCH executable checksum;
+it neither patches final binaries nor waives byte-identical comparison.
+
+Run the actual patched Make rule and semantic counterprobes with the locked
+pristine source archive, optionally adding a native GCC checksum generator:
+
+```sh
+sh tools/crosstools/gnu/tests/test-checksum-options.sh "$GCC_SOURCE_ARCHIVE" "$GCC_NATIVE_GENCHECKSUM"
+```
+
+This bounded regression does not qualify complete compiler A/B builds.
+
 Release host packages use a separate `release-layout-v1/sdk-<selector>` object directory;
 classic paths remain unchanged. GCC and GDB also use layout-versioned install
 markers, and GCC additionally keys its marker by SDK selector. A classic marker
