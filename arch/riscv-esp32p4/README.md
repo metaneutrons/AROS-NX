@@ -785,6 +785,11 @@ release or hardware qualification; both update backends remain gated. See N2M-R.
 Generic kernel+BSP A/B support (2026-10-11): all supported P4 profiles
 (`d1001`, `jc1060p470c-v1`, `jc1060p470c-v2`) accept `P4_FLASH_LAYOUT=ab`.
 The default remains `legacy`; use a separate build tree for each board/layout.
+The parse-time build-profile marker belongs only to a configured
+`AROS_TARGET_ARCH=esp32p4`, `AROS_TARGET_CPU=riscv` build with a nonempty `TOP`.
+Other targets may copy these public headers without running the P4 profile
+checker or writing its marker. This scope does not relax board/layout mismatch
+rejection for P4 builds and adds no hardware acceptance.
 The common layout reserves 256 KiB for boot infrastructure, two512-KiB kernel
 slots, two6-MiB BSP slots and independent2816-KiB DEVELOP. The table at0x20000
 leaves120KiB for the bootloader at0x2000. D1001 retains its separate upper-flash

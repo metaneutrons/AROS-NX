@@ -177,7 +177,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | N2U | Credential-free WLAN image defaults and first-use selection | `matched ABI8 candidate BSP/image build and host verification; deployment/runtime open` | Existing AROS WiFi/Network preferences, WirelessManager, AROSTCP and dhclient only; device/unit0, DHCP RAM paths, empty Wireless.prefs, autostart off. Five defaults/eighteen stage tests pass. WLAN-only whitelist includes ESP32Board/icon; actual85-file overlay, tracked Wanderer defaults, no saved build Env-Archive. Fresh static-linked resource282952B/device67584B, audited42-member BSP3971508B,41 other payloads unchanged. Final64MiB AROSDefault image has332 manifest entries; historical loader failures/artifacts retained in dated evidence. Installed baseline backup/full-span recovery, native discovery, single-manager lifetime, clock/routing/resolver/GUI/radio acceptance remain open. Both privacy assertions0; credentials excluded and SYS/SD read-only. |
 | N2E | Caller-visible asynchronous association failure | `generic caller/native binding/Close model+build verified; runtime open` | Native76cc32560a owned cookies/opener failure latches and message-ACK/token fence are bound; independent source review clear, clean72936B RV32 device build and all six scoped macOS/Linux O0/O2 sanitizer suites pass. Caller Close9a0a0d8346 integratedd50ca3ba1e passes independent review/macOS/Linux models and full679652B RV32 rebuild. Capability advertisement remains disabled. SUMMARY-only and privacy assertions0 unchanged. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
-| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | The source-owned LLVM/RV32 SDK contracts, reproducible generator and GNU recipe corrections are prepared against current protected main; fresh source/product qualification is pending. Current board/runtime history is preserved. Source-owned pins, normalized cache contracts and explicit header prerequisites have fixture coverage. Libinit literal commands retain target flags once; six GenMF/GNU Make dry-run regressions cover aggregate and overridden CFLAGS without rebuilding a compiler. Historical local SDK/link probes are not qualification of this main-based candidate. Clean source/runtime-bound compiler and complete SDK replay, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
+| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | The source-owned LLVM/RV32 SDK contracts, reproducible generator and GNU recipe corrections are prepared against current protected main; fresh source/product qualification is pending. Current board/runtime history is preserved. Source-owned pins, normalized cache contracts and explicit header prerequisites have fixture coverage. Libinit literal commands retain target flags once; six GenMF/GNU Make dry-run regressions cover aggregate and overridden CFLAGS without rebuilding a compiler. The 2026-10-21 P4 parse-time marker scope correction is under focused cross-target verification; no complete SDK claim follows. Historical local SDK/link probes are not qualification of this main-based candidate. Clean source/runtime-bound compiler and complete SDK replay, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
@@ -2430,6 +2430,34 @@ that a similarly named AROS driver matches the P4 MAC generation.
 
 ## Track TC: RV32 compiler and SDK publication
 
+### 2026-10-21 - TC0 scope the parse-time P4 build-profile marker
+
+- State: local development; TC0 remains `in development`. No firmware build,
+  hardware, complete SDK or publication gate is newly accepted.
+- Baseline: the real GNU Make include of `board/board.mk` with a fresh
+  `raspi/aarch64` target and a fresh `esp32p4/riscv` target both exited 0 and
+  wrote `config/esp32p4-build-profile.json` containing the default
+  `d1001/legacy` identity. Cross-architecture `includes-copy` legitimately
+  reaches this include; removing its owner is not an acceptable correction.
+- Change: keep all board definitions and the existing checker unchanged, but
+  run the stateful check only for the exact configured P4 architecture/CPU pair
+  and a nonempty `TOP`. Do not admit arbitrary Python as a pure transpiler
+  expression or replace the checker result with a constant.
+- Validation: all 106 Source CI unit tests pass, including four actual-GNU-Make
+  scope tests: six foreign target pairs do not execute an unavailable checker;
+  empty-TOP inspection succeeds; a real P4 marker is stable; stale board/layout
+  and unknown-board counterprobes fail for their expected reasons. The existing
+  checker tests (3) and native SDK exporter tests (16) also pass. The board input
+  SHA-256 is `0a708031c8159fc198c698e6933c774a203dbb9f040f07c4f8928dfd1e967de5`.
+  The native declaration refresh also binds the already modified `configure.in`
+  and MetaMake `cache.c`, `dirnode.c`, and `project.c` inputs; no roots, ABI or
+  probes change. Both native and LLVM SDK declaration checks pass.
+- Safety and next step: only fresh private fixture build trees may receive
+  markers. Existing native attempts, generated trees, compiler packages and
+  hardware remain unchanged. Independent review found no defect in the target
+  scope; known configured P4 entry points retain the check. A fresh local native
+  Source evaluation remains required; these host tests are not a Mesa build.
+
 ### 2026-10-17 - TC0 prepare checked main-based SDK integration
 
 - Baseline: checked main `405fcfc2ddf1d6bfdd8ecdb395330eca7f0db4d5`
@@ -4077,6 +4105,10 @@ readiness. The moved cross-compiler still embeds its former absolute
 prefix, bridged locally by two symlinks; this is not a portable build fix.
 A separate configured build tree per board is mandatory
 until the output paths or a build-configuration stamp enforce it mechanically.
+The parse-time board/layout stamp is restricted to configured
+`esp32p4/riscv` targets with a nonempty `TOP`. Cross-target header-copy visits
+must not write that identity. P4 marker reuse still requires the exact selected
+board/layout; host-only scope tests do not advance D0 hardware acceptance.
 
 The Vellum preflash used to recover PSRAM is a workaround, not a board power
 contract. Read-only JTAG inspection on the failing D1001 found PMU LDO2 XPD

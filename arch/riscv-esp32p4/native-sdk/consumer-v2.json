@@ -52,7 +52,7 @@
     },
     {
       "path": "arch/riscv-esp32p4/board/board.mk",
-      "sha256": "ee556a30787d955cda6c900e5f7ca0826de7c9021fe4fc121a510f1474c4c4a5"
+      "sha256": "0a708031c8159fc198c698e6933c774a203dbb9f040f07c4f8928dfd1e967de5"
     },
     {
       "path": "arch/riscv-esp32p4/exec/mmakefile.src",
@@ -156,7 +156,7 @@
     },
     {
       "path": "configure.in",
-      "sha256": "715d96905d246e8286c5cd187b88fc22b7c7fb1245f5641125831735373bfd5a"
+      "sha256": "88e9c4eed01507964ec571f584e06fba828f5c229d596791b8a7090f9fd9fb69"
     },
     {
       "path": "mmake.config.in",
@@ -168,15 +168,15 @@
     },
     {
       "path": "tools/MetaMake/cache.c",
-      "sha256": "c9a80fec85c0bb2d269578acedf01e9a53c468d404966ec453d6967c042f2f61"
+      "sha256": "d3ea6d1b023636602b489656e66d128ec06ca411f1fc90ad682a92ea4bf5881d"
     },
     {
       "path": "tools/MetaMake/dirnode.c",
-      "sha256": "82c4627c2b66bf9a46d5d5d5e7de7fc95dda962ec51448a604e717a3b0278f84"
+      "sha256": "228281a3cad9fc638d4db0a9f471dd38f1f1e7dc48824f4bb2ad4124883d3ed8"
     },
     {
       "path": "tools/MetaMake/project.c",
-      "sha256": "655a2bfc2a500d02ae5ad4a4201b5568d54ee3312cd831c6b2d98f468354ca77"
+      "sha256": "e9ad75e6ddebc9f3baef8af3262510342a5da6860843cc203a943aa3bc0133c2"
     },
     {
       "path": "tools/MetaMake/var.c",
