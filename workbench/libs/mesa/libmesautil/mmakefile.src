@@ -6,7 +6,6 @@ include $(SRCDIR)/config/aros.cfg
 
 CUR_MESADIR := src/util
 include $(SRCDIR)/$(CURDIR)/../mesa.cfg
--include $(GENDIR)/$(CURDIR)/../mesa3dgl/mesa3dgllibrary.entrypoints
 
 ifneq ($(wildcard $(top_srcdir)/$(CUR_MESADIR)/Makefile.sources),)
 MESA_UTIL_LAYOUT := old
@@ -30,9 +29,6 @@ USER_INCLUDES += \
             -iquote $(top_builddir)/$(CUR_MESADIR)/format \
             -I$(PORTSDIR)/zlib/chromium-da752eb2a3660cf1bf8dac620f6380b89dd953a7
 
-ifneq ($(mesa3dgl_ENTRYPOINTS),)
-MESA_COMPILEOPTIONS += $(CFLAGS_FUNCTION_SECTIONS)
-endif
 
 USER_CFLAGS += $(MESA_NOWARNFLAGS)
 USER_CXXFLAGS += $(MESA_NOWARNFLAGS)

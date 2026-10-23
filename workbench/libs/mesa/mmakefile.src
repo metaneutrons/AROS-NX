@@ -5,7 +5,6 @@
 include $(SRCDIR)/config/aros.cfg
 
 include $(SRCDIR)/$(CURDIR)/mesa.cfg
--include $(GENDIR)/$(CURDIR)/mesa3dgl/mesa3dgllibrary.entrypoints
 
 #
 # common mesa3d fetch...
@@ -125,11 +124,6 @@ MESAGL_LIBRARY_SOURCES_C := \
 $(OBJDIR)/$(MESAGLVERSION)/%.o: \
             $(OBJDIR)/$(MESAGLVERSION)/include/mesa3dgl$(MESAGLBUILD)_libdefs.h \
             $(OBJDIR)/$(MESAGLVERSION)/include/mesa3dgl$(MESAGLBUILD)_deflibdefs.h
-
-ifneq ($(mesa3dgl_ENTRYPOINTS),)
-MESA_COMPILEOPTIONS += $(CFLAGS_FUNCTION_SECTIONS)
-#USER_LDFLAGS := -Wl,--gc-sections $(mesa3dgl_ENTRYPOINTS)
-endif
 
 USER_LDFLAGS += $(TARGET_CXX_LDFLAGS) -L$(top_libdir)
 

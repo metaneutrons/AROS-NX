@@ -7,7 +7,6 @@ include $(SRCDIR)/config/aros.cfg
 
 CUR_MESADIR := src/compiler
 include $(SRCDIR)/$(CURDIR)/../mesa.cfg
--include $(GENDIR)/$(CURDIR)/../mesa3dgl/mesa3dgllibrary.entrypoints
 
 ifneq ($(wildcard $(top_srcdir)/$(CUR_MESADIR)/Makefile.sources),)
 MESA_COMPILER_LAYOUT := old
@@ -92,10 +91,6 @@ USER_INCLUDES += \
             -iquote $(top_srcdir)/src/gallium/auxiliary
 
 USER_CPPFLAGS += -DNDEBUG
-
-ifneq ($(mesa3dgl_ENTRYPOINTS),)
-MESA_COMPILEOPTIONS += $(CFLAGS_FUNCTION_SECTIONS)
-endif
 
 # disable necessary warnings
 NOWARN_FLAGS := \

@@ -5,7 +5,6 @@
 include $(SRCDIR)/config/aros.cfg
 
 include $(SRCDIR)/$(CURDIR)/../mesa.cfg
--include $(GENDIR)/$(CURDIR)/../mesa3dgl/mesa3dgllibrary.entrypoints
 
 CUR_MESADIR_OLD := src/mapi
 CUR_MESADIR_NEW := src/mesa/glapi
@@ -46,9 +45,6 @@ USER_INCLUDES += \
             -iquote $(top_builddir)/$(CUR_MESADIR)/shared-glapi
 endif
 
-ifneq ($(mesa3dgl_ENTRYPOINTS),)
-MESA_COMPILEOPTIONS += $(CFLAGS_FUNCTION_SECTIONS)
-endif
 
 USER_CFLAGS += $(MESA_NOWARNFLAGS)
 USER_CXXFLAGS += $(MESA_NOWARNFLAGS)
