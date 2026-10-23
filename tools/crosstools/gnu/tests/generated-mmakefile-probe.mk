@@ -28,7 +28,8 @@ generated-export-values:
 	  "metadata-build-root=$$AROS_GCC_RELEASE_BUILD_ROOT" \
 	  "metadata-source-root=$$AROS_GCC_RELEASE_SOURCE_ROOT" \
 	  "metadata-prefix-maps=$$AROS_GCC_RELEASE_PREFIX_MAPS" \
-	  "metadata-checksum-helper=$$AROS_GCC_RELEASE_CHECKSUM_HELPER"
+	  "metadata-checksum-helper=$$AROS_GCC_RELEASE_CHECKSUM_HELPER" \
+	  "metadata-cody-srcdir-helper=$$AROS_GCC_RELEASE_CODY_SRCDIR_HELPER"
 
 generated-params:
 	@printf '%s\n' \
