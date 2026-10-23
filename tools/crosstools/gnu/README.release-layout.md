@@ -66,20 +66,25 @@ mappings. It does not rewrite map destinations or alter compiler flags. If the
 helper is absent or fails, Make stops instead of compiling an empty prefix.
 Classic mode retains the exact upstream physical `$(srcdir)` macro assignment.
 
-Run the actual patched libcody `fatal.o` rule against the locked GCC archive,
+Run the actual patched libcody object and library rules against the locked GCC archive,
 optionally adding the native GCC checksum generator:
 
 ```sh
 sh tools/crosstools/gnu/tests/test-cody-srcdir.sh "$GCC_SOURCE_ARCHIVE" "$GCC_NATIVE_GENCHECKSUM"
 ```
 
-The bounded probe applies the patch without fuzz, configures and compiles only
-libcody's `fatal.o` in two physical source roots and compares those objects.
+The bounded probe applies the patch without fuzz and compiles libcody in two
+physical source roots. It preserves and compares the corrected `fatal.o`
+objects and complete `libcody.a` archives. Darwin archive timestamps are made
+deterministic through `ZERO_AR_DATE`; GNU ar already defaults to deterministic
+mode. The optional native checksum generator must agree for both complete
+archives. Classic rebuilds must remain byte-distinct, proving the comparison
+detects the old physical diagnostic prefix.
 It compiles identical assertion probes using actual `__FILE__` values under
 each root, verifying that both diagnostics trim to `assertion.cc:271` and
 terminate with `SIGABRT`. It also checks ambiguous and same-result overlapping
 maps, release failure cases, and the classic rule. It does not qualify a full
-GCC build or claim byte identity for the complete library or package.
+GCC build or compiler package.
 
 Run the actual patched Make rule and semantic counterprobes with the locked
 pristine source archive, optionally adding a native GCC checksum generator:
