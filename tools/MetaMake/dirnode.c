@@ -456,12 +456,95 @@ static int nodedepth (struct DirNode * node)
     return depth;
 }
 
+/* Return the lexical path from projectroot to node.  The cached directory
+ * tree, rather than mm_srcdir or the process cwd, defines this namespace. */
+static char *
+relative_dirpath (struct DirNode * node, struct DirNode * projectroot)
+{
+    struct DirNode * components[MAX_NODEDEPTH];
+    struct DirNode * current;
+    size_t length = 0;
+    size_t part_length;
+    char * path, * output;
+    int count = 0, index;
+
+    for (current = node; current != projectroot; current = current->parent)
+    {
+        if (!current || count >= MAX_NODEDEPTH)
+            return NULL;
+
+        components[count++] = current;
+    }
+
+    for (index = 0; index < count; index++)
+    {
+        part_length = strlen (components[index]->node.name);
+        if (part_length > (size_t)-1 - length - (index != 0))
+            return NULL;
+        length += part_length + (index != 0);
+    }
+
+    path = xmalloc (length + 1);
+    output = path;
+    for (index = count - 1; index >= 0; index--)
+    {
+        if (output != path)
+            *output++ = '/';
+
+        part_length = strlen (components[index]->node.name);
+        memcpy (output, components[index]->node.name, part_length);
+        output += part_length;
+    }
+    *output = 0;
+
+    return path;
+}
+
+/* Bare ignoredir entries preserve their historical basename-anywhere
+ * behavior.  Slash-containing entries match only a lexical path rooted at
+ * projectroot; aliases are not canonicalized through the filesystem. */
+static int
+ignoredirectory (struct List * ignoredirs, const char * parent_path,
+        const char * dirname)
+{
+    struct Node * ignoredir;
+    size_t parent_length = strlen (parent_path);
+    size_t dirname_length = strlen (dirname);
+    size_t ignoredir_length;
+
+    if (FindNode (ignoredirs, dirname))
+        return 1;
+
+    if (parent_length == 0)
+        return 0;
+
+    ForeachNode (ignoredirs, ignoredir)
+    {
+        if (!strchr (ignoredir->name, '/'))
+            continue;
+
+        ignoredir_length = strlen (ignoredir->name);
+        if (ignoredir_length != parent_length + 1 + dirname_length)
+            continue;
+
+        if (memcmp (ignoredir->name, parent_path, parent_length) == 0
+                && ignoredir->name[parent_length] == '/'
+                && memcmp (ignoredir->name + parent_length + 1,
+                    dirname, dirname_length) == 0)
+            return 1;
+    }
+
+    return 0;
+}
+
 int
-scandirnode (struct DirNode * node, const char * mfname, struct List * ignoredirs)
+scandirnode (struct DirNode * node, struct DirNode * projectroot,
+        const char * mfname, struct List * ignoredirs)
 {
     struct stat st;
     DIR * dirh;
     struct dirent * dirent;
+    char * parent_path = NULL;
 
     int mfnamelen = strlen(mfname), scanned = 0;
 
@@ -502,6 +585,13 @@ scandirnode (struct DirNode * node, const char * mfname, struct List * ignoredir
         NewList (&newdirs);
         NewList (&newmakefiles);
 
+        parent_path = relative_dirpath (node, projectroot);
+        if (!parent_path)
+        {
+            error("scandirnode(): directory is not rooted at the project top");
+            exit(20);
+        }
+
         node->time = st.st_mtime;
 
         dirh = opendir (".");
@@ -513,6 +603,48 @@ scandirnode (struct DirNode * node, const char * mfname, struct List * ignoredir
 
         while ((dirent = readdir (dirh)))
         {
+            int saved_errno;
+
+            /* Directories take precedence over selected makefile names.
+             * This keeps a directory named mmakefile[.src] in the directory
+             * tree long enough for the configured ignore rule to apply. */
+            st.st_mode = 0; /* Ignore entries that cannot be stat()'ed. */
+            saved_errno = errno;
+            stat (dirent->d_name, &st);
+
+            if (strcmp (dirent->d_name, mfname) == 0
+                    || (strlen (dirent->d_name) == mfnamelen + 4
+                        && strncmp (dirent->d_name, mfname, mfnamelen) == 0
+                        && strcmp (dirent->d_name + mfnamelen, ".src") == 0))
+                errno = saved_errno;
+
+            if (S_ISDIR (st.st_mode))
+            {
+                if (strcmp (dirent->d_name, ".") != 0
+                        && strcmp (dirent->d_name, "..") != 0
+                        && !ignoredirectory (ignoredirs, parent_path,
+                            dirent->d_name))
+                {
+                    subdir = FindNode (&node->subdirs, dirent->d_name);
+
+                    if (subdir != NULL)
+                    {
+                        Remove (subdir);
+                    }
+                    else
+                    {
+                        subdir = newnodesize (dirent->d_name, sizeof(struct DirNode));
+                        debug(printf("MMAKE:dirnode.c->scandirnode: New SubDir Node '%s' @ %p\n", dirent->d_name, subdir));
+                        subdir->parent = node;
+                        subdir->time = (time_t)0;
+                        NewList (&subdir->subdirs);
+                        NewList (&subdir->makefiles);
+                    }
+                    AddTail (&newdirs, subdir);
+                }
+                continue;
+            }
+
             /* Add makefile if it present or the file with .src is present */
             if (strcmp(dirent->d_name, mfname) == 0
                     || (strlen(dirent->d_name) == mfnamelen + 4
@@ -568,37 +700,6 @@ scandirnode (struct DirNode * node, const char * mfname, struct List * ignoredir
                     Remove (makefile);
                     AddTail (&newmakefiles, makefile);
                 }
-
-
-                /* Add file to newsubdirs if it is a directory and it has not to be ignored
-                 */
-                st.st_mode = 0; /* This makes us ignore the file if it can't be stat()'ed.
-                                   This lets us successfully skip Unicode-named files under Windows */
-                stat (dirent->d_name, &st);
-
-                if (S_ISDIR (st.st_mode)
-                        && strcmp (dirent->d_name, ".") != 0
-                        && strcmp (dirent->d_name, "..") != 0
-                        && !FindNode (ignoredirs, dirent->d_name)
-                   )
-                {
-                    subdir = FindNode (&node->subdirs, dirent->d_name);
-
-                    if (subdir != NULL)
-                    {
-                        Remove (subdir);
-                    }
-                    else
-                    {
-                        subdir = newnodesize (dirent->d_name, sizeof(struct DirNode));
-                        debug(printf("MMAKE:dirnode.c->scandirnode: New SubDir Node '%s' @ %p\n", dirent->d_name, subdir));
-                        subdir->parent = node;
-                        subdir->time = (time_t)0;
-                        NewList (&subdir->subdirs);
-                        NewList (&subdir->makefiles);
-                    }
-                    AddTail (&newdirs, subdir);
-                }
             }
         }
 
@@ -625,6 +726,9 @@ scandirnode (struct DirNode * node, const char * mfname, struct List * ignoredir
 
         scanned = 1;
     }
+
+    if (parent_path)
+        xfree (parent_path);
 
     debug(printf("MMAKE:dirnode.c->scandirnode: Finished scanning dir '%s'\n", node->node.name));
     if (debug)

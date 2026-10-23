@@ -5,7 +5,7 @@ extern int verbose;
 extern int quiet;
 extern int debug;
 extern int logfailed;
-extern char ** mflags;
+extern char * mflags[64];
 extern int mflagc;
 extern char *mm_srcdir;
 extern char *mm_builddir;

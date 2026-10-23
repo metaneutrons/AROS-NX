@@ -22,6 +22,7 @@ Boston, MA 02111-1307, USA.  */
 
 #include "config.h"
 
+#include <errno.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -231,6 +232,51 @@ initproject (char * name)
     return prj;
 }
 
+/* Slash-containing ignoredir entries use a normalized project-relative
+ * path.  Keep slash-free entries unrestricted for legacy basename matching. */
+static int
+validignoredir (const char * path)
+{
+    const char * component, * separator;
+    size_t component_length;
+
+    if (!path || !*path)
+        return 0;
+
+    if (!strchr (path, '/'))
+        return 1;
+
+    if (path[0] == '/' || strchr (path, '\\')
+            || path[strlen (path) - 1] == '/')
+        return 0;
+
+    if (((path[0] >= 'A' && path[0] <= 'Z')
+                || (path[0] >= 'a' && path[0] <= 'z'))
+            && path[1] == ':')
+        return 0;
+
+    component = path;
+    while (*component)
+    {
+        separator = strchr (component, '/');
+        component_length = separator
+            ? (size_t)(separator - component)
+            : strlen (component);
+
+        if (component_length == 0
+                || (component_length == 1 && component[0] == '.')
+                || (component_length == 2 && component[0] == '.'
+                    && component[1] == '.'))
+            return 0;
+
+        if (!separator)
+            break;
+        component = separator + 1;
+    }
+
+    return 1;
+}
+
 static void
 freeproject (struct Project * prj)
 {
@@ -426,6 +472,14 @@ initprojects (void)
             else if (!strcmp (cmd, "ignoredir"))
             {
                 struct Node * n;
+
+                if (!validignoredir (args))
+                {
+                    errno = 0;
+                    error ("Invalid ignoredir path '%s'", args);
+                    exit (10);
+                }
+
                 n = newnode(args);
                 AddTail(&project->ignoredirs, n);
             }

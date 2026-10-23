@@ -65,9 +65,13 @@ makefiles for this project. mmake will apply the standard
 rules to it as if the \shell{defaultmakefilename} was
 like this filename.
 
-\item{ignoredir <path>} Will tell mmake to ignore directories
-with this name. Try \shell{ignore CVS} if you use CVS to
-manage your projects' sources.
+\item{ignoredir <name-or-path>} Will tell mmake to ignore directories.
+A slash-free value keeps the historical behavior and matches that
+directory name at any depth. A normalized slash-containing path is
+relative to the project's selected top directory and ignores only that
+logical path and its subtree. Absolute paths and empty, \shell{.}, or
+\shell{..} path components are rejected. Try \shell{ignoredir CVS} if
+you use CVS to manage your projects' sources.
 
 Any option which is not recognised will be added to the list
 of known variables (ie. \shell{foo bar} will create a

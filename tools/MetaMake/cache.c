@@ -56,7 +56,7 @@ Boston, MA 02111-1307, USA.  */
 #endif
 
 #define MAJOR           0L
-#define MINOR           9L
+#define MINOR           10L
 #define REVISION        0L
 #define ID              ((MAJOR << 24) | (MINOR << 16) | REVISION)
 #define CHECK_ID(id)    (((id) & 0xFFFF0000) == ((ID) & 0xFFFF0000))
@@ -131,6 +131,70 @@ freetargetlist (struct Cache_priv * cache)
     }
 }
 
+static int
+writeignoredirs (FILE * fh, struct List * ignoredirs)
+{
+    struct Node * ignoredir;
+    uint32_t count = 0;
+
+    ForeachNode (ignoredirs, ignoredir)
+    {
+        if (count == UINT32_MAX)
+            return 0;
+        count++;
+    }
+
+    if (!writeuint32 (fh, count))
+        return 0;
+
+    ForeachNode (ignoredirs, ignoredir)
+    {
+        if (!writestring (fh, ignoredir->name))
+            return 0;
+    }
+
+    return 1;
+}
+
+/* Compare the cache's exact ordered ignoredir manifest without allocating
+ * memory based on cache-controlled lengths. */
+static int
+readignoredirs (FILE * fh, struct List * ignoredirs)
+{
+    struct Node * ignoredir;
+    uint32_t cached_count, expected_count = 0, cached_length;
+    size_t expected_length, index;
+    int byte;
+
+    ForeachNode (ignoredirs, ignoredir)
+    {
+        if (expected_count == UINT32_MAX)
+            return 0;
+        expected_count++;
+    }
+
+    if (!readuint32 (fh, &cached_count) || cached_count != expected_count)
+        return 0;
+
+    ForeachNode (ignoredirs, ignoredir)
+    {
+        expected_length = strlen (ignoredir->name);
+        if (expected_length > UINT32_MAX
+                || !readuint32 (fh, &cached_length)
+                || cached_length != (uint32_t)expected_length)
+            return 0;
+
+        for (index = 0; index < expected_length; index++)
+        {
+            byte = fgetc (fh);
+            if (byte == EOF || byte != (unsigned char)ignoredir->name[index])
+                return 0;
+        }
+    }
+
+    return 1;
+}
+
 static void
 printtargetlist (struct List * l)
 {
@@ -201,6 +265,15 @@ readcache (struct Cache_priv * cache)
     if (fh)
     {
         if (!readuint32 (fh, &id) || !CHECK_ID(id))
+        {
+            fclose (fh);
+            fh = NULL;
+        }
+    }
+
+    if (fh)
+    {
+        if (!readignoredirs (fh, &cache->project->ignoredirs))
         {
             fclose (fh);
             fh = NULL;
@@ -284,6 +357,13 @@ writecache (struct Cache_priv * cache)
     ok = writeuint32 (fh, ID);
     if (!ok)
         goto writecacheend;
+
+    ok = writeignoredirs (fh, &cache->project->ignoredirs);
+    if (!ok)
+    {
+        error ("writecache(): could not write ignoredir manifest");
+        goto writecacheend;
+    }
 
     ForeachNode (&cache->addedfiles, addedfile)
     {
@@ -428,7 +508,8 @@ updatemflist (struct Cache_priv * cache, struct DirNode * node, struct List * re
         goup = 1;
     }
 
-    if (scandirnode(node, cache->project->defaultmakefilename, &cache->project->ignoredirs))
+    if (scandirnode(node, cache->topdir,
+            cache->project->defaultmakefilename, &cache->project->ignoredirs))
         reread ++;
 
     ForeachNodeSafe (&node->subdirs, subdir, subdir2)

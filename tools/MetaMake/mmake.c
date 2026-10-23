@@ -68,6 +68,7 @@ Boston, MA 02111-1307, USA.  */
 #include "var.h"
 #include "dep.h"
 #include "project.h"
+#include "mmake.h"
 
 #if defined(DEBUG_MMAKE)
 #define debug(a) a

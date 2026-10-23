@@ -60,7 +60,8 @@ void printdirnodemftarget (struct DirNode * node);
 void freedirnode (struct DirNode * node);
 void freemakefile (struct Makefile * makefile);
 struct DirNode * finddirnode (struct DirNode * node, const char * path);
-int scandirnode (struct DirNode * node, const char * mfname, struct List * ignoredirs);
+int scandirnode (struct DirNode * node, struct DirNode * projectroot,
+        const char * mfname, struct List * ignoredirs);
 int scanmakefiles (struct Project * prj, struct DirNode * node, struct List * vars);
 struct Makefile * addmakefile (struct DirNode * node, const char * filename);
 struct Makefile * findmakefile (struct DirNode * node, const char * filename);
