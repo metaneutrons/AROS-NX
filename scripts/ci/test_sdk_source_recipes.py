@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 FETCH_TARGETS = {
     "arch/all-native/acpica/mmakefile.src": "acpica-fetch",
     "compiler/boost/mmakefile.src": "compiler-boost-fetch",
+    "compiler/softfloat/mmakefile.src": "linklibs-softfloat-fetch",
     "external/bz2/mmakefile.src": "external-bzip2-fetch",
     "workbench/libs/codesets/mmakefile.src": "workbench-libs-codesets-fetch",
     "workbench/libs/expat/mmakefile.src": "workbench-libs-expat-fetch",
@@ -85,7 +86,7 @@ class SdkSourceRecipeTests(unittest.TestCase):
         expected_names = {f"{archive}.{suffix}" for suffix in suffixes}
         actual_names = set()
         for checksum in checksums:
-            self.assertRegex(checksum, r"^[^=]+\.tar\.(gz|xz|bz2)=sha256:[0-9a-f]{64}$")
+            self.assertRegex(checksum, r"^[^=]+\.(?:zip|tar\.(?:gz|xz|bz2))=sha256:[0-9a-f]{64}$")
             actual_names.add(checksum.split("=", 1)[0])
         self.assertEqual(actual_names, expected_names, "every candidate must have an exact pin")
         self.assertEqual(len(checksums), len(actual_names), "duplicate checksum candidate")
@@ -114,6 +115,12 @@ class SdkSourceRecipeTests(unittest.TestCase):
         self.assertEqual(args[args.index("--normalized-size") + 1], "2337668")
         self.assertEqual(args[args.index("-cs") + 1],
                          "zlib.tar.gz=sha256:883d22e0b9aefc31a383c462adacdbd7941e6862559c5b27e59599db8114e783")
+
+    def test_softfloat_zip_pin_survives_genmf_and_make(self) -> None:
+        args = self.fetch_arguments("compiler/softfloat/mmakefile.src", "linklibs-softfloat-fetch")
+        self.assert_fetch_pins(args)
+        self.assertEqual(args[args.index("-cs") + 1],
+                         "SoftFloat-3e.zip=sha256:21130ce885d35c1fe73fc1e1bf2244178167e05c6747cad5f450cc991714c746")
 
     def test_normalization_cache_and_counterprobes(self) -> None:
         subprocess.run(["bash", str(ROOT / "scripts/tests/test-fetch-normalization.sh")],
