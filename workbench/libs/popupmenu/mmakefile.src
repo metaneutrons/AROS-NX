@@ -25,6 +25,20 @@ FILES :=  pm \
 	  pmprefs \
 	  iff
 
+# One client archive owner combines the hand-written varargs wrappers and
+# their version-10 initializer with the generated API stubs/getlibbase.
+# popupmenu.conf disables only the redundant generated client initializer.
+LINKLIBFILES := staticlib/autoinit \
+    staticlib/pm_exlst \
+    staticlib/pm_filterimsg \
+    staticlib/pm_getitemattrs \
+    staticlib/pm_insertmenuitem \
+    staticlib/pm_layoutmenu \
+    staticlib/pm_makeitem \
+    staticlib/pm_makemenu \
+    staticlib/pm_openpopupmenu \
+    staticlib/pm_setitemattrs
+
 #MM workbench-libs-popupmenu-includes : \
 #MM     kernel-exec-includes \
 #MM     kernel-dos-includes \
@@ -45,6 +59,6 @@ FILES :=  pm \
 %build_module mmake=workbench-libs-popupmenu \
     modname=popupmenu modtype=library \
     files="$(FILES)" linklibname=popupmenu-shared \
-    uselibs="popupmenu"
+    linklibfiles="$(LINKLIBFILES)"
 
 %common
