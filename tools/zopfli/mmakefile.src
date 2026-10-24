@@ -23,7 +23,7 @@ USER_LDFLAGS :=
     libname=zopfli files="$(ZOPFLILIB_SRC)"
 
 #MM- workbench-c : workbench-c-zopfli
-#MM workbench-c-zopfli : linklibs-zopfli
+#MM workbench-c-zopfli : includes linklibs linklibs-zopfli
 
 %build_prog mmake=workbench-c-zopfli \
     progname=zopfli targetdir=$(AROS_C) \
