@@ -11,9 +11,7 @@
  * ====================================================
  */
 
-#ifndef lint
-static char rcsid[] = "$FreeBSD: src/lib/msun/src/k_log.h,v 1.2 2011/10/15 05:23:28 das Exp $");
-#endif
+/* $FreeBSD: src/lib/msun/src/k_log.h,v 1.2 2011/10/15 05:23:28 das Exp $ */
 
 /*
  * k_log1p(f):
