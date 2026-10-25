@@ -9,9 +9,7 @@
  * ====================================================
  */
 
-#ifndef lint
-static char rcsid[] = "$FreeBSD: src/lib/msun/src/k_logf.h,v 1.3 2011/10/15 05:23:28 das Exp $");
-#endif
+/* $FreeBSD: src/lib/msun/src/k_logf.h,v 1.3 2011/10/15 05:23:28 das Exp $ */
 
 /*
  * Float version of k_log.h.  See the latter for most comments.

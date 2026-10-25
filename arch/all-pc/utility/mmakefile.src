@@ -24,6 +24,7 @@ AVX_FILES := \
 AVX_OBJS := $(addprefix $(GENDIR_UTILITY_ARCH)/, $(addsuffix .o, $(AVX_FILES)))
 AVX_DEPS := $(addprefix $(GENDIR_UTILITY_ARCH)/, $(addsuffix .d, $(AVX_FILES)))
 
+.PHONY: kernel-utility-pc-avx
 #MM
 kernel-utility-pc-avx : $(AVX_OBJS)
 
