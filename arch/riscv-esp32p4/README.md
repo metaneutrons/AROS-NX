@@ -2388,13 +2388,60 @@ SD-boot or visual/touch acceptance yet; fresh readiness/card insertion next.
 This supersedes the older D1001 "Currently flashed" history table below.
 The separate RV32 compiler/SDK release track is TC0 in
 [ROADMAP.md](ROADMAP.md#track-tc-rv32-compiler-and-sdk-publication).
+The 2026-10-12 input-seal correction keeps the RV32 contract bound to the
+shared target-profile document after adding the LLVM SDK declarations.
+This is source-binding preparation only, not new SDK or hardware qualification.
 GNU recipes and complete SDK source inputs are being integrated on current
 AROS-NX main. Source regressions do not qualify a published compiler or SDK
 and do not change the hardware status below.
-The libinit literal SDK recipes now retain mandatory target flags once instead
-of repeating them through the aggregate `CFLAGS`. Six GenMF/GNU Make dry-run
-regressions cover the default, direct overrides and failure counterprobes;
-they do not rebuild a compiler or establish SDK or hardware qualification.
+The libinit literal SDK recipes retain mandatory target flags once instead
+of repeating them through aggregate `CFLAGS`, including direct or empty
+overrides. Their four derived SDK input seals are current. Six GenMF/GNU Make
+dry-run regressions cover valid commands and refusal counterprobes; they do
+not rebuild a compiler or establish SDK or hardware qualification.
+The Linux GNU compiler A/B diagnostic found physical prefix-map paths in GCC's
+PCH checksum-option record. A source-owned release-only metadata correction has
+passed bounded recipe regressions; complete fresh A/B and SDK release qualification remain
+open. A subsequent retained-input comparison isolated the remaining mismatch
+to libcody's physical `SRCDIR` diagnostic macro. Its release-only mapping now
+passes bounded native complete-library A/B, checksum and real `__FILE__` assertion probes;
+full compiler A/B and SDK qualification remain open. Compiler binaries and
+their PCH checksums are not normalized after linking.
+The separate [native SDK declaration](native-sdk/README.md) selects the full
+Developer header/link-library graph. It requires a new tools runtime with
+native-consumer support; published v0.3.19 cannot activate this preset.
+Its selected native graph is audit-verified locally (2,250 reachable endpoints,
+no missing producer). Complete fresh SDK construction and final C/C++ links
+remain separate acceptance gates; this does not change board verification.
+The incremental GNU SDK build completed after the OpenURL, quote-only include
+and POSIXC declaration corrections. Ordinary C application linking passes;
+C++ exposed a missing canonical SDK `libm` output. Correcting that generic
+output policy then exposed two source owners of `libpopupmenu.a`.
+Popupmenu now declares its existing varargs wrappers and version-10 initializer
+as inputs of the generated client archive, without a second archive producer.
+The native replay passed all 7,025 Ninja actions. Normal C and C++ driver links
+passed with startup and standard libraries enabled, then produced byte-identical
+programs after relocating the complete Developer tree. Empty-SDK, wrong-ABI
+and stale-SDK-path counterprobes were rejected. These are local macOS ARM64
+compiler/SDK results, not board execution or a completed release. Durable
+source-owned application gates and three-host release qualification remain open.
+The source-owned v2 contract now seals ordinary C and C++ application fixtures;
+the opt-in loader test checks both declarations and rejects a changed probe
+input or missing v2 probe metadata. This validates the declaration only: the
+durable tools gate still has to execute the links and retain relocation,
+read-back and release-admission evidence. See TC0.
+The fresh integrated replay on 2026-10-11 exposed a separate declaration gap:
+its two selected roots omitted `core-linklibs`, leaving the normal driver's
+standard libraries absent. The contract now explicitly selects that root too.
+The corrected three-root contract passed a fresh local macOS ARM64 native
+SDK build and four normal C/C++ original/relocated links. Their retained
+receipts are local execution evidence, not release admission.
+`genmodule` now honors an explicit `SOURCE_DATE_EPOCH` for the banner year
+and default module date in UTC. Eight actual-generator regressions passed;
+explicit module dates and the historical unset behavior remain unchanged.
+The sealed tools environment still needs to pass this selected epoch before
+fresh SDK reproducibility and packaging can be qualified. See TC0 for the
+exact source identities, receipts and remaining publication gates.
 
 Nothing in the table below is claimed to work until it has been observed
 working on hardware. `stub` means the file exists and compiles; `works`
