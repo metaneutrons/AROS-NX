@@ -8,6 +8,14 @@
         "path": "workbench/libs/z/make.opt",
         "line": "ZLIB_CHROMIUM_REVISION := 2b1b62fed03e8b8a64ea39a96d5cc74cd10e2429"
       }
+    },
+    {
+      "role": "product:mesa@26.0.0",
+      "destination": "portssources/mesa-26.0.0.tar.xz",
+      "source_guard": {
+        "path": "workbench/libs/mesa/mesa.cfg",
+        "line": "MESA_ARCHIVE_CHECKSUMS := mesa-26.0.0.tar.xz=sha256:2a44e98e64d5c36cec64633de2d0ec7eff64703ee25b35364ba8fcaa84f33f72"
+      }
     }
   ]
 }

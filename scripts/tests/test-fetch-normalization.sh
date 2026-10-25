@@ -154,9 +154,52 @@ expect_fetch_failure missing-cache \
     -l "$missing_location" -d "$task_tmp/missing-destination" \
     -cs "zlib.tar.gz=sha256:$archive_sha" \
     --normalization canonical-tar-gzip-v1 --normalized-size "$archive_size"
-assert_contains 'pre-existing regular local cache candidate' "$task_tmp/missing-cache.output"
-test ! -e "$missing_location" || fail "canonical cache miss created a location or lock"
-test ! -e "$task_tmp/missing-destination" || fail "canonical cache miss created an extraction destination"
+assert_contains 'needs the canonical archive in the local cache' "$task_tmp/missing-cache.output"
+test ! -e "$missing_location" || fail "offline canonical cache miss created a location or lock"
+test ! -e "$task_tmp/missing-destination" || fail "offline canonical cache miss created an extraction destination"
+
+# Online, a cache miss may be filled from an origin that serves the canonical
+# bytes. An origin with other bytes is rejected and the next one is tried.
+online_fetch()
+{
+    local label="$1"
+    shift
+    AROS_FETCH_OFFLINE=0 bash "$source_root/scripts/fetch.sh" "$@" \
+        >"$task_tmp/$label.output" 2>&1
+}
+
+noncanonical_origin="$task_tmp/noncanonical-origin"
+canonical_origin="$task_tmp/canonical-origin"
+mkdir -p "$noncanonical_origin" "$canonical_origin"
+printf 'not the canonical archive\n' | gzip -n > "$noncanonical_origin/zlib.tar.gz"
+cp "$task_tmp/cache/zlib.tar.gz" "$canonical_origin/zlib.tar.gz"
+
+mirror_location="$task_tmp/mirror-cache"
+mirror_destination="$task_tmp/mirror-destination"
+if ! online_fetch mirror \
+    -ao "$noncanonical_origin $canonical_origin" -a zlib -s tar.gz \
+    -l "$mirror_location" -d "$mirror_destination" \
+    -cs "zlib.tar.gz=sha256:$archive_sha" \
+    --normalization canonical-tar-gzip-v1 --normalized-size "$archive_size"; then
+    cat "$task_tmp/mirror.output" >&2
+    fail "canonical origin was not accepted after a rejected origin"
+fi
+assert_contains "rejecting 'zlib.tar.gz' from '$noncanonical_origin'" "$task_tmp/mirror.output"
+test "$(sha256_file "$mirror_location/zlib.tar.gz")" = "$archive_sha" || fail "mirror fetch cached other bytes"
+test -f "$mirror_destination/payload.txt" || fail "mirror fetch did not extract the canonical archive"
+
+rejected_location="$task_tmp/rejected-cache"
+if online_fetch rejected \
+    -ao "$noncanonical_origin https://127.0.0.1:1/unused" -a zlib -s tar.gz \
+    -l "$rejected_location" -d "$task_tmp/rejected-destination" \
+    -cs "zlib.tar.gz=sha256:$archive_sha" \
+    --normalization canonical-tar-gzip-v1 --normalized-size "$archive_size"; then
+    fail "non-canonical origin was accepted"
+fi
+assert_contains 'Error while fetching the archive' "$task_tmp/rejected.output"
+test ! -e "$rejected_location/zlib.tar.gz" || fail "rejected origin payload stayed in the cache"
+test ! -e "$rejected_location/zlib.fetch" || fail "rejected origin left a fetch lock"
+test ! -e "$task_tmp/rejected-destination" || fail "rejected origin payload was unpacked"
 
 expect_fetch_failure unknown-policy \
     -ao https://127.0.0.1:1/unused -a zlib -s tar.gz \

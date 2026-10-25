@@ -1,0 +1,12 @@
+# ESP-IDF Partition Table
+# Name, Type, SubType, Offset, Size, Flags
+# Opt-in A/B layout for both JD9165 panel batches.
+nvs,      data, nvs,      0x21000,  0x6000,
+nvs_key,  data, nvs_keys, 0x27000,  0x1000,
+otadata,  data, ota,      0x28000,  0x2000,
+phy_init, data, phy,      0x2a000,  0x1000,
+KERNEL_A, app,  ota_0,    0x40000,  0x80000,
+KERNEL_B, app,  ota_1,    0xc0000,  0x80000,
+BSP_A,    0x40, 0x00,     0x140000, 0x600000,
+BSP_B,    0x40, 0x01,     0x740000, 0x600000,
+DEVELOP,  0x41, 0x00,     0xd40000, 0x2c0000,

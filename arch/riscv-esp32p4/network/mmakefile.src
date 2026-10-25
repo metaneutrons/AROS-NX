@@ -1,0 +1,85 @@
+include $(SRCDIR)/config/aros.cfg
+include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
+
+# Use the BSP static link mode. The default link mode produced runtime frame
+# registration references to .eh_frame, which the P4 loader does not place.
+USER_LDFLAGS := -static
+
+# Opt-in native identification/setup/INIT gate, not a working SANA-II device.
+USER_CPPFLAGS := $(P4_BOARD_CPPFLAGS) -I$(SRCDIR)/workbench/tools/ESP32Board
+ifeq ($(P4_WIFI_SCAN_DIAGNOSTICS),1)
+USER_CPPFLAGS += -DP4_WIFI_SCAN_DIAGNOSTICS=1
+endif
+ifeq ($(P4_WIFI_ASSOC_DIAGNOSTICS),1)
+USER_CPPFLAGS += -DP4_WIFI_ASSOC_DIAGNOSTICS=1
+endif
+# Default-off controlled probe of asynchronous preflight Disconnect ordering.
+# Do not infer C6 attempt identity or lifecycle qualification from this flag.
+ifneq ($(origin P4_WIFI_DISCONNECT_EVENT_FENCE),undefined)
+ifneq ($(P4_WIFI_DISCONNECT_EVENT_FENCE),0)
+ifneq ($(P4_WIFI_DISCONNECT_EVENT_FENCE),1)
+$(error P4_WIFI_DISCONNECT_EVENT_FENCE must be exactly 0 or 1)
+endif
+endif
+USER_CPPFLAGS += -DP4_WIFI_DISCONNECT_EVENT_FENCE=$(P4_WIFI_DISCONNECT_EVENT_FENCE)
+endif
+# Verbose semaphore/dispatch phases are independent of outcome diagnostics.
+# Leave off for normal association diagnosis to avoid flooding the console.
+ifeq ($(P4_WIFI_IO_DIAGNOSTICS),1)
+USER_CPPFLAGS += -DP4_WIFI_IO_DIAGNOSTICS=1
+endif
+ifeq ($(P4_WIFI_SDIO_SETUP),1)
+USER_CPPFLAGS += -DP4_WIFI_SDIO_SETUP=1
+endif
+ifeq ($(P4_WIFI_HOSTED_INIT),1)
+USER_CPPFLAGS += -DP4_WIFI_HOSTED_INIT=1
+endif
+ifeq ($(P4_WIFI_HOSTED_REPLY),1)
+USER_CPPFLAGS += -DP4_WIFI_HOSTED_REPLY=1
+endif
+ifeq ($(P4_WIFI_HOSTED_MAC),1)
+USER_CPPFLAGS += -DP4_WIFI_HOSTED_MAC=1
+endif
+ifeq ($(P4_WIFI_HOSTED_SCAN),1)
+USER_CPPFLAGS += -DP4_WIFI_HOSTED_SCAN=1
+endif
+ifeq ($(P4_WIFI_HOSTED_OWNER),1)
+USER_CPPFLAGS += -DP4_WIFI_HOSTED_OWNER=1
+P4_WIFI_OWNER_CPU ?= 1
+USER_CPPFLAGS += -DP4_WIFI_OWNER_CPU=$(P4_WIFI_OWNER_CPU)
+endif
+ifeq ($(P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED),1)
+USER_CPPFLAGS += -DP4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED=1
+endif
+ifeq ($(P4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED),1)
+USER_CPPFLAGS += -DP4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED=1
+endif
+ifeq ($(P4_WIFI_C6_UPDATE_RECOVERY_VERIFIED),1)
+USER_CPPFLAGS += -DP4_WIFI_C6_UPDATE_RECOVERY_VERIFIED=1
+endif
+# Diagnostic build only: accepts unqualified credential/recovery risk, not
+# a verified release or C6 update permission. Never include credentials here.
+ifeq ($(P4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED),1)
+USER_CPPFLAGS += -DP4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED=1
+endif
+# Independent default-off peer lifecycle/attempt qualification, not permission
+# to replace the C6 firmware or infer qualification from a host test.
+ifeq ($(P4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED),1)
+USER_CPPFLAGS += -DP4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED=1
+endif
+ifeq ($(P4_WIFI_SDIO_RESET_QUERY),1)
+USER_CPPFLAGS += -DP4_WIFI_SDIO_RESET_QUERY=1
+endif
+%build_module mmake=kernel-esp32p4wifi-probe \
+    modname=esp32p4wifi modtype=resource version=$(AROS_TARGET_PLATFORM) \
+    files="runtime_probe sdio_probe sdio_commands sdio_setup sdio_restore sdio_reset_query hosted_fifo hosted_wire hosted_init hosted_open hosted_config hosted_tx hosted_rpc hosted_ota hosted_discovery ../boardtool/discovery ../boardtool/discovery_wire ../boardtool/update hosted_serial hosted_mac hosted_epoch_reassembly hosted_request_ids hosted_inbox hosted_frames hosted_rx hosted_pending hosted_owner hosted_control hosted_wifi hosted_startup hosted_scan hosted_scan_sequence hosted_association hosted_link hosted_events"
+# Private resource bridge is defined by this port, not generated public ABI.
+# Build separately; packaging remains an explicit qualification step.
+# Resource and device share a file stem, not generated configuration/objects.
+OBJDIR := $(GENDIR)/$(CURDIR)/sana-device
+%build_module mmake=kernel-esp32p4wifi-device \
+    modname=esp32p4wifi modtype=device version=$(AROS_TARGET_PLATFORM) \
+    conffile=./esp32p4wifi-device.conf files="sana_device" moduledir=Devs/Networks
+OBJDIR := $(GENDIR)/$(CURDIR)
+
+%common

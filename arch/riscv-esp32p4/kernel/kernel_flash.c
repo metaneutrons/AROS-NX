@@ -510,3 +510,27 @@ int krnP4PartitionScan(unsigned char want_type, const char *want_label,
 
     return found;
 }
+
+/* Only the first instruction mapping identifies the running app. OTA metadata
+ * states a requested boot, not which image the bootloader actually loaded
+ * after a fallback. No read modifies an MMU entry here. Boot-time only, before
+ * the other hart can contend for the index register. */
+int krnP4ABLayout(struct P4ABLayout *layout)
+{
+#if defined(P4_FLASH_LAYOUT_AB) && P4_FLASH_LAYOUT_AB == 1
+    uint32_t entry = mmu_rd(mmu_entry_of(P4_FLASH_WINDOW_LOW));
+    const unsigned char *table;
+    if (!(entry & P4_MMU_FLASH_VALID)) return P4_AB_LAYOUT_WRONG_SLOT;
+    table = krnP4FlashMap(P4_PARTTABLE_OFFSET, P4_PARTTABLE_SIZE);
+    if (!table) return P4_AB_LAYOUT_BAD_TABLE;
+    return p4_ab_layout_resolve(table, P4_PARTTABLE_SIZE,
+        P4_PARTTABLE_OFFSET, P4_FLASH_SIZE,
+        P4_FLASH_SIZE < P4_FLASH_MMAP_LIMIT ? P4_FLASH_SIZE : P4_FLASH_MMAP_LIMIT,
+        (entry & P4_MMU_FLASH_PAGE_MASK) << P4_MMU_PAGE_SHIFT,
+        P4_BOARD_KERNEL_SLOT_BYTES, P4_FLASHDISK_PKG_LIMIT,
+        P4_FLASHDISK_SIZE, layout);
+#else
+    (void)layout;
+    return P4_AB_LAYOUT_MISSING;
+#endif
+}

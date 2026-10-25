@@ -120,6 +120,7 @@ static void touch_refresh(struct TouchData *data, ULONG *generation,
     ReleaseSemaphore(&data->lock);
     touch_policy_set_params(policy, &params);
     touch_policy_set_mode(policy, mode);
+#if TOUCHSCREEN_DIAGNOSTICS
     bug("[Touch] %s: settings %lu: mode %s, calibration X=%lu..%lu "
         "Y=%lu..%lu flags 0x%lx; hold %lu ms, slop %ld px, tap-drag %lu "
         "ms/%ld px, two-finger right %u\n", data->name,
@@ -130,6 +131,7 @@ static void touch_refresh(struct TouchData *data, ULONG *generation,
         (unsigned long)cal->flags, (unsigned long)params.hold_ms,
         (long)params.slop_px, (unsigned long)params.tapdrag_ms,
         (long)params.tapdrag_px, params.two_finger_right);
+#endif
 }
 
 static ULONG touch_distance(WORD ax, WORD ay, WORD bx, WORD by)
@@ -178,10 +180,12 @@ static VOID touch_event(struct TouchData *data, UWORD type, UWORD button,
     event.y = y;
     event.type = type;
     ++data->published_events;
+#if TOUCHSCREEN_DIAGNOSTICS
     if (type != vHidd_Mouse_Motion)
         bug("[Touch] %s: event %lu type %u button %u at %d,%d\n",
             data->name, (unsigned long)data->published_events,
             (unsigned int)type, (unsigned int)button, (int)x, (int)y);
+#endif
     data->callback(data->callbackdata, &event);
 }
 
@@ -390,7 +394,10 @@ AROS_UFH3S(ULONG, Touch_Worker,
         else if (frame.count)
         {
             const struct HIDD_TouchContact *contact;
-            ULONG primary, i;
+            ULONG primary;
+#if TOUCHSCREEN_DIAGNOSTICS
+            ULONG i;
+#endif
             WORD x, y;
 
             consecutive_errors = 0;
@@ -402,6 +409,7 @@ AROS_UFH3S(ULONG, Touch_Worker,
             if (frame.count > 1)
             {
                 ++multi_frames;
+#if TOUCHSCREEN_DIAGNOSTICS
                 if (multi_frames <= 80 || !(multi_frames & 0x7f))
                 {
                     bug("[Touch] %s: multi frame %lu reported %lu parsed %lu",
@@ -415,6 +423,7 @@ AROS_UFH3S(ULONG, Touch_Worker,
                             (unsigned long)frame.contact[i].y);
                     bug("\n");
                 }
+#endif
             }
 
             primary = touch_primary(&frame, &cal, data->width, data->height,
@@ -453,6 +462,7 @@ AROS_UFH3S(ULONG, Touch_Worker,
             touch_policy_step(&policy, 0, policy.x, policy.y,
                               touch_now(timer), touch_emit, &emitter);
         }
+#if TOUCHSCREEN_DIAGNOSTICS
         if (!(reads % 100))
             bug("[Touch] %s: heartbeat after %lu polls; down %u button %u, "
                 "frames %lu, multi %lu, right %lu, max %lu/%lu, events %lu, "
@@ -464,6 +474,7 @@ AROS_UFH3S(ULONG, Touch_Worker,
                 (unsigned long)max_contacts, (unsigned long)max_reported,
                 (unsigned long)data->published_events,
                 (unsigned long)errors);
+#endif
 
         if (!touch_wait(timer, TOUCH_POLL_US))
         {
@@ -474,12 +485,21 @@ AROS_UFH3S(ULONG, Touch_Worker,
 
 out:
     touch_policy_cancel(&policy, touch_emit, &emitter);
+#if TOUCHSCREEN_DIAGNOSTICS
     bug("[Touch] %s: worker exiting after %lu polls; frames %lu, multi %lu, "
         "right %lu, max %lu/%lu, events %lu, errors %lu\n", data->name,
         (unsigned long)reads, (unsigned long)contact_frames,
         (unsigned long)multi_frames, (unsigned long)emitter.right_gestures,
         (unsigned long)max_contacts, (unsigned long)max_reported,
         (unsigned long)data->published_events, (unsigned long)errors);
+#else
+    /* Keep diagnostic counters and their updates identical in both builds. */
+    (void)contact_frames;
+    (void)multi_frames;
+    (void)max_contacts;
+    (void)max_reported;
+    (void)emitter.right_gestures;
+#endif
     if (started)
         touch_stop(data);
     if (files_open)

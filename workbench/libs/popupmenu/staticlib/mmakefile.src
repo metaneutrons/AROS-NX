@@ -1,24 +1,11 @@
 #
-# Generate the popupmenu.lib library (normally called libpopupmenu.a).
+# The main module owns both public client archive spellings. Keep the
+# historical linklibs endpoint without a second libpopupmenu.a producer.
 
 include $(SRCDIR)/config/aros.cfg
 
-FILES := \
-    autoinit \
-    pm_exlst \
-    pm_filterimsg \
-    pm_getitemattrs \
-    pm_insertmenuitem \
-    pm_layoutmenu \
-    pm_makeitem \
-    pm_makemenu \
-    pm_openpopupmenu \
-    pm_setitemattrs
-
 #MM- linklibs : linklibs-popupmenu
 #MM- core-linklibs : linklibs-popupmenu
-#MM linklibs-popupmenu : includes
-
-%build_linklib mmake=linklibs-popupmenu libname=popupmenu files=$(FILES)
+#MM- linklibs-popupmenu : workbench-libs-popupmenu-linklib
 
 %common

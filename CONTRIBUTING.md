@@ -9,6 +9,11 @@ like to collaborate.
 
 ## Contributions
 
+Substantial ESP32 board maintenance work uses versioned requirements in
+[`docs/plans/`](docs/plans/esp32-board-tool.md). The port's
+[`ROADMAP.md`](arch/riscv-esp32p4/ROADMAP.md) owns execution status and dated
+evidence where repository issue tracking is unavailable.
+
 When contributing to this repository, please first discuss the change you wish to make on the 
 developer mailing list in the first instance, and via issue, email, or any other method with
 the core developer team of this repository before making a change. For small fixes and straightforward
