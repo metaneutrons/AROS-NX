@@ -283,7 +283,7 @@ $(GCA_GENDIR)/aros_drm_vc4.o : $(GCA_GENDIR)/aros_drm_vc4_raw.o $(GCA_GENDIR)/gc
 	$(Q)$(GCA_OBJCOPY) --redefine-syms=$(GCA_GENDIR)/gca_redefs.txt $< $@
 
 $(top_libdir)/libgallium_vc4_gca.a : $(top_libdir)/libgallium_vc4.a \
-        $(GCA_GENDIR)/gca_redefs.txt $(GCA_GENDIR)/gca_bind.o \
+        $(GCA_GENDIR)/gca_redefs.txt $(GCA_GENDIR)/gca_private.list $(GCA_GENDIR)/gca_bind.o \
         $(GCA_GENDIR)/gca_glue.o $(GCA_GENDIR)/aros_drm_vc4.o
 	$(Q)$(ECHO) "Rewriting gallium_vc4 through the GalliumCoreAPI table"
 	$(Q)$(GCA_OBJCOPY) --redefine-syms=$(GCA_GENDIR)/gca_redefs.txt \
