@@ -43,6 +43,13 @@ USER_CPPFLAGS += -DDRAW_LLVM_AVAILABLE=1 -DLLVM_AVAILABLE \
 USER_CFLAGS += $(MESA_NOWARNFLAGS)
 USER_CXXFLAGS += $(MESA_NOWARNFLAGS)
 
+# USER_INCLUDES puts the private posixc headers ahead of the system include
+# paths. libc++ needs its own headers first, and clang drops a -I that
+# repeats a system directory, so name libc++ explicitly instead.
+ifeq ($(AROS_TOOLCHAIN),llvm)
+USER_CXXFLAGS += -nostdinc++ -I$(CROSSTOOLSDIR)/include/c++/v1
+endif
+
 GALLIVM_SOURCES_C := $(addprefix $(top_srcdir)/$(CUR_MESADIR)/,$(MESA26_GALLIVM_C_SOURCES:.c=))
 GALLIVM_SOURCES_CXX := $(addprefix $(top_srcdir)/$(CUR_MESADIR)/,$(MESA26_GALLIVM_CXX_SOURCES:.cpp=))
 
