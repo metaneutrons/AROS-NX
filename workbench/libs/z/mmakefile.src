@@ -5,7 +5,12 @@
 include $(SRCDIR)/config/aros.cfg
 include $(SRCDIR)/$(CURDIR)/make.opt
 
-REPOSITORIES := https://chromium.googlesource.com/chromium/src/+archive/$(ZLIB_CHROMIUM_REVISION)/third_party
+# The mirror serves the canonical archive below, so scripts/fetch.sh can
+# verify it without normalizing; Gitiles remains the upstream origin. A new
+# ZLIB_CHROMIUM_REVISION needs a new mirror release.
+REPOSITORIES := \
+    https://github.com/metaneutrons/AROS-NX/releases/download/source-chromium-zlib-da752eb2 \
+    https://chromium.googlesource.com/chromium/src/+archive/$(ZLIB_CHROMIUM_REVISION)/third_party
 ZLIB_ARCHIVE_CACHE := $(PORTSSOURCEDIR)/chromium-$(ZLIB_CHROMIUM_REVISION)
 # Gitiles tar metadata is not byte-stable. The checksum below binds the final
 # canonical tar-gzip cache payload, not the raw HTTP response.

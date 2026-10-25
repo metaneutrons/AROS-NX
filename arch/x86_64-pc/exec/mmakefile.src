@@ -11,6 +11,8 @@ AFILES := userstate
 
 #MM kernel-exec-pc-x86_64 : kernel-kernel-pc-x86_64-includes kernel-exec-includes includes-asm_h
 
+#MM- kernel-exec-includes-pc-x86_64 : kernel-kernel-includes
+
 USER_AFLAGS := -isystem $(GENINCDIR)
 USER_CFLAGS += $(CFLAGS_GENERAL_REGS_ONLY)
 
