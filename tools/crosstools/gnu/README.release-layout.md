@@ -47,6 +47,54 @@ Release mode also supplies `AROS_GCC_RELEASE_LAYOUT=yes` and the actual build/so
 
 The native GNU producer replaces both legacy C `collect-aros` destinations with the Rust collector before recording the collector receipt or publishing a completed candidate. That collector resolves sibling tools from its manifests and receives the SDK from the caller. The separate classic C-collector/SDK-install path is unchanged.
 
+Release mode also canonicalizes explicitly declared physical prefix-map roots
+when recording GCC's `checksum-options`. Map kinds, order, logical destinations,
+other compiler flags and all raw object/library checksum inputs remain unchanged.
+Unknown, duplicate, malformed or missing declared maps fail before the record is
+installed. Classic builds retain the upstream record verbatim. This prevents
+physical A/B work directories alone from changing the PCH executable checksum;
+it neither patches final binaries nor waives byte-identical comparison.
+
+Libcody's fatal handler trims the source prefix from its `Location::File()`
+string. In release mode, its `SRCDIR` macro is mapped with the declared
+`-ffile-prefix-map` and `-fmacro-prefix-map` entries that textually match
+`$(srcdir)`; debug-only maps are ignored. Because host compilers can resolve
+overlapping maps differently, every matching file/macro map must yield the
+same mapped directory. The source-owned AWK helper rejects missing matches,
+ambiguous destinations, malformed or unsafe declarations, and filesystem-root
+mappings. It does not rewrite map destinations or alter compiler flags. If the
+helper is absent or fails, Make stops instead of compiling an empty prefix.
+Classic mode retains the exact upstream physical `$(srcdir)` macro assignment.
+
+Run the actual patched libcody object and library rules against the locked GCC archive,
+optionally adding the native GCC checksum generator:
+
+```sh
+sh tools/crosstools/gnu/tests/test-cody-srcdir.sh "$GCC_SOURCE_ARCHIVE" "$GCC_NATIVE_GENCHECKSUM"
+```
+
+The bounded probe applies the patch without fuzz and compiles libcody in two
+physical source roots. It preserves and compares the corrected `fatal.o`
+objects and complete `libcody.a` archives. Darwin archive timestamps are made
+deterministic through `ZERO_AR_DATE`; GNU ar already defaults to deterministic
+mode. The optional native checksum generator must agree for both complete
+archives. Classic rebuilds must remain byte-distinct, proving the comparison
+detects the old physical diagnostic prefix.
+It compiles identical assertion probes using actual `__FILE__` values under
+each root, verifying that both diagnostics trim to `assertion.cc:271` and
+terminate with `SIGABRT`. It also checks ambiguous and same-result overlapping
+maps, release failure cases, and the classic rule. It does not qualify a full
+GCC build or compiler package.
+
+Run the actual patched Make rule and semantic counterprobes with the locked
+pristine source archive, optionally adding a native GCC checksum generator:
+
+```sh
+sh tools/crosstools/gnu/tests/test-checksum-options.sh "$GCC_SOURCE_ARCHIVE" "$GCC_NATIVE_GENCHECKSUM"
+```
+
+This bounded regression does not qualify complete compiler A/B builds.
+
 Release host packages use a separate `release-layout-v1/sdk-<selector>` object directory;
 classic paths remain unchanged. GCC and GDB also use layout-versioned install
 markers, and GCC additionally keys its marker by SDK selector. A classic marker
