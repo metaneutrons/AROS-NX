@@ -110,9 +110,13 @@ endif
 
 # mmake does not invalidate objects when board/layout CPP flags change.
 # Bind real build trees once; profile-inspection Make snippets have no TOP.
+# Other targets also visit these public headers through includes-copy. Their
+# build trees must not acquire an ESP32-P4 board/layout identity.
+ifeq ($(AROS_TARGET_ARCH)-$(AROS_TARGET_CPU),esp32p4-riscv)
 ifneq ($(strip $(TOP)),)
 P4_BUILD_PROFILE_CHECK := $(shell $(PYTHON) "$(SRCDIR)/arch/riscv-esp32p4/tools/check-build-profile.py" "$(TOP)" "$(P4_BOARD)" "$(P4_FLASH_LAYOUT)" 2>&1)
 ifneq ($(strip $(P4_BUILD_PROFILE_CHECK)),OK)
 $(error $(P4_BUILD_PROFILE_CHECK))
+endif
 endif
 endif
