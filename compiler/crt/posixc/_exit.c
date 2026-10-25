@@ -5,6 +5,7 @@
 */
 
 #include <setjmp.h>
+#include <stdlib.h>
 
 #include "__posixc_intbase.h"
 #include "__vfork.h"
