@@ -186,6 +186,12 @@ BYTE FNAME_SDCIO(ReadSector32)(struct sdcard_Unit *unit, ULONG block,
         D(bug("[SDCard%02ld] %s: Sending CMD %d, block %08x, len %d [buffer @ 0x%p]\n", unit->sdcu_UnitNum, __PRETTY_FUNCTION__,
             sdcReadTags[0].ti_Data, sdcReadTags[1].ti_Data, sdcReadTags[5].ti_Data, sdcReadTags[4].ti_Data));
 
+        if (!SDCBUS_BeginTransaction(bus, TRUE))
+        {
+            retVal = IOERR_ABORTED;
+            break;
+        }
+
         if (SDCBUS_SendCmd(sdcReadTags, bus) != -1)
         {
             if (SDCBUS_WaitCmd(SDHCI_PS_CMD_INHIBIT|SDHCI_PS_DATA_INHIBIT, 100000, bus) != -1)
@@ -213,6 +219,8 @@ BYTE FNAME_SDCIO(ReadSector32)(struct sdcard_Unit *unit, ULONG block,
             bug("[SDCard%02ld] %s: Error ..\n", unit->sdcu_UnitNum, __PRETTY_FUNCTION__);
             retVal = IOERR_ABORTED;
         }
+
+        SDCBUS_EndTransaction(bus);
 
         remaining -= chunk;
         curBlock += chunk;
@@ -283,6 +291,12 @@ BYTE FNAME_SDCIO(ReadSector64)(struct sdcard_Unit *unit, UQUAD block,
         D(bug("[SDCard%02ld] %s: Sending CMD %d, block %08x, len %d [buffer @ 0x%p]\n", unit->sdcu_UnitNum, __PRETTY_FUNCTION__,
             sdcReadTags[0].ti_Data, sdcReadTags[1].ti_Data, sdcReadTags[5].ti_Data, sdcReadTags[4].ti_Data));
 
+        if (!SDCBUS_BeginTransaction(bus, TRUE))
+        {
+            retVal = IOERR_ABORTED;
+            break;
+        }
+
         if (SDCBUS_SendCmd(sdcReadTags, bus) != -1)
         {
             if (SDCBUS_WaitCmd(SDHCI_PS_CMD_INHIBIT|SDHCI_PS_DATA_INHIBIT, 100000, bus) != -1)
@@ -310,6 +324,8 @@ BYTE FNAME_SDCIO(ReadSector64)(struct sdcard_Unit *unit, UQUAD block,
             bug("[SDCard%02ld] %s: Error ..\n", unit->sdcu_UnitNum, __PRETTY_FUNCTION__);
             retVal = IOERR_ABORTED;
         }
+
+        SDCBUS_EndTransaction(bus);
 
         remaining -= chunk;
         curBlock += chunk;

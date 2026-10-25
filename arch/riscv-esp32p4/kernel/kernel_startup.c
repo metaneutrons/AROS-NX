@@ -463,7 +463,7 @@ static void krnDumpResidents(UWORD *lo, UWORD *hi)
     }
 }
 
-#if defined(P4_TASK_TEST) || defined(P4_HEARTBEAT_TASK)
+#if defined(P4_TASK_TEST) || defined(P4_HEARTBEAT_TASK) || defined(P4_BOOT_TIMING)
 static void krnP4TaskExit(void)
 {
     /* SysBase->TaskExitCode may be unset in a kickstart this small, and
@@ -490,7 +490,7 @@ static struct Task *krnP4SpawnTask(const char *name, BYTE pri,
     /* NewAddTask fills in tc_SPReg, the MemEntry list and the ETask */
     return AddTask(t, (APTR)entry, (APTR)krnP4TaskExit) ? t : NULL;
 }
-#endif /* P4_TASK_TEST || P4_HEARTBEAT_TASK */
+#endif /* task-test, heartbeat or boot-timing reporter */
 
 #ifdef P4_TASK_TEST
 /*
@@ -565,7 +565,7 @@ static void test_task_b(void)
 
 #endif /* P4_TASK_TEST */
 
-#ifdef P4_HEARTBEAT_TASK
+#if defined(P4_HEARTBEAT_TASK) || defined(P4_BOOT_TIMING)
 
 #ifndef P4_HEARTBEAT_SECS
 #define P4_HEARTBEAT_SECS 5
@@ -686,6 +686,14 @@ static void krnP4HeartbeatTask(void)
 
         ++beat;
 
+#ifdef P4_BOOT_TIMING
+        /* Retained phase times survive dropped early USB narration. No task
+           list traversal or rendering, and no claim that update256 is a
+           fully visible Wanderer desktop. Runtime output stays nonblocking. */
+        krnP4BootTimingReport();
+#endif
+#ifdef P4_HEARTBEAT_TASK
+
         /*
          * Forbid() here is not about the data - one task writes it - but
          * about the console: krnP4PutC() waits per character, and a task
@@ -730,6 +738,7 @@ static void krnP4HeartbeatTask(void)
         }
         krnP4PutStr("\n");
         Permit();
+#endif
     }
 }
 
@@ -781,7 +790,7 @@ const struct Resident krnP4HeartbeatResident =
     &krnP4HeartbeatInit
 };
 
-#endif /* P4_HEARTBEAT_TASK */
+#endif /* heartbeat or boot-timing reporter */
 
 #if defined(P4_AFTERDOS_PROBE) || defined(P4_B5_CONCURRENT_STRESS)
 
@@ -5008,6 +5017,17 @@ static void krnP4PanelProbe(void)
             return;
         }
 
+#ifdef P4_DSI_PARENT_CLOCK_TRACE
+        /* Read only: distinguish the parent F20M output gate/divider from
+           the DSI-local reference gate after a foreign firmware handover. */
+        krnP4PutStr("[dsi-parent] ref1=");
+        krnP4PutHex32(p4_r32(P4_HP_SYS_CLKRST_BASE + 0x28));
+        krnP4PutStr(" ref2=");
+        krnP4PutHex32(p4_r32(P4_HP_SYS_CLKRST_BASE + P4_HP_REF_CLK_CTRL2));
+        krnP4PutStr(" local=");
+        krnP4PutHex32(p4_r32(P4_CLKRST_PERI_CLK_CTRL03));
+        krnP4PutC('\n');
+#endif
         r = krnP4DsiPhyUp(&dsi);
 
         krnP4PutStr("[dsi]    ldo ");
@@ -6619,6 +6639,25 @@ static int krnP4LoadBSPPackage(unsigned long part_off,
     IPTR pkg_size, memlow, lo = 0, hi = 0, used = 0;
     IPTR i;
     int modules;
+#if defined(P4_FLASH_LAYOUT_AB) && P4_FLASH_LAYOUT_AB == 1
+    IPTR manifest_package_size;
+    /* The matching bootloader hashes this envelope, complete kernel and PKG
+     * before selecting a candidate. Never interpret a legacy PKG as A/B. */
+    flash = part_size >= 128 ? krnP4FlashMap(part_off, 128) : NULL;
+    if (!flash || flash[0] != 'P' || flash[1] != '4' || flash[2] != 'A' ||
+        flash[3] != 'B' || flash[4] != 'P' || flash[5] != 'K' ||
+        flash[6] != 'G' || flash[7] != 1)
+        return -1;
+    manifest_package_size = (IPTR)flash[12] | ((IPTR)flash[13] << 8) |
+        ((IPTR)flash[14] << 16) | ((IPTR)flash[15] << 24);
+    if (manifest_package_size < 8 || manifest_package_size > part_size - 128)
+        return -1;
+    for (i = 112; i < 128; ++i)
+        if (flash[i] != 0)
+            return -1;
+    part_off += 128;
+    part_size = manifest_package_size;
+#endif
 
 #if defined(P4_B5_CONCURRENT_STRESS) || defined(P4_B6_DOUBLE_BUFFER)
     if (psram_end > P4_FB_BASE)
@@ -6634,6 +6673,10 @@ static int krnP4LoadBSPPackage(unsigned long part_off,
     }
 
     pkg_size = krnP4ReadBE32(flash + 4);
+#if defined(P4_FLASH_LAYOUT_AB) && P4_FLASH_LAYOUT_AB == 1
+    if (pkg_size != manifest_package_size)
+        return -1;
+#endif
     if (pkg_size < 8 || pkg_size > part_size ||
         pkg_size > __esp32p4_psram_size)
     {
@@ -7064,6 +7107,10 @@ void kernel_cstart(unsigned long hartid, void *fdt)
 {
     unsigned long beat = 0;
 
+#ifdef P4_BOOT_TIMING
+    krnP4BootTimingStart();
+#endif
+
     (void)fdt;
 
     /*
@@ -7071,6 +7118,9 @@ void kernel_cstart(unsigned long hartid, void *fdt)
      * hang inside it is still attributable to it.
      */
     krnP4PutStr("\n\n[kernel] entered\n");
+#ifdef P4_BOOT_TIMING
+    krnP4BootTimingMark(P4_BOOT_EARLY_OUTPUT);
+#endif
     krnWdtReportReset();
 #ifndef P4_KEEP_WATCHDOG
     platform_init();
@@ -7173,6 +7223,57 @@ void kernel_cstart(unsigned long hartid, void *fdt)
     krnP4ScanoutQuiesce();
 #endif
 
+#ifdef P4_REFERENCE_QUIESCE_PARK
+#if defined(P4_NO_QUIESCE) || defined(P4_KEEP_WATCHDOG) || defined(P4_NO_WATCHDOG)
+#error "Reference park requires quiesce and the normal timer-fed watchdog"
+#endif
+    /* This diagnostic never starts PSRAM, Exec, secondary hart or graphics.
+       Keep the normal timer/watchdog path alive. A USB reset alone is not
+       quiescence evidence; require every live readback and timed interval.
+       READY qualifies this scanout handover only, never physical rail-off or
+       unrelated DMA engines. Any failure is latched until the next boot. */
+    {
+        unsigned int samples = 0;
+        int failed = 0;
+
+        /* The chip reset in quiesce resets this register-access gate to 0.
+           Enable only register access, not DPI/bridge production, before
+           inspecting the stopped bridge. */
+        p4_w32(P4_DSI_BRG_BASE + P4_DSI_BRG_CLK_EN, P4_DSI_BRG_CLK_EN_BIT);
+        krnP4PutStr("[qpark] diagnostic before PSRAM/Exec; no graphics restart\n");
+        for (;;)
+        {
+            uint32_t channel = p4_r32(P4_DMAC_CHEN);
+            uint32_t reset = p4_r32(P4_CLKRST_HP_RST_EN0);
+            uint32_t clock = p4_r32(P4_CLKRST_PERI_CLK_CTRL03);
+            uint32_t bridge = p4_r32(P4_DSI_BRG_BASE + P4_DSI_BRG_EN);
+            unsigned long tick;
+
+            if ((channel & P4_DMAC_CH1_EN) ||
+                (reset & (P4_RST_EN_GDMA | P4_RST_EN_DSI_BRG)) ||
+                (clock & P4_DSI_DPICLK_EN) ||
+                (bridge & P4_DSI_BRG_DSI_EN))
+                failed = 1;
+
+            krnP4PutStr("[qpark] channel="); krnP4PutHex32(channel);
+            krnP4PutStr(" reset="); krnP4PutHex32(reset);
+            krnP4PutC('\n');
+            krnP4PutStr("[qpark] clock="); krnP4PutHex32(clock);
+            krnP4PutStr(" bridge="); krnP4PutHex32(bridge);
+            krnP4PutC('\n');
+            krnP4PutStr("[qpark] intervals="); krnP4PutDec(samples);
+            krnP4PutStr(failed ? " FAIL\n" :
+                         samples == 10 ? " READY\n" : " observing\n");
+
+            tick = krnTimerTicks();
+            if (!krnTimerWait(100) || krnTimerTicks() - tick < 100)
+                failed = 1;
+            if (samples < 10)
+                ++samples;
+        }
+    }
+#endif
+
     {
         struct P4PSRAMInfo psram;
         int up;
@@ -7187,6 +7288,9 @@ void kernel_cstart(unsigned long hartid, void *fdt)
         csr_clear(mstatus, MSTATUS_MIE);
         up = krnPSRAMBringUp(&psram, P4_PSRAM_TARGET_HZ);
         csr_set(mstatus, MSTATUS_MIE);
+#ifdef P4_BOOT_TIMING
+        krnP4BootTimingMark(P4_BOOT_PSRAM);
+#endif
         p4_psram_probe_latency_seen = psram.probe_latency;
         p4_psram_calib_entry = psram.ana_trace[0];
         p4_psram_bias_seen = psram.bias_set;
@@ -7415,6 +7519,9 @@ void kernel_cstart(unsigned long hartid, void *fdt)
 #ifdef P4_PANEL_PROBE
 #ifndef P4_B5_CONCURRENT_STRESS
     krnP4PanelProbe();
+#ifdef P4_BOOT_TIMING
+    krnP4BootTimingMark(P4_BOOT_PANEL);
+#endif
 #endif
 #endif
 #ifdef P4_C4_TOUCH_PROBE
@@ -7439,14 +7546,35 @@ void kernel_cstart(unsigned long hartid, void *fdt)
     krnP4FlashSurvey();
     {
         unsigned long pkg_off = 0, pkg_size = 0;
+#if defined(P4_FLASH_LAYOUT_AB) && P4_FLASH_LAYOUT_AB == 1
+        struct P4ABLayout layout;
+        int found = krnP4ABLayout(&layout);
+        if (found != P4_AB_LAYOUT_OK)
+        {
+            krnP4PutStr("[ab] invalid layout or running slot; refusing Exec, status ");
+            krnP4PutHex32((uint32_t)found);
+            krnP4PutStr("\n");
+            krnP4Halt();
+        }
+        pkg_off = layout.bsp[layout.active_slot].offset;
+        pkg_size = layout.bsp[layout.active_slot].size;
+        __esp32p4_flashdisk_base = layout.develop.offset;
+        krnP4PutStr(layout.active_slot ? "[ab] running KERNEL_B with BSP_B\n" :
+            "[ab] running KERNEL_A with BSP_A\n");
+#else
         int found = krnP4PartitionScan(P4_BSP_PART_TYPE, P4_BSP_PART_LABEL,
                                        &pkg_off, &pkg_size, 1);
+#endif
         int package_claimed_psram = 0;
 
         if (found > 0)
         {
             krnP4PutStr("[flash] pkg   ");
+#if defined(P4_FLASH_LAYOUT_AB) && P4_FLASH_LAYOUT_AB == 1
+            krnP4PutStr(layout.active_slot ? "BSP_B" : "BSP_A");
+#else
             krnP4PutStr(P4_BSP_PART_LABEL);
+#endif
             krnP4PutStr(" at ");
             krnP4PutHex32((uint32_t)pkg_off);
             krnP4PutStr(", ");
@@ -7458,9 +7586,11 @@ void kernel_cstart(unsigned long hartid, void *fdt)
              * Only if it fits: a partition too small for the split would
              * otherwise have the device read package bytes as sectors.
              */
+#if !defined(P4_FLASH_LAYOUT_AB) || P4_FLASH_LAYOUT_AB != 1
             if (P4_FLASHDISK_PART_OFFSET + P4_FLASHDISK_SIZE <= pkg_size)
                 __esp32p4_flashdisk_base =
                     pkg_off + P4_FLASHDISK_PART_OFFSET;
+#endif
 
 #ifdef P4_FLASHDISK_PROBE
             /*
@@ -7468,7 +7598,11 @@ void kernel_cstart(unsigned long hartid, void *fdt)
              * scratch window and the loader is about to use it.  Reading the
              * volume first leaves the loader the state it expects.
              */
+#if defined(P4_FLASH_LAYOUT_AB) && P4_FLASH_LAYOUT_AB == 1
+            (void)krnP4FlashDiskProbe(layout.develop.offset, layout.develop.size);
+#else
             (void)krnP4FlashDiskProbe(pkg_off, pkg_size);
+#endif
 #endif
 
             if (__esp32p4_psram_size)
@@ -7480,9 +7614,21 @@ void kernel_cstart(unsigned long hartid, void *fdt)
                    to exec as free.  A bad header was rejected before any
                    PSRAM write and can safely fall back to the full pool. */
                 package_claimed_psram = loaded != 0;
+#if defined(P4_FLASH_LAYOUT_AB) && P4_FLASH_LAYOUT_AB == 1
+                if (loaded <= 0)
+                {
+                    krnP4PutStr("[ab] selected BSP failed; refusing unpaired boot\n");
+                    krnP4Halt();
+                }
+#endif
             }
             else
+            {
                 krnP4PutStr("[flash] pkg   PSRAM unavailable; cannot load\n");
+#if defined(P4_FLASH_LAYOUT_AB) && P4_FLASH_LAYOUT_AB == 1
+                krnP4Halt();
+#endif
+            }
         }
         else if (found == 0)
             krnP4PutStr("[flash] pkg   no package partition on this board yet\n");
@@ -7522,9 +7668,15 @@ void kernel_cstart(unsigned long hartid, void *fdt)
     }
 #endif
     /* From here on a trap on this hart runs on its own interrupt stack */
+#ifdef P4_BOOT_TIMING
+    krnP4BootTimingMark(P4_BOOT_PACKAGE);
+#endif
     krnP4SMPInitPrimary();
-    krnP4PutStr("[console] runtime output nonblocking; saturated bytes dropped\n");
+    krnP4PutStr("[console] bounded runtime output; queued sender starts after timer.device\n");
     krnP4ConsoleRuntime();
+#ifdef P4_BOOT_TIMING
+    krnP4BootTimingMark(P4_BOOT_EXEC);
+#endif
     krnStartExec();
 
 #ifdef P4_SDCARD_DEVICE_TEST

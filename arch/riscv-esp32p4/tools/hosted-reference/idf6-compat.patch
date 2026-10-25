@@ -1,0 +1,121 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -54,7 +54,7 @@
+ endif()
+ 
+ idf_component_register(SRCS ${COMPONENT_SRCS}
+-	REQUIRES soc esp_event esp_netif esp_timer driver esp_wifi bt esp_http_client
++	REQUIRES soc esp_event esp_netif esp_timer driver esp_wifi bt esp_http_client esp_driver_sdmmc esp_driver_dma esp_driver_gpio esp_wifi_remote
+ 	EXCLUDE_SRCS ${EXCLUDE_COMPONENT_SRCS}
+ 	INCLUDE_DIRS ${COMPONENT_ADD_INCLUDEDIRS})
+ 
+--- a/host/utils/common.h
++++ b/host/utils/common.h
+@@ -42,8 +42,12 @@
+ 
+ #define MAX_SUPPORTED_SDIO_CLOCK_MHZ      40
+ 
++#ifndef htole16
+ #define htole16(x)                        ((uint16_t)(x))
++#endif
++#ifndef le16toh
+ #define le16toh(x)                        ((uint16_t)(x))
++#endif
+ 
+ #define IP_ADDR_LEN                       4
+ #define MAC_LEN                           6
+--- a/host/port/os_wrapper.h
++++ b/host/port/os_wrapper.h
+@@ -27,6 +27,8 @@
+ 
+ #include "common.h"
+ #include "esp_dma_utils.h"
++#include "esp_idf_version.h"
++#include "esp_heap_caps.h"
+ 
+ #define MAX_PAYLOAD_SIZE (MAX_TRANSPORT_BUFFER_SIZE-H_ESP_PAYLOAD_HEADER_OFFSET)
+ 
+@@ -102,6 +104,22 @@
+ #define MALLOC(x)                        malloc(x)
+ 
+ /* This is [malloc + aligned DMA] */
++#if ESP_IDF_VERSION_MAJOR >= 6
++#if CONFIG_SPIRAM
++#error "Reference allocator has only been audited with PSRAM disabled"
++#endif
++static inline void *hosted_reference_dma_alloc(size_t size)
++{
++    /* Retain historical 64-byte size/address alignment; the IDF6 heap adjusts
++     * DMA alignment for hardware/cache requirements. Explicitly restrict this
++     * reference to internal byte-accessible DMA memory; reject overflow. */
++    if (!size || size > SIZE_MAX - 63)
++        return NULL;
++    return heap_caps_aligned_alloc(64, (size + 63) & ~(size_t)63,
++        MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
++}
++#define MEM_ALLOC(x) hosted_reference_dma_alloc(x)
++#else
+ #define MEM_ALLOC(x)       ({                                       \
+ 	esp_dma_mem_info_t dma_mem_info = {                             \
+ 		.extra_heap_caps = 0,                                       \
+@@ -113,6 +131,7 @@
+ 	err = esp_dma_capable_malloc((x), &dma_mem_info, &tmp_buf, &actual_size);\
+ 	if (err) tmp_buf = NULL;                                        \
+ 	tmp_buf;})
++#endif
+ 
+ #define FREE(x)                          free(x);
+ 
+--- a/host/drivers/rpc/core/rpc_req.c
++++ b/host/drivers/rpc/core/rpc_req.c
+@@ -244,7 +244,12 @@
+ 			if (p_a_sta->transition_disable)
+ 				H_SET_BIT(STA_TRASITION_DISABLED_BIT, p_c_sta->bitmask);
+ 
++			/* Reserved wire bits are zero, not new IDF6 feature bits. */
++#if ESP_IDF_VERSION_MAJOR >= 6
++			WIFI_CONFIG_STA_SET_RESERVED_VAL(0, p_c_sta->bitmask);
++#else
+ 			WIFI_CONFIG_STA_SET_RESERVED_VAL(p_a_sta->reserved, p_c_sta->bitmask);
++#endif
+ 
+ 			p_c_sta->sae_pwe_h2e = p_a_sta->sae_pwe_h2e;
+ 			p_c_sta->failure_retry_cnt = p_a_sta->failure_retry_cnt;
+@@ -275,7 +280,11 @@
+ 			if (p_a_sta->he_trig_cqi_feedback_disabled)
+ 				H_SET_BIT(WIFI_HE_STA_CONFIG_he_trig_cqi_feedback_disabled_BIT, p_c_sta->he_bitmask);
+ 
++#if ESP_IDF_VERSION_MAJOR >= 6
++			WIFI_HE_STA_SET_RESERVED_VAL(0, p_c_sta->he_bitmask);
++#else
+ 			WIFI_HE_STA_SET_RESERVED_VAL(p_a_sta->he_reserved, p_c_sta->he_bitmask);
++#endif
+ 
+ 			RPC_REQ_COPY_BYTES(p_c_sta->sae_h2e_identifier, p_a_sta->sae_h2e_identifier, SAE_H2E_IDENTIFIER_LEN);
+ 			break;
+--- a/host/drivers/rpc/core/rpc_rsp.c
++++ b/host/drivers/rpc/core/rpc_rsp.c
+@@ -193,7 +193,9 @@
+ 			p_a_sta->ft_enabled = H_GET_BIT(STA_FT_ENABLED_BIT, p_c_sta->bitmask);
+ 			p_a_sta->owe_enabled = H_GET_BIT(STA_OWE_ENABLED_BIT, p_c_sta->bitmask);
+ 			p_a_sta->transition_disable = H_GET_BIT(STA_TRASITION_DISABLED_BIT, p_c_sta->bitmask);
++#if ESP_IDF_VERSION_MAJOR < 6
+ 			p_a_sta->reserved = WIFI_CONFIG_STA_GET_RESERVED_VAL(p_c_sta->bitmask);
++#endif
+ 
+ 			p_a_sta->sae_pwe_h2e = p_c_sta->sae_pwe_h2e;
+ 			p_a_sta->failure_retry_cnt = p_c_sta->failure_retry_cnt;
+--- a/host/drivers/rpc/wrap/rpc_wrap.c
++++ b/host/drivers/rpc/wrap/rpc_wrap.c
+@@ -915,6 +915,11 @@
+ 	case HTTP_EVENT_REDIRECT:
+ 		ESP_LOGW(TAG, "HTTP_EVENT_REDIRECT");
+ 		break;
++#if ESP_IDF_VERSION_MAJOR >= 6
++	case HTTP_EVENT_ON_HEADERS_COMPLETE:
++	case HTTP_EVENT_ON_STATUS_CODE:
++		break;
++#endif
+ 	}
+ 
+ 	return ESP_OK;

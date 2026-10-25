@@ -12,9 +12,85 @@
 #include <time.h>
 #include <unistd.h>
 #include <limits.h>
+#include <errno.h>
+#include <inttypes.h>
 
 #include "functionhead.h"
 #include "config.h"
+
+/* Reproducible generation uses one explicit UTC timestamp. Without an epoch,
+ * preserve the historic UTC banner year and local default module date. */
+static struct tm
+generation_date(int utc)
+{
+    static int initialized = 0;
+    static int reproducible = 0;
+    static time_t timestamp;
+    struct tm *date;
+
+    if (!initialized)
+    {
+        const char *epoch = getenv("SOURCE_DATE_EPOCH");
+        if (epoch != NULL)
+        {
+            const char *digit;
+            char *end;
+            uintmax_t seconds;
+            uintmax_t time_maximum = UINTMAX_MAX;
+
+            if (*epoch == '\0')
+                goto invalid_epoch;
+            for (digit = epoch; *digit != '\0'; digit++)
+                if (*digit < '0' || *digit > '9')
+                    goto invalid_epoch;
+            errno = 0;
+            seconds = strtoumax(epoch, &end, 10);
+            /* The generated banner has a four-digit year. Check the host's
+             * time_t representation as well as the portable calendar bound. */
+            if (errno == ERANGE || *end != '\0'
+                || seconds > UINTMAX_C(253402300799))
+                goto invalid_epoch;
+            /* Reject a narrowing conversion before it occurs on hosts with
+             * a smaller integral POSIX time_t, including signed 32-bit hosts. */
+            if (sizeof(time_t) <= sizeof(uintmax_t))
+            {
+                time_maximum >>= (sizeof(uintmax_t) - sizeof(time_t)) * CHAR_BIT;
+                if ((time_t)-1 < (time_t)0)
+                    time_maximum >>= 1;
+                if (seconds > time_maximum)
+                    goto invalid_epoch;
+            }
+            timestamp = (time_t)seconds;
+            if ((uintmax_t)timestamp != seconds)
+                goto invalid_epoch;
+            reproducible = 1;
+        }
+        else
+        {
+            timestamp = time(NULL);
+            if (timestamp == (time_t)-1)
+            {
+                fprintf(stderr, "genmodule: cannot read generation time\n");
+                exit(20);
+            }
+        }
+        initialized = 1;
+    }
+
+    date = (reproducible || utc) ? gmtime(&timestamp) : localtime(&timestamp);
+    if (date == NULL)
+    {
+        if (reproducible)
+            goto invalid_epoch;
+        fprintf(stderr, "genmodule: cannot convert generation time\n");
+        exit(20);
+    }
+    return *date;
+
+invalid_epoch:
+    fprintf(stderr, "genmodule: invalid or unrepresentable SOURCE_DATE_EPOCH\n");
+    exit(20);
+}
 
 const static char bannertemplate[] =
     "/*\n"
@@ -35,10 +111,8 @@ getBanner(struct config* config)
 
     if (currentyear == 0)
     {
-        time_t rawtime;
-        time(&rawtime);
-        struct tm *utctm = gmtime(&rawtime);
-        currentyear = utctm->tm_year + 1900;
+        struct tm date = generation_date(1);
+        currentyear = date.tm_year + 1900;
     }
 
     snprintf (banner, bannerlength, bannertemplate, config->conffile, currentyear);
@@ -370,6 +444,9 @@ struct config *initconfig(int argc, char **argv)
             cfg->libgendir = cfg->gendir;
     }
 
+    /* Validate an explicit epoch before any generated file can be opened,
+     * including commands whose configuration supplies its own module date. */
+    (void)generation_date(1);
     readconfig(cfg);
 
     /* For a device add the functions given in beginiofunc and abortiofunc to the functionlist
@@ -1373,15 +1450,14 @@ static void readsectionconfig(struct config *cfg, struct classinfo *cl, struct i
         if ((cfg->options & OPTION_NOROOTRELLIBS) && cfg->rellibs == NULL)
             exitfileerror(20, "option norootrellibs given but the module has no rellib\n");
 
-        /* Set default date to current date */
+        /* Use the reproducible UTC date, or the historic local default. */
         if (cfg->datestring == NULL)
         {
             char tmpbuf[256];
-            time_t now = time(NULL);
-            struct tm *ltime = localtime(&now);
+            struct tm date = generation_date(0);
 
             snprintf(tmpbuf, sizeof(tmpbuf), "%u.%u.%u",
-                ltime->tm_mday, 1 + ltime->tm_mon, 1900 + ltime->tm_year);
+                date.tm_mday, 1 + date.tm_mon, 1900 + date.tm_year);
 
             cfg->datestring = strdup(tmpbuf);
         }

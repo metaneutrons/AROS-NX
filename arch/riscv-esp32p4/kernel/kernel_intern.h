@@ -348,6 +348,18 @@ int krnP4CPUClockSet(unsigned int mhz);
 void krnTimerInit(void);
 void krnTimerAck(void);
 uint64_t krnTimerCount(void);
+#ifdef P4_BOOT_TIMING
+enum P4BootPhase
+{
+    P4_BOOT_EARLY_OUTPUT, P4_BOOT_PSRAM, P4_BOOT_PANEL,
+    P4_BOOT_PACKAGE, P4_BOOT_EXEC, P4_BOOT_UPDATE1,
+    P4_BOOT_UPDATE128, P4_BOOT_UPDATE256, P4_BOOT_PHASES
+};
+void krnP4BootTimingStart(void);
+void krnP4BootTimingMark(enum P4BootPhase phase);
+void krnP4BootTimingUpdate(void);
+void krnP4BootTimingReport(void);
+#endif
 unsigned long krnTimerTicks(void);
 int  krnTimerWait(unsigned long ticks);
 extern volatile unsigned long __esp32p4_ticks;
@@ -423,7 +435,7 @@ void krnP4CacheOn(unsigned long token);
  */
 #define P4_FLASHDISK_PART_OFFSET    P4_BOARD_FLASHDISK_PART_OFFSET
 #define P4_FLASHDISK_SIZE           P4_BOARD_FLASHDISK_SIZE
-#define P4_FLASHDISK_PKG_LIMIT      P4_FLASHDISK_PART_OFFSET
+#define P4_FLASHDISK_PKG_LIMIT      P4_BOARD_PKG_LIMIT
 
 /*
  * The absolute flash offset of the volume, filled in once the partition has
@@ -434,6 +446,8 @@ extern unsigned long __esp32p4_flashdisk_base;
 
 /* Reading flash from code that executes out of it (kernel_flash.c) */
 void krnP4FlashSurvey(void);
+#include "flash_ab_layout.h"
+int krnP4ABLayout(struct P4ABLayout *layout);
 void *krnP4FlashMap(unsigned long paddr, unsigned long len);
 int krnP4FlashCopy(unsigned long paddr, void *dest, unsigned long len);
 int krnP4PartitionScan(unsigned char want_type, const char *want_label,
@@ -466,6 +480,9 @@ void krnP4Halt(void) __attribute__((noreturn));
 /* Early UART0 debug console (kernel_console.c) */
 /* Switch to nonblocking, lossy output before runtime tasks can print. */
 void krnP4ConsoleRuntime(void);
+void krnP4ConsoleSenderReady(void);
+void krnP4ConsoleSenderFailed(void);
+unsigned int krnP4ConsoleDrain(unsigned int budget);
 void krnP4ConsoleBlocking(void);
 
 /*

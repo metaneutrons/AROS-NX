@@ -1,7 +1,7 @@
 #ifndef _SDCARD_UNIT_H
 #define _SDCARD_UNIT_H
 /*
-    Copyright © 2013, The AROS Development Team. All rights reserved.
+    Copyright (C) 2013, The AROS Development Team. All rights reserved.
     $Id$
 */
 
@@ -53,6 +53,14 @@ struct sdcard_Unit
    UBYTE                                sdcu_DevMask;             /* device mask used to simplify device number coding */
    UBYTE                                sdcu_SenseKey;            /* Sense key from ATAPI devices */
    UBYTE                                sdcu_DevType;
+
+    /* Stable media identity for in-place re-enumeration. Never replace the
+     * containing Exec unit to refresh controller/card protocol state. */
+    ULONG                                sdcu_CardCID[4];
+    ULONG                                sdcu_CardCSD[4];
+    /* BusTask writes under UnitLock; StartUnit reads under the same guard.
+     * An explicit task wake rearms one attempt for this mounted identity. */
+    BOOL                                 sdcu_RecoveryBlocked;
 };
 
 #define Unit(io)                        ((struct sdcard_Unit *)(io)->io_Unit)
@@ -60,6 +68,7 @@ struct sdcard_Unit
 /* Unit Flags .. */
 
 #define AB_Card_Active                  30
+#define AB_Card_Configuring             29
 #define AB_Card_HighSpeed52             27
 #define AB_Card_HighSpeed               26
 #define AB_Card_HighCapacity            25
@@ -69,6 +78,7 @@ struct sdcard_Unit
 #define AB_Card_Locked                  0
 
 #define AF_Card_Active                  (1 << AB_Card_Active)
+#define AF_Card_Configuring             (1UL << AB_Card_Configuring)
 #define AF_Card_HighSpeed52             (1 << AB_Card_HighSpeed52)
 #define AF_Card_HighSpeed               (1 << AB_Card_HighSpeed)
 #define AF_Card_HighCapacity            (1 << AB_Card_HighCapacity)

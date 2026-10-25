@@ -11,6 +11,7 @@ BASE="./"
 normalization=""
 normalized_size=""
 canonical_mode="no"
+canonical_download="no"
 canonical_candidate=""
 
 error()
@@ -229,14 +230,46 @@ preflight_normalized_cache()
 {
     local path="$LOCATION/$canonical_candidate"
 
+    if test ! -e "$path" && ! test -L "$path"; then
+        if is_enabled "${AROS_FETCH_OFFLINE:-0}"; then
+            echo "fetch: normalization '$normalization' needs the canonical archive in the local cache: $path" >&2
+            return 1
+        fi
+        # This fetcher cannot normalize. A missing cache entry may still be
+        # filled from an origin that serves the canonical bytes; the size and
+        # checksum checks after the download decide whether it is accepted.
+        canonical_download="yes"
+        mkdir -p "$LOCATION" || return 1
+        return 0
+    fi
+
     if test ! -f "$path" || test -L "$path"; then
-        echo "fetch: normalization '$normalization' requires a pre-existing regular local cache candidate: $path" >&2
-        echo "fetch: scripts/fetch.sh does not normalize remote archives; use the explicit aros-fetch path for remote normalization." >&2
+        echo "fetch: normalized cache candidate is not a regular file: $path" >&2
         return 1
     fi
 
     verify_normalized_size "$canonical_candidate" || return 1
     verify_checksum "$canonical_candidate" || return 1
+}
+
+# Try each archive origin in turn and keep only a payload with the declared
+# normalized size and checksum. Origins serving non-canonical bytes are
+# rejected and the next one is tried.
+fetch_canonical()
+{
+    local origin found
+
+    for origin in $archive_origins; do
+        fetch_cached "$origin" "$archive" "$suffixes" "$LOCATION" found
+        test -n "$found" || continue
+        if verify_normalized_size "$found" && verify_checksum "$found"; then
+            archive2="$found"
+            return 0
+        fi
+        echo "fetch: rejecting '$found' from '$origin'; trying the next origin." >&2
+        rm -f "$LOCATION/$found"
+    done
+    return 1
 }
 
 fetch_mirrored()
@@ -801,16 +834,18 @@ validate_normalization_contract || exit 1
 [[ "$BASE" != /* ]] && BASE="$PWD/$BASE"
 
 if test "$canonical_mode" = yes; then
-    # The legacy fetcher verifies archive bytes but has no canonicalizer. For
-    # normalized inputs, accept only a pre-seeded local cache candidate and
-    # reject a cache miss before locks, directory creation, or network access.
+    # The legacy fetcher verifies archive bytes but has no canonicalizer. A
+    # normalized input comes from the local cache or, on a cache miss, from an
+    # origin that already serves the canonical bytes.
     preflight_normalized_cache || exit 1
 fi
 
 fetchlockfile="$archive"
 fetchlock "$LOCATION" "$fetchlockfile"
 
-if test "$canonical_mode" = yes; then
+if test "$canonical_download" = yes; then
+    fetch_canonical
+elif test "$canonical_mode" = yes; then
     fetch_cached "$LOCATION" "$archive" "$suffixes" "$LOCATION" archive2
 else
     fetch_cached "$archive_origins" "$archive" "$suffixes" "$LOCATION" archive2

@@ -6091,6 +6091,9 @@ re-running configure" "$LINENO" 5
 fi
         { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: $LOC" >&5
 printf '%s\n' "$LOC" >&6; }
+        # MetaMake must use the installed GNU make, not Apple's make 3.81:
+        # archive/link response files require the GNU make $(file ...) function.
+        aros_host_make="gmake"
         aros_host_arch="darwin"
         host_cc_elf=no
         if [ -z ${SED+x} ]; then

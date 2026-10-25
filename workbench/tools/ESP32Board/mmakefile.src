@@ -1,0 +1,34 @@
+# Makefile to build the ESP32 board maintenance prototype.
+
+include $(SRCDIR)/config/aros.cfg
+
+FILES := main worker check_file source_file compare_file image hash target layout layout_file layout_gui discovery_native ota_native \
+    ../../../arch/riscv-esp32p4/boardtool/ota_client \
+    ../../../arch/riscv-esp32p4/boardtool/discovery_client \
+    ../../../arch/riscv-esp32p4/boardtool/discovery_wire \
+    ../../../arch/riscv-esp32p4/boardtool/discovery
+
+USER_CPPFLAGS += -I$(SRCDIR)/workbench/tools/ESP32Board
+
+USER_CPPFLAGS += \
+    -I$(SRCDIR)/workbench/network/WirelessManager/src \
+    -I$(SRCDIR)/workbench/network/WirelessManager/src/crypto \
+    -I$(SRCDIR)/workbench/network/WirelessManager/src/utils
+
+#MM- workbench-tools : workbench-tools-esp32board-$(AROS_TARGET_ARCH)-$(AROS_TARGET_CPU)-enabled
+#MM- workbench-tools-esp32board-esp32p4-riscv-enabled : workbench-tools-esp32board
+#MM  workbench-tools-esp32board : includes linklibs
+
+ifeq ($(AROS_TARGET_ARCH)-$(AROS_TARGET_CPU),esp32p4-riscv)
+%build_prog mmake=workbench-tools-esp32board \
+    progname=ESP32Board targetdir=$(AROSDIR)/Tools \
+    files=$(FILES) uselibs="mui"
+else
+# Also refuse explicitly requested normal/quick targets on other ports.
+.PHONY: workbench-tools-esp32board workbench-tools-esp32board-quick
+workbench-tools-esp32board workbench-tools-esp32board-quick:
+	@echo "ESP32Board requires AROS_TARGET_ARCH=esp32p4 and AROS_TARGET_CPU=riscv" >&2
+	@false
+endif
+
+%common

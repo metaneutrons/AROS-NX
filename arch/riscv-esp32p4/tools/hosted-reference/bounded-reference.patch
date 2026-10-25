@@ -1,0 +1,152 @@
+--- a/host/esp_hosted_host_init.c
++++ b/host/esp_hosted_host_init.c
+@@ -7,14 +7,14 @@
+ DEFINE_LOG_TAG(host_init);
+ 
+ //ESP_SYSTEM_INIT_FN(esp_hosted_host_init, BIT(0), 120)
+-static void __attribute__((constructor)) esp_hosted_host_init(void)
++void esp_hosted_reference_explicit_init_only(void)
+ {
+ 	ESP_LOGI(TAG, "ESP Hosted : Host chip_ip[%d]", CONFIG_IDF_FIRMWARE_CHIP_ID);
+-	ESP_ERROR_CHECK(esp_hosted_init(NULL));
++	/* The reference application starts its deadline before explicit init. */
+ }
+ 
+-static void __attribute__((destructor)) esp_hosted_host_deinit(void)
++void esp_hosted_reference_explicit_deinit_only(void)
+ {
+ 	ESP_LOGI(TAG, "ESP Hosted deinit");
+-	esp_hosted_deinit();
++	/* No implicit teardown of asynchronously running transport workers. */
+ }
+--- a/host/drivers/transport/transport_drv.c
++++ b/host/drivers/transport/transport_drv.c
+@@ -29,6 +29,7 @@
+ #include "stats.h"
+ #include "errno.h"
+ #include "hci_drv.h"
++#include "esp_timer.h"
+ 
+ /**
+  * @brief  Slave capabilities are parsed
+@@ -61,6 +62,10 @@
+ 
+ static void reset_slave(void)
+ {
++#if CONFIG_ESP_GPIO_SLAVE_RESET_SLAVE < 0
++	ESP_LOGI(TAG, "No board-verified slave reset GPIO; no reset performed");
++	return;
++#else
+ 	ESP_LOGI(TAG, "Reset slave using GPIO[%u]", H_GPIO_PIN_RESET_Pin);
+ 	g_h.funcs->_h_config_gpio(H_GPIO_PIN_RESET_Port, H_GPIO_PIN_RESET_Pin, H_GPIO_MODE_DEF_OUTPUT);
+ 
+@@ -72,6 +77,7 @@
+ 
+ 	/* stop spi transactions short time to avoid slave sync issues */
+ 	g_h.funcs->_h_sleep(1);
++#endif
+ }
+ 
+ static void transport_driver_event_handler(uint8_t event)
+@@ -112,31 +118,21 @@
+ 
+ esp_err_t transport_drv_reconfigure(void)
+ {
+-	static int retry_slave_connection = 0;
+-
+-	ESP_LOGI(TAG, "Attempt connection with slave: retry[%u]",retry_slave_connection);
+-	if (!is_transport_tx_ready()) {
+-		reset_slave();
+-		transport_state = TRANSPORT_RX_ACTIVE;
+-
+-		while (!is_transport_tx_ready()) {
+-			if (retry_slave_connection < MAX_RETRY_TRANSPORT_ACTIVE) {
+-				retry_slave_connection++;
+-				if (retry_slave_connection%10==0) {
+-					ESP_LOGE(TAG, "Not able to connect with ESP-Hosted slave device");
+-					reset_slave();
+-				}
+-			} else {
+-				ESP_LOGE(TAG, "Failed to get ESP_Hosted slave transport up");
+-				return ESP_FAIL;
+-			}
+-			g_h.funcs->_h_sleep(1);
++	const int64_t deadline = esp_timer_get_time() + INT64_C(10000000);
++	if (is_transport_tx_ready())
++		return ESP_OK;
++	reset_slave();
++	transport_state = TRANSPORT_RX_ACTIVE;
++	/* One connection attempt; expiry is checked before readiness. */
++	for (;;) {
++		if (esp_timer_get_time() >= deadline) {
++			ESP_LOGE(TAG, "Reference transport deadline expired");
++			return ESP_ERR_TIMEOUT;
+ 		}
+-	} else {
+-		ESP_LOGI(TAG, "Transport is already up");
++		if (is_transport_tx_ready())
++			return ESP_OK;
++		g_h.funcs->_h_msleep(20);
+ 	}
+-	retry_slave_connection = 0;
+-	return ESP_OK;
+ }
+ 
+ esp_err_t transport_drv_remove_channel(transport_channel_t *channel)
+--- a/host/api/esp_hosted_api.c
++++ b/host/api/esp_hosted_api.c
+@@ -179,7 +179,9 @@
+ esp_err_t esp_wifi_remote_init(const wifi_init_config_t *arg)
+ {
+ 	ESP_LOGI(TAG, "%s", __func__);
+-	ESP_ERROR_CHECK(transport_drv_reconfigure());
++	esp_err_t err = transport_drv_reconfigure();
++	if (err != ESP_OK)
++		return err;
+ 	return rpc_wifi_init(arg);
+ }
+ 
+--- a/host/drivers/transport/sdio/sdio_drv.c
++++ b/host/drivers/transport/sdio/sdio_drv.c
+@@ -22,6 +22,7 @@
+ #include "esp_log.h"
+ #include "esp_hosted_log.h"
+ #include "hci_drv.h"
++#include "esp_system.h"
+ 
+ static const char TAG[] = "H_SDIO_DRV";
+ 
+@@ -637,7 +638,7 @@
+ 	res = g_h.funcs->_h_sdio_card_init(sdio_handle);
+ 	if (res != ESP_OK) {
+ 		ESP_LOGE(TAG, "sdio card init failed");
+-		return;
++		esp_system_abort("REFERENCE failure: SDIO card initialization");
+ 	}
+ 
+ 	create_debugging_tasks();
+@@ -652,7 +653,8 @@
+ 	ESP_LOGI(TAG, "generate slave intr");
+ 
+ 	// inform the slave device that we are ready
+-	sdio_generate_slave_intr(ESP_OPEN_DATA_PATH);
++	if (sdio_generate_slave_intr(ESP_OPEN_DATA_PATH) != ESP_OK)
++		esp_system_abort("REFERENCE failure: OPEN bootstrap write");
+ 
+ 	for (;;) {
+ 
+@@ -900,11 +902,11 @@
+ 
+ 	sdio_write_thread = g_h.funcs->_h_thread_create("sdio_write",
+ 		DFLT_TASK_PRIO, DFLT_TASK_STACK_SIZE, sdio_write_task, NULL);
++	if (!sdio_read_thread || !sdio_process_rx_thread || !sdio_write_thread)
++		esp_system_abort("REFERENCE failure: transport worker creation");
+ 
+ #if defined(USE_DRIVER_LOCK)
+-	// initialise mutex for bus locking
+-	sdio_bus_lock = g_h.funcs->_h_create_mutex();
+-	assert(sdio_bus_lock);
++	/* The mutex was created before workers. Never replace a live lock. */
+ #endif
+ }
+ 

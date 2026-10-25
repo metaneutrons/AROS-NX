@@ -41,9 +41,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
+#include <time.h>
+#ifdef WIFI_ACCESS_DIAGNOSTICS
+#include <aros/debug.h>
+#endif
 
 #include "wifigui.h"
 #include "locale.h"
+#include "volatile_config.h"
+#include "security_display.h"
 
 #define WIRELESS_VAR    "AROSTCP/WirelessDevice"
 #define STACK_VAR       "SYS/Packages/AROSTCP"
@@ -52,6 +59,15 @@
 #define PUDDLE_SIZE     4096
 #define ETH_ALEN        6
 #define ASSOC_TIMEOUT   20          /* half-seconds to wait for an association */
+
+#ifdef WIFI_P4_FLASH_HELPERS
+/* Do not fall back to an older SYS:/DEVS: copy after a helper update. */
+#define WIFI_DEVICE_DIR "FLASHDISK0P0:Devs/Networks"
+#define WIFI_MANAGER "FLASHDISK0P0:C/WirelessManager"
+#else
+#define WIFI_DEVICE_DIR "DEVS:Networks"
+#define WIFI_MANAGER "C:WirelessManager"
+#endif
 
 struct MsgPort *WifiWorkerPort = NULL;
 struct Task *WifiMainTask = NULL;
@@ -80,6 +96,10 @@ struct WifiDev
     struct MsgPort      *wd_Port;
     struct IOSana2Req   *wd_Req;
     BOOL                 wd_Opened;
+    LONG                 wd_Failure;
+    LONG                 wd_Error;
+    ULONG                wd_Version;
+    ULONG                wd_Revision;
 };
 
 static void CloseWifiDev(struct WifiDev *dev)
@@ -92,30 +112,76 @@ static void CloseWifiDev(struct WifiDev *dev)
     memset(dev, 0, sizeof(*dev));
 }
 
+/* Preserve the numeric cause after releasing every partially acquired object.
+ * Stages:1=port,2=request,3=OpenDevice,4=resident generation,5=query,
+ * 6=no wireless command; discovery uses7=directory,8=file-info,9=Examine.
+ * Never include network identities or credentials. */
+static BOOL WifiAccessFailure(struct WifiDev *dev, LONG stage, LONG error,
+                             ULONG version, ULONG revision)
+{
+    CloseWifiDev(dev);
+    dev->wd_Failure = stage;
+    dev->wd_Error = error;
+    dev->wd_Version = version;
+    dev->wd_Revision = revision;
+#ifdef WIFI_ACCESS_DIAGNOSTICS
+    bug("[WiFiAccess] s=%ld e=%ld v=%lu r=%lu\n",
+        (long)stage, (long)error, (unsigned long)version,
+        (unsigned long)revision);
+#endif
+    return FALSE;
+}
+
+static void WifiAccessStatus(struct WifiMsg *m, const struct WifiDev *dev)
+{
+#ifdef WIFI_P4_FLASH_HELPERS
+    snprintf(m->wm_Status, sizeof(m->wm_Status),
+        "WiFi access: stage=%ld error=%ld version=%lu.%lu",
+        (long)dev->wd_Failure, (long)dev->wd_Error,
+        (unsigned long)dev->wd_Version, (unsigned long)dev->wd_Revision);
+#else
+    (void)dev;
+    snprintf(m->wm_Status, sizeof(m->wm_Status), (const char *)_(MSG_ST_CANNOT_OPEN),
+        m->wm_Device, (long)m->wm_Unit);
+#endif
+}
+
 static BOOL OpenWifiDev(struct WifiDev *dev, CONST_STRPTR device, LONG unit)
 {
+    LONG error;
     memset(dev, 0, sizeof(*dev));
 
     dev->wd_Port = CreateMsgPort();
     if (dev->wd_Port == NULL)
-        return FALSE;
+        return WifiAccessFailure(dev, 1, 0, 0, 0);
     dev->wd_Req = AllocVec(sizeof(struct IOSana2Req), MEMF_PUBLIC | MEMF_CLEAR);
     if (dev->wd_Req == NULL)
     {
-        CloseWifiDev(dev);
-        return FALSE;
+        return WifiAccessFailure(dev, 2, 0, 0, 0);
     }
 
     dev->wd_Req->ios2_Req.io_Message.mn_ReplyPort = dev->wd_Port;
     dev->wd_Req->ios2_Req.io_Message.mn_Length = sizeof(struct IOSana2Req);
     dev->wd_Req->ios2_BufferManagement = (APTR)buffer_tags;
 
-    if (OpenDevice(device, unit, (struct IORequest *)dev->wd_Req, 0) != 0)
+    error = OpenDevice(device, unit, (struct IORequest *)dev->wd_Req, 0);
+    if (error != 0)
     {
-        CloseWifiDev(dev);
-        return FALSE;
+        return WifiAccessFailure(dev, 3, error, 0, 0);
     }
     dev->wd_Opened = TRUE;
+#ifdef WIFI_P4_FLASH_HELPERS
+    /* LDDemon resolves a resident basename before consulting an absolute path.
+     * Reject the legacy SD resident rather than silently testing its bytes.
+     * Advance this exact pair with every incompatible helper generation. */
+    if (dev->wd_Req->ios2_Req.io_Device->dd_Library.lib_Version != 1 ||
+        dev->wd_Req->ios2_Req.io_Device->dd_Library.lib_Revision != 3)
+    {
+        return WifiAccessFailure(dev, 4, 0,
+            dev->wd_Req->ios2_Req.io_Device->dd_Library.lib_Version,
+            dev->wd_Req->ios2_Req.io_Device->dd_Library.lib_Revision);
+    }
+#endif
     return TRUE;
 }
 
@@ -146,6 +212,13 @@ static void SplitDeviceVar(STRPTR buf, STRPTR *device, LONG *unit)
 static BOOL WifiDevice(struct WifiMsg *m)
 {
     STRPTR device = NULL;
+
+#ifdef WIFI_P4_FLASH_HELPERS
+    snprintf(m->wm_Device, sizeof(m->wm_Device),
+        "%s/esp32p4wifi.device", WIFI_DEVICE_DIR);
+    m->wm_Unit = 0;
+    return TRUE;
+#endif
 
     if (m->wm_Device[0] != '\0')
         return TRUE;                    /* already resolved once */
@@ -193,24 +266,38 @@ static CONST_STRPTR IEProtection(const UBYTE *ies)
 /* ------------------------------------------------------------------------- */
 /* Wireless.prefs                                                            */
 
-static STRPTR ReadPrefs(CONST_STRPTR name, LONG *lenp)
+static STRPTR ReadPrefsChecked(CONST_STRPTR name, LONG *lenp, BOOL *ok)
 {
     BPTR fh = Open(name, MODE_OLDFILE);
     LONG size;
     STRPTR buf = NULL;
 
     *lenp = 0;
+    *ok = FALSE;
     if (fh == BNULL)
+    {
+        *ok = IoErr() == ERROR_OBJECT_NOT_FOUND;
         return NULL;
+    }
 
-    Seek(fh, 0, OFFSET_END);
+    if (Seek(fh, 0, OFFSET_END) == -1)
+    {
+        Close(fh);
+        return NULL;
+    }
     size = Seek(fh, 0, OFFSET_BEGINNING);
-    if (size > 0 && (buf = AllocVec(size + 1, MEMF_ANY | MEMF_CLEAR)) != NULL)
+    /* An existing empty file is distinct from an absent file during rollback. */
+    if (size >= 0 && size < 0x7fffffff &&
+        (buf = AllocVec((ULONG)size + 1, MEMF_ANY | MEMF_CLEAR)) != NULL)
     {
         if (Read(fh, buf, size) == size)
+        {
             *lenp = size;
+            *ok = TRUE;
+        }
         else
         {
+            WifiClearSecret(buf, (size_t)size + 1);
             FreeVec(buf);
             buf = NULL;
         }
@@ -219,32 +306,76 @@ static STRPTR ReadPrefs(CONST_STRPTR name, LONG *lenp)
     return buf;
 }
 
-/* TRUE if the stored configuration already has a key for this network. */
-static BOOL PrefsHaveNetwork(CONST_STRPTR ssid)
+static STRPTR ReadPrefs(CONST_STRPTR name, LONG *lenp)
+{
+    BOOL ok;
+    return ReadPrefsChecked(name, lenp, &ok);
+}
+
+/* TRUE when the legacy PSK path has a saved key for this network. SAE always
+ * prompts again until the manager's profile parser can be safely queried. */
+static BOOL PrefsHaveNetwork(CONST_STRPTR ssid,
+    enum WifiSecurityProfile profile)
 {
     LONG len;
-    STRPTR buf = ReadPrefs(PREFS_ENVARC, &len);
+    STRPTR buf;
     STRPTR p;
-    TEXT needle[WIFI_SSID_MAX + 8];
+    TEXT needle[2 * WIFI_SSID_MAX + 8];
     BOOL found = FALSE;
 
+    if (profile != WIFI_SECURITY_PSK)
+        return FALSE;
+    buf = ReadPrefs(WifiVolatile ? PREFS_ENV : PREFS_ENVARC, &len);
     if (buf == NULL)
         return FALSE;
 
-    snprintf(needle, sizeof(needle), "ssid=\"%s\"", ssid);
-    for (p = buf; (p = strstr(p, needle)) != NULL; p += 1)
+    if (WifiVolatile)
     {
-        /* A psk belongs to the same block, i.e. before the closing brace. */
-        STRPTR end = strstr(p, "}");
-        STRPTR psk = strstr(p, "psk=");
+        char encoded[65];
+        if (!WifiSSIDHex(encoded, sizeof(encoded), ssid))
+        {
+            WifiClearSecret(buf, (size_t)len);
+            FreeVec(buf);
+            return FALSE;
+        }
+        /* Include the line delimiter: a shorter SSID must not match a prefix. */
+        snprintf(needle, sizeof(needle), "ssid=%s\n", encoded);
+        if (strstr(buf, needle) == NULL)
+        {
+            WifiClearSecret(buf, (size_t)len);
+            FreeVec(buf);
+            return FALSE;
+        }
+    }
 
-        if (psk != NULL && (end == NULL || psk < end))
+    /* Walk bounded network blocks instead of associating an SSID in one
+     * block with a psk in a later one. The shared formatter emits hex SSIDs;
+     * the matcher also accepts the quoted form from older saved profiles. */
+    p = buf;
+    while ((p = strstr(p, "network")) != NULL)
+    {
+        size_t block_length;
+        STRPTR psk;
+
+        if (p[7] != '=' || p[8] != 123)
+        {
+            p += 7;
+            continue;
+        }
+        if (!WifiConfigBlockLength(p, (size_t)((buf + len) - p),
+                &block_length))
+            break;
+        psk = strstr(p, "psk=");
+        if (psk != NULL && psk < p + block_length - 1 &&
+            WifiConfigBlockMatchesSSID(p, block_length, ssid))
         {
             found = TRUE;
             break;
         }
+        p += block_length;
     }
 
+    WifiClearSecret(buf, (size_t)len);
     FreeVec(buf);
     return found;
 }
@@ -254,20 +385,38 @@ static BOOL PrefsHaveNetwork(CONST_STRPTR ssid)
  * other block byte for byte. Rewriting the whole file from a parsed view is
  * what loses the networks a user set up elsewhere.
  */
-static BOOL MergePrefs(CONST_STRPTR name, CONST_STRPTR ssid, CONST_STRPTR key)
+static BOOL MergePrefs(CONST_STRPTR name, CONST_STRPTR ssid,
+    CONST_STRPTR key, enum WifiSecurityProfile profile)
 {
     LONG len;
     STRPTR buf = ReadPrefs(name, &len);
-    TEXT needle[WIFI_SSID_MAX + 8];
+    TEXT formatted[384];
     BPTR fh;
     STRPTR p;
+    BOOL result = TRUE;
+    size_t formatted_length;
 
-    snprintf(needle, sizeof(needle), "ssid=\"%s\"", ssid);
+    if (!WifiFormatPersistentProfileBlock(formatted, sizeof(formatted),
+            ssid, key, profile))
+    {
+        if (buf != NULL)
+        {
+            WifiClearSecret(buf, (size_t)len);
+            FreeVec(buf);
+        }
+        return FALSE;
+    }
+    formatted_length = strlen((const char *)formatted);
 
     fh = Open(name, MODE_NEWFILE);
     if (fh == BNULL)
     {
-        FreeVec(buf);
+        if (buf != NULL)
+        {
+            WifiClearSecret(buf, (size_t)len);
+            FreeVec(buf);
+        }
+        WifiClearSecret(formatted, sizeof(formatted));
         return FALSE;
     }
 
@@ -275,44 +424,62 @@ static BOOL MergePrefs(CONST_STRPTR name, CONST_STRPTR ssid, CONST_STRPTR key)
     p = buf;
     while (p != NULL && *p != '\0')
     {
-        STRPTR blockstart, blockend, hit;
+        STRPTR blockstart, blockend, search;
+        size_t block_length;
 
-        blockstart = strstr(p, "network={");
+        search = p;
+        blockstart = strstr(search, "network");
+        while (blockstart != NULL &&
+               (blockstart[7] != '=' || blockstart[8] != 123))
+        {
+            search = blockstart + 7;
+            blockstart = strstr(search, "network");
+        }
         if (blockstart == NULL)
         {
-            FPuts(fh, p);
+            size_t remaining = (size_t)(len - (p - buf));
+            if (remaining != 0 &&
+                Write(fh, p, (LONG)remaining) != (LONG)remaining)
+                result = FALSE;
             break;
         }
 
         if (blockstart > p)
-            Write(fh, p, blockstart - p);
+        {
+            LONG prefix_length = blockstart - p;
+            if (Write(fh, p, prefix_length) != prefix_length)
+                result = FALSE;
+        }
 
-        blockend = strstr(blockstart, "}");
-        if (blockend == NULL)
-            break;                          /* truncated file: drop the rest */
-        blockend++;
+        if (!WifiConfigBlockLength(blockstart,
+                (size_t)((buf + len) - blockstart), &block_length))
+        {
+            result = FALSE;
+            break;
+        }
+        blockend = blockstart + block_length;
 
-        hit = (STRPTR)strstr((const char *)blockstart, (const char *)needle);
-        if (hit == NULL || hit > blockend)
-            Write(fh, blockstart, blockend - blockstart);
+        if (!WifiConfigBlockMatchesSSID((CONST_STRPTR)blockstart,
+                block_length, ssid) &&
+            Write(fh, blockstart, (LONG)block_length) != (LONG)block_length)
+            result = FALSE;
         p = blockend;
     }
 
-    /* And append ours. */
-    FPuts(fh, "network={\n");
-    FPrintf(fh, "\tssid=\"%s\"\n", (IPTR)ssid);
-    if (key != NULL && key[0] != '\0')
-    {
-        FPrintf(fh, "\tpsk=\"%s\"\n", (IPTR)key);
-        FPuts(fh, "\tkey_mgmt=WPA-PSK\n");
-    }
-    else
-        FPuts(fh, "\tkey_mgmt=NONE\n");
-    FPuts(fh, "}\n\n");
+    /* And append the one validated profile. */
+    if (result && Write(fh, formatted, (LONG)formatted_length) !=
+            (LONG)formatted_length)
+        result = FALSE;
 
-    Close(fh);
-    FreeVec(buf);
-    return TRUE;
+    if (!Close(fh))
+        result = FALSE;
+    if (buf != NULL)
+    {
+        WifiClearSecret(buf, (size_t)len);
+        FreeVec(buf);
+    }
+    WifiClearSecret(formatted, sizeof(formatted));
+    return result;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -323,43 +490,67 @@ static BOOL StopSupplicant(void)
     struct Task *task;
     int tries;
 
-    task = FindTask("C:WirelessManager");
-    if (task == NULL)
-        return TRUE;
-
-    Signal(task, SIGBREAKF_CTRL_C);
+    task = FindTask(WIFI_MANAGER);
+    if (task != NULL)
+        Signal(task, SIGBREAKF_CTRL_C);
+    task = FindTask("C:WirelessManager"); /* retire a legacy launch too */
+    if (task != NULL)
+        Signal(task, SIGBREAKF_CTRL_C);
     for (tries = 0; tries < 10; tries++)
     {
-        if (FindTask("C:WirelessManager") == NULL)
+        if (FindTask(WIFI_MANAGER) == NULL &&
+            FindTask("C:WirelessManager") == NULL)
             return TRUE;
         Delay(25);
     }
     return FALSE;
 }
 
-static BOOL StartSupplicant(CONST_STRPTR device, LONG unit)
+static BOOL StartSupplicant(CONST_STRPTR device, LONG unit,
+    STRPTR status, size_t capacity)
 {
     TEXT command[160];
+    BPTR segment;
+    LONG error;
     struct TagItem tags[] =
     {
         { SYS_Input,    (IPTR)NULL  },
         { SYS_Output,   (IPTR)NULL  },
         { SYS_Error,    (IPTR)NULL  },
         { SYS_Asynch,   (IPTR)TRUE  },
+        { NP_StackSize,  (IPTR)65536 },
         { TAG_DONE,     0           }
     };
     int tries;
 
+    /* Distinguish DOS loader failure from a process that exits during init.
+     * Never capture supplicant output: it can contain network identifiers. */
+    segment = LoadSeg(WIFI_MANAGER);
+    if (segment == BNULL)
+    {
+        error = IoErr();
+        snprintf(status, capacity, "WirelessManager: LoadSeg failed (%ld)",
+            (long)error);
+        return FALSE;
+    }
+    UnLoadSeg(segment);
     snprintf(command, sizeof(command),
-        "C:WirelessManager \"%s\" UNIT %ld NOGUI\n", device, (long)unit);
-    SystemTagList(command, tags);
+        WIFI_MANAGER " \"%s\" UNIT %ld NOGUI\n", device, (long)unit);
+    if (SystemTagList(command, tags) == -1)
+    {
+        error = IoErr();
+        snprintf(status, capacity, "WirelessManager: shell start failed (%ld)",
+            (long)error);
+        return FALSE;
+    }
 
     for (tries = 0; tries < 20; tries++)
     {
-        if (FindTask("C:WirelessManager") != NULL)
+        if (FindTask(WIFI_MANAGER) != NULL)
             return TRUE;
         Delay(25);
     }
+    snprintf(status, capacity, "WirelessManager loaded; no running task after init");
     return FALSE;
 }
 
@@ -418,6 +609,21 @@ static BOOL StackDBDir(STRPTR out, ULONG size)
 {
     TEXT dir[160];
     BPTR lock;
+
+    /* VOLATILE never falls back to (or rewrites) a database on SYS:/ENVARC:.
+     * Its image/startup must supply the complete RAM-backed ENV database. */
+    if (WifiVolatile)
+    {
+        if (size <= strlen("ENV:AROSTCP/db"))
+            return FALSE;
+        strcpy((char *)out, "ENV:AROSTCP/db");
+        lock = Lock(out, ACCESS_READ);
+        if (lock == BNULL)
+            return FALSE;
+        UnLock(lock);
+        /* The stack must read the same database; never save this variable. */
+        return SetVar("AROSTCP/Config", out, -1, GVF_GLOBAL_ONLY);
+    }
 
     if (GetVar("AROSTCP/Config", out, size, GVF_GLOBAL_ONLY) > 0)
     {
@@ -632,57 +838,532 @@ static void CopyField(STRPTR out, ULONG size, CONST_STRPTR src)
     out[n] = '\0';
 }
 
+enum
+{
+    LT_WORD = 1, LT_STRING, LT_BAD,
+    LT_OPEN = '{', LT_CLOSE = '}', LT_SEMI = ';', LT_COMMA = ','
+};
+
+struct LeaseToken
+{
+    CONST_STRPTR text;
+    size_t length;
+    int kind;
+    BOOL escaped;
+};
+
+/* Bounded dhclient lexer. Quotes and comments cannot introduce braces/keywords. */
+static BOOL LeaseNextToken(CONST_STRPTR data, size_t length, size_t *offset,
+    struct LeaseToken *token)
+{
+    size_t p = *offset, start;
+
+    while (p < length)
+    {
+        if ((UBYTE)data[p] <= ' ')
+            p++;
+        else if (data[p] == '#')
+        {
+            while (p < length && data[p] != '\n')
+                p++;
+        }
+        else
+            break;
+    }
+    if (p == length)
+    {
+        *offset = p;
+        return FALSE;
+    }
+
+    token->text = data + p;
+    token->length = 1;
+    token->escaped = FALSE;
+    if (data[p] == '{' || data[p] == '}' || data[p] == ';' || data[p] == ',')
+    {
+        token->kind = (UBYTE)data[p];
+        *offset = p + 1;
+        return TRUE;
+    }
+    if (data[p] == '"')
+    {
+        start = ++p;
+        while (p < length)
+        {
+            if (data[p] == '\\')
+            {
+                token->escaped = TRUE;
+                if (++p == length)
+                    break;
+                p++;
+            }
+            else if (data[p] == '"')
+            {
+                token->text = data + start;
+                token->length = p - start;
+                token->kind = LT_STRING;
+                *offset = p + 1;
+                return TRUE;
+            }
+            else
+                p++;
+        }
+        token->kind = LT_BAD;
+        *offset = length;
+        return TRUE;
+    }
+
+    start = p;
+    while (p < length)
+    {
+        UBYTE c = (UBYTE)data[p];
+
+        if (c == '\\')
+        {
+            token->escaped = TRUE;
+            p += p + 1 < length ? 2 : 1;
+        }
+        else if (c <= ' ' || c == '{' || c == '}' || c == ';' ||
+            c == ',' || c == '#' || c == '"')
+            break;
+        else
+            p++;
+    }
+    token->text = data + start;
+    token->length = p - start;
+    token->kind = LT_WORD;
+    *offset = p;
+    return TRUE;
+}
+
+static BOOL LeaseTokenIs(const struct LeaseToken *token, CONST_STRPTR text)
+{
+    size_t n = strlen((const char *)text);
+
+    return !token->escaped && (token->kind == LT_WORD ||
+        token->kind == LT_STRING) && token->length == n &&
+        memcmp(token->text, text, n) == 0;
+}
+
+static BOOL LeaseCopyToken(STRPTR out, ULONG size,
+    const struct LeaseToken *token)
+{
+    size_t n;
+
+    if (size == 0 || token->kind != LT_WORD || token->escaped)
+        return FALSE;
+    n = token->length < size - 1 ? token->length : size - 1;
+    memcpy(out, token->text, n);
+    out[n] = '\0';
+    return n != 0;
+}
+
+/* Strict decimal parsing from bounded, unescaped tokens. */
+static BOOL LeaseUnsigned(const struct LeaseToken *token, uint64_t *value)
+{
+    size_t i;
+    uint64_t n = 0;
+
+    if (token->kind != LT_WORD || token->escaped || token->length == 0)
+        return FALSE;
+    for (i = 0; i < token->length; i++)
+    {
+        unsigned digit = (unsigned char)token->text[i] - '0';
+
+        if (digit > 9 || n > (UINT64_MAX - digit) / 10)
+            return FALSE;
+        n = n * 10 + digit;
+    }
+    *value = n;
+    return TRUE;
+}
+
+/* dhclient print_time writes never, epoch seconds, or a UTC calendar tuple.
+ * Convert explicitly: mktime would incorrectly apply the local timezone. */
+static BOOL LeaseExpiryActive(const struct LeaseToken fields[3], size_t count,
+    time_t now)
+{
+    uint64_t expiry, weekday, year, month, day, hour, minute, second, days;
+    struct LeaseToken part;
+    unsigned i, month_days;
+    BOOL leap;
+    static const unsigned month_lengths[12] =
+        { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+
+    if (now < 0)
+        return FALSE;
+    if (count == 1 && fields[0].kind == LT_WORD &&
+        LeaseTokenIs(&fields[0], "never"))
+        return TRUE;
+    if (count == 2 && fields[0].kind == LT_WORD &&
+        LeaseTokenIs(&fields[0], "epoch"))
+        return LeaseUnsigned(&fields[1], &expiry) && expiry > (uint64_t)now;
+    if (count != 3 || !LeaseUnsigned(&fields[0], &weekday) || weekday > 6 ||
+        fields[0].length != 1 || fields[1].kind != LT_WORD ||
+        fields[2].kind != LT_WORD || fields[1].escaped || fields[2].escaped ||
+        fields[1].length != 10 || fields[2].length != 8 ||
+        fields[1].text[4] != '/' || fields[1].text[7] != '/' ||
+        fields[2].text[2] != ':' || fields[2].text[5] != ':')
+        return FALSE;
+
+    part = fields[1];
+    part.length = 4;
+    if (!LeaseUnsigned(&part, &year) || year < 1970 || year > 9999)
+        return FALSE;
+    part.text = fields[1].text + 5;
+    part.length = 2;
+    if (!LeaseUnsigned(&part, &month) || month < 1 || month > 12)
+        return FALSE;
+    part.text = fields[1].text + 8;
+    if (!LeaseUnsigned(&part, &day))
+        return FALSE;
+    leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    month_days = month_lengths[month - 1] + (month == 2 && leap);
+    if (day < 1 || day > month_days)
+        return FALSE;
+    part = fields[2];
+    part.length = 2;
+    if (!LeaseUnsigned(&part, &hour) || hour > 23)
+        return FALSE;
+    part.text = fields[2].text + 3;
+    if (!LeaseUnsigned(&part, &minute) || minute > 59)
+        return FALSE;
+    part.text = fields[2].text + 6;
+    if (!LeaseUnsigned(&part, &second) || second > 59)
+        return FALSE;
+
+    days = 365 * (year - 1970) + (year - 1) / 4 - 1969 / 4
+        - ((year - 1) / 100 - 1969 / 100)
+        + (year - 1) / 400 - 1969 / 400;
+    for (i = 1; i < month; i++)
+        days += month_lengths[i - 1] + (i == 2 && leap);
+    days += day - 1;
+    if ((days + 4) % 7 != weekday)
+        return FALSE;
+    expiry = days * 86400 + hour * 3600 + minute * 60 + second;
+    return expiry > (uint64_t)now;
+}
+
+/* Commit fields only after a complete lease matches the live interface/address.
+ * A last matching but unusable expiry clears older historical values. */
+static void SelectLeaseForAddress(CONST_STRPTR data, size_t length,
+    CONST_STRPTR interface, CONST_STRPTR address, time_t now, STRPTR gateway,
+    ULONG gateway_size, STRPTR dns, ULONG dns_size)
+{
+    struct LeaseToken t, next, key, first, second, fields[3];
+    size_t pos = 0, outer = 0, address_len;
+
+    if (gateway_size) gateway[0] = '\0';
+    if (dns_size) dns[0] = '\0';
+    if (!data || !interface || !address)
+        return;
+    address_len = strlen((const char *)address);
+
+    while (LeaseNextToken(data, length, &pos, &t))
+    {
+        if (t.kind == LT_BAD)
+            return;
+        if (t.kind == LT_OPEN) { outer++; continue; }
+        if (t.kind == LT_CLOSE) { if (outer) outer--; continue; }
+        if (outer || t.kind != LT_WORD || !LeaseTokenIs(&t, "lease"))
+            continue;
+
+        {
+            size_t after_key = pos, depth = 1;
+            BOOL valid = TRUE, iface_match = FALSE, ip_match = FALSE, closed = FALSE;
+            BOOL saw_interface = FALSE, saw_address = FALSE;
+            BOOL saw_expiry = FALSE, expiry_active = FALSE, duplicate_expiry = FALSE;
+            char route[20] = "", servers[64] = "";
+
+            if (!LeaseNextToken(data, length, &pos, &next))
+                return;
+            if (next.kind != LT_OPEN) { pos = after_key; continue; }
+
+            while (LeaseNextToken(data, length, &pos, &t))
+            {
+                size_t count = 0, nested = 0;
+                BOOL ended = FALSE, nested_stmt = FALSE;
+
+                if (t.kind == LT_BAD)
+                    return;
+                if (t.kind == LT_OPEN) { depth++; continue; }
+                if (t.kind == LT_CLOSE)
+                {
+                    if (--depth == 0) { closed = TRUE; break; }
+                    continue;
+                }
+                if (depth != 1 || t.kind == LT_SEMI)
+                    continue;
+
+                key = t;
+                while (LeaseNextToken(data, length, &pos, &next))
+                {
+                    if (next.kind == LT_BAD)
+                        return;
+                    if (next.kind == LT_OPEN) { nested++; nested_stmt = TRUE; }
+                    else if (next.kind == LT_CLOSE)
+                    {
+                        if (nested) nested--;
+                        else { valid = FALSE; depth = 0; closed = ended = TRUE; break; }
+                    }
+                    else if (!nested && next.kind == LT_SEMI) { ended = TRUE; break; }
+                    else if (!nested && next.kind != LT_COMMA)
+                    {
+                        if (count < 3)
+                            fields[count] = next;
+                        if (count == 0) first = next;
+                        else if (count == 1) second = next;
+                        if (count < 4)
+                            count++;
+                    }
+                }
+                if (!ended)
+                    return;
+                if (!depth)
+                    break;
+                if (key.kind != LT_WORD) { valid = FALSE; continue; }
+
+                if (LeaseTokenIs(&key, "interface"))
+                {
+                    if (saw_interface) valid = FALSE;
+                    saw_interface = TRUE;
+                    iface_match = !nested_stmt && count == 1 &&
+                        LeaseTokenIs(&first, interface);
+                }
+                else if (LeaseTokenIs(&key, "fixed-address"))
+                {
+                    if (saw_address) valid = FALSE;
+                    saw_address = TRUE;
+                    ip_match = !nested_stmt && count == 1 &&
+                        first.kind == LT_WORD && !first.escaped &&
+                        first.length == address_len &&
+                        memcmp(first.text, address, address_len) == 0;
+                }
+                else if (LeaseTokenIs(&key, "expire"))
+                {
+                    if (saw_expiry)
+                        duplicate_expiry = TRUE;
+                    saw_expiry = TRUE;
+                    expiry_active = !nested_stmt && !duplicate_expiry &&
+                        LeaseExpiryActive(fields, count, now);
+                }
+                else if (LeaseTokenIs(&key, "option") && count &&
+                    first.kind == LT_WORD)
+                {
+                    STRPTR out = NULL;
+                    ULONG out_size = 0;
+
+                    if (LeaseTokenIs(&first, "routers"))
+                    {
+                        out = route;
+                        out_size = sizeof(route);
+                    }
+                    else if (LeaseTokenIs(&first, "domain-name-servers"))
+                    {
+                        out = servers;
+                        out_size = sizeof(servers);
+                    }
+                    if (out)
+                    {
+                        out[0] = '\0';
+                        if (nested_stmt || count < 2 ||
+                            !LeaseCopyToken(out, out_size, &second))
+                            valid = FALSE;
+                    }
+                }
+                if (nested_stmt &&
+                    (LeaseTokenIs(&key, "interface") ||
+                     LeaseTokenIs(&key, "fixed-address")))
+                    valid = FALSE;
+            }
+            if (!closed)
+                return;
+            if (valid && iface_match && ip_match)
+            {
+                if (!saw_expiry || !expiry_active)
+                {
+                    route[0] = '\0';
+                    servers[0] = '\0';
+                }
+                if (gateway_size)
+                    snprintf((char *)gateway, gateway_size, "%s", route);
+                if (dns_size)
+                    snprintf((char *)dns, dns_size, "%s", servers);
+            }
+        }
+    }
+}
+
+/* DateStamp uses DOS's initialized timer base. Unlike stdc time(), it does not
+ * lazily open a timer request owned by this worker on a shared libc base.
+ * Use the same epoch/timezone adjustment as stdc time() and dhclient. */
+static time_t LeaseCurrentTime(void)
+{
+    struct DateStamp stamp;
+    int64_t seconds;
+    time_t now;
+
+    if (DateStamp(&stamp) == NULL || stamp.ds_Days < 0 ||
+        (stamp.ds_Days == 0 && stamp.ds_Minute == 0 && stamp.ds_Tick == 0) ||
+        stamp.ds_Minute < 0 || stamp.ds_Minute >= 1440 ||
+        stamp.ds_Tick < 0 || stamp.ds_Tick >= 3000)
+        return (time_t)-1;
+    seconds = ((int64_t)stamp.ds_Days + 2922) * 86400 +
+        stamp.ds_Minute * 60 + stamp.ds_Tick / 50 +
+        (int64_t)__stdc_gmtoffset() * 60;
+    now = (time_t)seconds;
+    return seconds >= 0 && (int64_t)now == seconds ? now : (time_t)-1;
+}
+
+/* Exact interface token; GW= stays case-insensitive as in the stack grammar. */
+static BOOL InterfaceGatewayFromPrefs(CONST_STRPTR data, size_t length,
+    CONST_STRPTR interface, STRPTR gateway, ULONG size)
+{
+    size_t line = 0, interface_len;
+
+    if (size) gateway[0] = '\0';
+    if (!size || !interface)
+        return FALSE;
+    interface_len = strlen((const char *)interface);
+    while (line < length)
+    {
+        size_t physical = line, end = line, p, start, limit;
+        BOOL continued, match = FALSE;
+
+        while (end < length && data[end] != '\n') end++;
+        continued = end > physical && data[end - 1] == '+';
+        limit = end - (continued ? 1 : 0);
+        p = physical;
+        while (p < limit && (data[p] == ' ' || data[p] == '\t' || data[p] == '\r')) p++;
+        if (p < limit && data[p] != '#' && data[p] != ';')
+        {
+            start = p;
+            while (p < limit && data[p] != ' ' && data[p] != '\t' &&
+                data[p] != '\r' && data[p] != '#' && data[p] != ';') p++;
+            match = p - start == interface_len &&
+                memcmp(data + start, interface, interface_len) == 0;
+        }
+
+        for (;;)
+        {
+            if (match)
+            {
+                while (p < limit)
+                {
+                    size_t value, stop;
+
+                    while (p < limit && (data[p] == ' ' || data[p] == '\t' ||
+                        data[p] == '\r')) p++;
+                    if (p == limit || data[p] == '#' || data[p] == ';') break;
+                    start = p;
+                    while (p < limit && data[p] != ' ' && data[p] != '\t' &&
+                        data[p] != '\r' && data[p] != '#' && data[p] != ';') p++;
+                    if (p - start <= 3 || ToUpper(data[start]) != 'G' ||
+                        ToUpper(data[start + 1]) != 'W' || data[start + 2] != '=')
+                        continue;
+                    value = start + 3;
+                    stop = value;
+                    while (stop < p && data[stop] != ',') stop++;
+                    if (stop == value) continue;
+                    if (stop - value >= size) stop = value + size - 1;
+                    memcpy(gateway, data + value, stop - value);
+                    gateway[stop - value] = '\0';
+                    return TRUE;
+                }
+            }
+            if (!continued) break;
+            physical = end + 1;
+            if (physical >= length) { end = physical; break; }
+            end = physical;
+            while (end < length && data[end] != '\n') end++;
+            continued = end > physical && data[end - 1] == '+';
+            limit = end - (continued ? 1 : 0);
+            p = physical;
+            while (p < limit && (data[p] == ' ' || data[p] == '\t' ||
+                data[p] == '\r')) p++;
+        }
+        line = end < length ? end + 1 : end;
+    }
+    return FALSE;
+}
 /*
- * Gateway and name servers do not come back from an ioctl: dhclient installs
- * the route and hands the servers to the resolver, keeping neither anywhere we
- * can ask for. The lease it wrote has both, so read that - and fall back to the
- * preferences for a statically configured interface.
+ * Gateway and name servers do not come back from an ioctl. The lease file is
+ * historical client data, not proof of the route or resolver's current state,
+ * so use only its last complete record for this interface and current address.
+ * Fall back to the configured preferences database for static configuration.
  */
+/* Match dhclient's PATH_DHCLIENT_DB override and POSIX /T default. The
+ * preference reader uses raw DOS paths; it cannot interpret /T as T:.
+ * This application links posixc for this read-only lease access. */
+static STRPTR ReadLeasePrefs(LONG *lenp)
+{
+    const char *path = getenv("PATH_DHCLIENT_DB");
+    FILE *file;
+    long size;
+    STRPTR buf = NULL;
+
+    *lenp = 0;
+    file = fopen(path != NULL ? path : "/T/dhclient.leases", "rb");
+    if (file == NULL)
+        return NULL;
+
+    if (fseek(file, 0, SEEK_END) == 0 && (size = ftell(file)) >= 0 &&
+        size < 0x7fffffff && fseek(file, 0, SEEK_SET) == 0 &&
+        (buf = AllocVec((ULONG)size + 1, MEMF_ANY | MEMF_CLEAR)) != NULL)
+    {
+        if (fread(buf, 1, (size_t)size, file) == (size_t)size && !ferror(file))
+            *lenp = (LONG)size;
+        else
+        {
+            WifiClearSecret(buf, (size_t)size + 1);
+            FreeVec(buf);
+            buf = NULL;
+        }
+    }
+    if (fclose(file) != 0 && buf != NULL)
+    {
+        WifiClearSecret(buf, (size_t)*lenp + 1);
+        FreeVec(buf);
+        buf = NULL;
+        *lenp = 0;
+    }
+    return buf;
+}
+
 static void FillRouteAndDNS(struct WifiMsg *m)
 {
     LONG len;
     STRPTR buf, opt;
+    TEXT db[192], path[224];
 
     m->wm_Gateway[0] = '\0';
     m->wm_DNS[0] = '\0';
 
-    buf = ReadPrefs("SYS:System/Network/AROSTCP/db/dhclient.leases", &len);
+    buf = ReadLeasePrefs(&len);
     if (buf != NULL)
     {
-        STRPTR p, last = NULL;
-
-        /* The file grows by appending, so the last lease is the live one. */
-        for (p = buf; (p = (STRPTR)strstr((const char *)p, "lease {")) != NULL; p++)
-            last = p;
-
-        if (last != NULL)
-        {
-            opt = (STRPTR)strstr((const char *)last, "option routers ");
-            if (opt != NULL)
-                CopyField(m->wm_Gateway, sizeof(m->wm_Gateway), opt + 15);
-
-            opt = (STRPTR)strstr((const char *)last, "option domain-name-servers ");
-            if (opt != NULL)
-                CopyField(m->wm_DNS, sizeof(m->wm_DNS), opt + 27);
-        }
+        SelectLeaseForAddress(buf, (size_t)len, m->wm_Interface,
+            m->wm_Address, LeaseCurrentTime(), m->wm_Gateway, sizeof(m->wm_Gateway),
+            m->wm_DNS, sizeof(m->wm_DNS));
         FreeVec(buf);
     }
 
-    if (m->wm_Gateway[0] == '\0')
+    if (m->wm_Gateway[0] == '\0' && StackDBDir(db, sizeof(db)))
     {
-        buf = ReadPrefs("ENV:AROSTCP/db/interfaces", &len);
+        snprintf((char *)path, sizeof(path), "%s/interfaces", (const char *)db);
+        buf = ReadPrefs(path, &len);
         if (buf != NULL)
         {
-            opt = FindNoCase(buf, "GW=");
-            if (opt != NULL)
-                CopyField(m->wm_Gateway, sizeof(m->wm_Gateway), opt + 3);
+            InterfaceGatewayFromPrefs(buf, (size_t)len, m->wm_Interface,
+                m->wm_Gateway, sizeof(m->wm_Gateway));
             FreeVec(buf);
         }
     }
 
-    if (m->wm_DNS[0] == '\0')
+    if (m->wm_DNS[0] == '\0' && StackDBDir(db, sizeof(db)))
     {
-        buf = ReadPrefs("ENV:AROSTCP/db/netdb-myhost", &len);
+        snprintf((char *)path, sizeof(path), "%s/netdb-myhost", (const char *)db);
+        buf = ReadPrefs(path, &len);
         if (buf != NULL)
         {
             opt = FindNoCase(buf, "NAMESERVER ");
@@ -745,13 +1426,15 @@ static BOOL ProbeWireless(struct WifiDev *dev)
 {
     struct NSDeviceQueryResult nsq;
     BOOL wireless = FALSE;
+    LONG error;
 
     memset(&nsq, 0, sizeof(nsq));
     ((struct IOStdReq *)dev->wd_Req)->io_Command = NSCMD_DEVICEQUERY;
     ((struct IOStdReq *)dev->wd_Req)->io_Data = &nsq;
     ((struct IOStdReq *)dev->wd_Req)->io_Length = sizeof(nsq);
 
-    if (DoIO((struct IORequest *)dev->wd_Req) == 0 &&
+    error = DoIO((struct IORequest *)dev->wd_Req);
+    if (error == 0 &&
         nsq.SupportedCommands != NULL)
     {
         const UWORD *cmd;
@@ -766,6 +1449,15 @@ static BOOL ProbeWireless(struct WifiDev *dev)
         }
     }
 
+    if (!wireless)
+    {
+        dev->wd_Failure = error != 0 ? 5 : 6;
+        dev->wd_Error = error;
+#ifdef WIFI_ACCESS_DIAGNOSTICS
+        bug("[WiFiAccess] s=%ld e=%ld v=0 r=0\n",
+            (long)dev->wd_Failure, (long)error);
+#endif
+    }
     return wireless;
 }
 
@@ -775,11 +1467,21 @@ static BOOL DeviceIsWireless(struct WifiDev *dev, CONST_STRPTR name)
 {
     static TEXT probed[WIFI_DEV_MAX];
     static BOOL probedresult;
+    static LONG probedfailure;
+    static LONG probederror;
 
     if (probed[0] != '\0' && Stricmp((STRPTR)probed, (STRPTR)name) == 0)
+    {
+        /* Keep the cause with the existing cached answer; do not issue another
+         * query or present a cached refusal as a fresh transport result. */
+        dev->wd_Failure = probedfailure;
+        dev->wd_Error = probederror;
         return probedresult;
+    }
 
     probedresult = ProbeWireless(dev);
+    probedfailure = dev->wd_Failure;
+    probederror = dev->wd_Error;
     snprintf(probed, sizeof(probed), "%s", name);
     return probedresult;
 }
@@ -793,18 +1495,53 @@ static void DoDevices(struct WifiMsg *m)
 {
     struct FileInfoBlock *fib;
     BPTR lock;
+    TEXT failure[sizeof(m->wm_Status)] = {0};
+    BOOL examined = FALSE;
 
     m->wm_DeviceCount = 0;
+#ifdef WIFI_ACCESS_DIAGNOSTICS
+    bug("[WiFiAccess] discovery=1\n");
+#endif
 
-    lock = Lock("DEVS:Networks", SHARED_LOCK);
+    lock = Lock(WIFI_DEVICE_DIR, SHARED_LOCK);
     if (lock == BNULL)
     {
+        LONG error = IoErr();
+#ifdef WIFI_ACCESS_DIAGNOSTICS
+        bug("[WiFiAccess] s=7 e=%ld v=0 r=0\n", (long)error);
+#endif
+#ifdef WIFI_P4_FLASH_HELPERS
+        snprintf(m->wm_Status, sizeof(m->wm_Status),
+            "WiFi discovery: directory error=%ld", (long)error);
+#else
+        (void)error;
         strcpy(m->wm_Status, (const char *)_(MSG_ST_NO_DEVS_NETWORKS));
+#endif
         return;
     }
 
     fib = AllocDosObject(DOS_FIB, NULL);
-    if (fib != NULL && Examine(lock, fib))
+    if (fib == NULL)
+    {
+        snprintf(failure, sizeof(failure), "WiFi discovery: no file-info memory");
+#ifdef WIFI_ACCESS_DIAGNOSTICS
+        bug("[WiFiAccess] s=8 e=0 v=0 r=0\n");
+#endif
+    }
+    else
+    {
+        examined = Examine(lock, fib);
+        if (!examined)
+        {
+            LONG error = IoErr();
+            snprintf(failure, sizeof(failure),
+                "WiFi discovery: examine error=%ld", (long)error);
+#ifdef WIFI_ACCESS_DIAGNOSTICS
+            bug("[WiFiAccess] s=9 e=%ld v=0 r=0\n", (long)error);
+#endif
+        }
+    }
+    if (examined)
     {
         while (ExNext(lock, fib) && m->wm_DeviceCount < WIFI_MAX_DEVS)
         {
@@ -817,7 +1554,7 @@ static void DoDevices(struct WifiMsg *m)
             if (ext == NULL || Stricmp(ext, ".device") != 0)
                 continue;
 
-            snprintf(name, sizeof(name), "DEVS:Networks/%s", fib->fib_FileName);
+            snprintf(name, sizeof(name), "%s/%s", WIFI_DEVICE_DIR, fib->fib_FileName);
 
             /* One driver can hold more than one radio, so walk its units until
              * one refuses to open. Capped, because a driver that ignores the
@@ -829,8 +1566,20 @@ static void DoDevices(struct WifiMsg *m)
                 BOOL wireless;
 
                 if (!OpenWifiDev(&dev, name, unit))
+                {
+                    if (unit == 0 && failure[0] == '\0')
+                    {
+                        WifiAccessStatus(m, &dev);
+                        snprintf(failure, sizeof(failure), "%s", m->wm_Status);
+                    }
                     break;
+                }
                 wireless = ProbeWireless(&dev);
+                if (!wireless && unit == 0 && failure[0] == '\0')
+                {
+                    WifiAccessStatus(m, &dev);
+                    snprintf(failure, sizeof(failure), "%s", m->wm_Status);
+                }
                 CloseWifiDev(&dev);
                 if (!wireless)
                     break;      /* wireless is a property of the driver */
@@ -845,19 +1594,50 @@ static void DoDevices(struct WifiMsg *m)
     if (fib != NULL)
         FreeDosObject(DOS_FIB, fib);
     UnLock(lock);
+#ifdef WIFI_ACCESS_DIAGNOSTICS
+    bug("[WiFiAccess] devices=%ld\n", (long)m->wm_DeviceCount);
+#endif
 
     if (m->wm_DeviceCount == 0)
+#ifdef WIFI_P4_FLASH_HELPERS
+        snprintf(m->wm_Status, sizeof(m->wm_Status), "%s",
+            failure[0] != '\0' ? (const char *)failure :
+                (const char *)_(MSG_ST_NO_WIRELESS_DEVICE));
+#else
         strcpy(m->wm_Status, (const char *)_(MSG_ST_NO_WIRELESS_DEVICE));
+#endif
 }
 
 /* ------------------------------------------------------------------------- */
 /* Commands                                                                  */
+
+/* A startup OpenDevice probe can fail transiently. A later successful scan
+ * proves this exact device/unit implements S2_GETNETWORKS; repair the chooser
+ * from that observation, not from its filename or association capabilities. */
+static void RememberScannedDevice(struct WifiMsg *m)
+{
+    LONG i;
+
+    if (m->wm_Device[0] == '\0' || m->wm_Unit < 0 ||
+        m->wm_DeviceCount < 0 || m->wm_DeviceCount > WIFI_MAX_DEVS)
+        return;
+    for (i = 0; i < m->wm_DeviceCount; i++)
+        if (Stricmp(m->wm_Devices[i], m->wm_Device) == 0 &&
+            m->wm_DeviceUnits[i] == m->wm_Unit)
+            return;
+    if (i == WIFI_MAX_DEVS)
+        return;
+    snprintf(m->wm_Devices[i], WIFI_DEV_MAX, "%s", m->wm_Device);
+    m->wm_DeviceUnits[i] = m->wm_Unit;
+    m->wm_DeviceCount++;
+}
 
 /* Fills in wm_Associated/wm_SSID. Returns FALSE only if the device is absent. */
 static BOOL DoStatus(struct WifiMsg *m)
 {
     struct WifiDev dev;
     APTR pool;
+    TEXT access_failure[sizeof(m->wm_Status)] = {0};
 
     m->wm_Associated = FALSE;
     m->wm_Wireless = FALSE;
@@ -869,12 +1649,18 @@ static BOOL DoStatus(struct WifiMsg *m)
         return FALSE;
     if (!OpenWifiDev(&dev, m->wm_Device, m->wm_Unit))
     {
-        snprintf(m->wm_Status, sizeof(m->wm_Status), (const char *)_(MSG_ST_CANNOT_OPEN),
-            m->wm_Device, (long)m->wm_Unit);
+        WifiAccessStatus(m, &dev);
         return FALSE;
     }
 
     m->wm_Wireless = DeviceIsWireless(&dev, m->wm_Device);
+#ifdef WIFI_P4_FLASH_HELPERS
+    if (!m->wm_Wireless && dev.wd_Failure != 0)
+    {
+        WifiAccessStatus(m, &dev);
+        snprintf(access_failure, sizeof(access_failure), "%s", m->wm_Status);
+    }
+#endif
 
     pool = CreatePool(MEMF_PUBLIC | MEMF_CLEAR, PUDDLE_SIZE, PUDDLE_SIZE);
     if (pool != NULL)
@@ -936,8 +1722,13 @@ static BOOL DoStatus(struct WifiMsg *m)
                                                      : _(MSG_ST_A_NETWORK)));
     }
     else if (!m->wm_Wireless)
-        snprintf(m->wm_Status, sizeof(m->wm_Status),
-            (const char *)_(MSG_ST_NOT_WIRELESS), m->wm_Device);
+    {
+        if (access_failure[0] != '\0')
+            snprintf(m->wm_Status, sizeof(m->wm_Status), "%s", access_failure);
+        else
+            snprintf(m->wm_Status, sizeof(m->wm_Status),
+                (const char *)_(MSG_ST_NOT_WIRELESS), m->wm_Device);
+    }
     else
         strcpy(m->wm_Status, (const char *)_(MSG_ST_NOT_CONNECTED));
 
@@ -948,6 +1739,8 @@ static void DoScan(struct WifiMsg *m)
 {
     struct WifiDev dev;
     APTR pool;
+    struct Sana2WirelessCapabilities caps;
+    BOOL summary_capable;
 
     m->wm_Count = 0;
 
@@ -958,8 +1751,7 @@ static void DoScan(struct WifiMsg *m)
         return;
     if (!OpenWifiDev(&dev, m->wm_Device, m->wm_Unit))
     {
-        snprintf(m->wm_Status, sizeof(m->wm_Status), (const char *)_(MSG_ST_CANNOT_OPEN),
-            m->wm_Device, (long)m->wm_Unit);
+        WifiAccessStatus(m, &dev);
         return;
     }
 
@@ -971,6 +1763,18 @@ static void DoScan(struct WifiMsg *m)
         return;
     }
 
+    /* Negotiate the optional per-device display metadata contract. Legacy
+     * devices keep their authentic-IE path; this grants no handshake policy. */
+    memset(&caps, 0, sizeof(caps));
+    caps.SizeAvailable = sizeof(caps);
+    caps.Version = S2WIRELESS_CAPABILITIES_VERSION;
+    dev.wd_Req->ios2_Req.io_Command = S2_GETWIRELESSCAPABILITIES;
+    dev.wd_Req->ios2_StatData = &caps;
+    dev.wd_Req->ios2_Data = NULL;
+    dev.wd_Req->ios2_DataLength = 0;
+    summary_capable = DoIO((struct IORequest *)dev.wd_Req) == 0 &&
+        dev.wd_Req->ios2_Req.io_Error == 0 && WifiSummaryCapability(&caps);
+
     dev.wd_Req->ios2_Req.io_Command = S2_GETNETWORKS;
     dev.wd_Req->ios2_Data = pool;
     dev.wd_Req->ios2_StatData = NULL;
@@ -981,6 +1785,8 @@ static void DoScan(struct WifiMsg *m)
         struct TagItem **lists = dev.wd_Req->ios2_StatData;
         ULONG count = dev.wd_Req->ios2_DataLength, i;
         LONG j;
+
+        RememberScannedDevice(m);
 
         for (i = 0; i < count && i < WIFI_MAX_NETS && lists != NULL; i++)
         {
@@ -1019,9 +1825,14 @@ static void DoScan(struct WifiMsg *m)
             n->wn_Signal = (LONG)GetTagData(S2INFO_Signal, 0, tl);
             n->wn_Channel = (LONG)GetTagData(S2INFO_Channel, 0, tl);
             snprintf(n->wn_Protection, sizeof(n->wn_Protection), "%s",
-                IEProtection((const UBYTE *)
-                    GetTagData(S2INFO_InfoElements, (IPTR)NULL, tl)));
-            n->wn_Known = PrefsHaveNetwork(n->wn_SSID);
+                summary_capable ? WifiSummaryProtection(
+                    (const struct Sana2WirelessSecuritySummary *)
+                    GetTagData(S2INFO_SecuritySummary, (IPTR)NULL, tl)) :
+                    (const char *)IEProtection((const UBYTE *)
+                        GetTagData(S2INFO_InfoElements, (IPTR)NULL, tl)));
+            n->wn_Known = PrefsHaveNetwork(n->wn_SSID,
+                WifiSecurityProfileFromLabel(
+                    (CONST_STRPTR)n->wn_Protection));
             if (j == m->wm_Count)
                 m->wm_Count++;
         }
@@ -1069,40 +1880,52 @@ struct PrefsBackup
     BOOL    pb_Taken;
 };
 
-static void SavePrefs(struct PrefsBackup *b)
+static BOOL SavePrefs(struct PrefsBackup *b)
 {
-    b->pb_Env = ReadPrefs(PREFS_ENV, &b->pb_EnvLen);
-    b->pb_Envarc = ReadPrefs(PREFS_ENVARC, &b->pb_EnvarcLen);
-    b->pb_Taken = TRUE;
+    BOOL env_ok, envarc_ok = TRUE;
+    b->pb_Env = ReadPrefsChecked(PREFS_ENV, &b->pb_EnvLen, &env_ok);
+    if (!WifiVolatile)
+        b->pb_Envarc = ReadPrefsChecked(PREFS_ENVARC, &b->pb_EnvarcLen,
+                                      &envarc_ok);
+    b->pb_Taken = env_ok && envarc_ok;
+    return b->pb_Taken;
 }
 
-static void WriteWhole(CONST_STRPTR name, STRPTR buf, LONG len)
+static BOOL WriteWhole(CONST_STRPTR name, STRPTR buf, LONG len)
 {
     BPTR fh;
+    BOOL result;
 
     /* No file before the attempt means the network was unknown, and unknown is
      * what it has to go back to - or the next Connect trusts a bad key. */
     if (buf == NULL)
     {
-        DeleteFile(name);
-        return;
+        return DeleteFile(name) || IoErr() == ERROR_OBJECT_NOT_FOUND;
     }
     if ((fh = Open(name, MODE_NEWFILE)) == BNULL)
-        return;
-    Write(fh, buf, len);
-    Close(fh);
+        return FALSE;
+    result = Write(fh, buf, len) == len;
+    if (!Close(fh))
+        result = FALSE;
+    return result;
 }
 
-static void RestorePrefs(struct PrefsBackup *b)
+static BOOL RestorePrefs(struct PrefsBackup *b)
 {
+    BOOL result;
     if (!b->pb_Taken)
-        return;
-    WriteWhole(PREFS_ENV, b->pb_Env, b->pb_EnvLen);
-    WriteWhole(PREFS_ENVARC, b->pb_Envarc, b->pb_EnvarcLen);
+        return TRUE;
+    result = WriteWhole(PREFS_ENV, b->pb_Env, b->pb_EnvLen);
+    if (!WifiVolatile)
+        if (!WriteWhole(PREFS_ENVARC, b->pb_Envarc, b->pb_EnvarcLen))
+            result = FALSE;
+    return result;
 }
 
 static void FreePrefsBackup(struct PrefsBackup *b)
 {
+    WifiClearSecret(b->pb_Env, b->pb_EnvLen);
+    WifiClearSecret(b->pb_Envarc, b->pb_EnvarcLen);
     FreeVec(b->pb_Env);
     FreeVec(b->pb_Envarc);
     b->pb_Env = NULL;
@@ -1144,9 +1967,9 @@ static void RunConnect(struct WifiMsg *m, CONST_STRPTR wanted,
         strcpy(m->wm_Status, (const char *)_(MSG_ST_WM_NO_STOP));
         return;
     }
-    if (!StartSupplicant(m->wm_Device, m->wm_Unit))
+    if (!StartSupplicant(m->wm_Device, m->wm_Unit,
+                        m->wm_Status, sizeof(m->wm_Status)))
     {
-        strcpy(m->wm_Status, (const char *)_(MSG_ST_WM_NO_START));
         return;
     }
 
@@ -1159,7 +1982,9 @@ static void RunConnect(struct WifiMsg *m, CONST_STRPTR wanted,
         {
             BOOL created;
 
-            m->wm_Result = WRES_OK;
+            /* VOLATILE commits a new selection only after an address exists. */
+            if (!WifiVolatile)
+                m->wm_Result = WRES_OK;
 
             if (!EnsureInterface(m, &created))
             {
@@ -1191,7 +2016,10 @@ static void RunConnect(struct WifiMsg *m, CONST_STRPTR wanted,
             for (tries = 0; tries < ASSOC_TIMEOUT; tries++)
             {
                 if (m->wm_Address[0] != '\0')
+                {
+                    m->wm_Result = WRES_OK;
                     return;
+                }
                 Delay(25);
                 DoStatus(m);
 
@@ -1208,6 +2036,9 @@ static void RunConnect(struct WifiMsg *m, CONST_STRPTR wanted,
                     return;
                 }
             }
+            if (WifiVolatile && m->wm_Associated &&
+                m->wm_Address[0] != '\0')
+                m->wm_Result = WRES_OK;
             return;
         }
     }
@@ -1239,6 +2070,28 @@ static void DoConnect(struct WifiMsg *m)
 
     m->wm_Result = WRES_FAILED;
 
+    /* Fail closed before opening a device, touching credentials, or
+     * restarting WirelessManager when the scan's label was not exact. */
+    if (m->wm_SecurityProfile != WIFI_SECURITY_OPEN &&
+        m->wm_SecurityProfile != WIFI_SECURITY_PSK &&
+        m->wm_SecurityProfile != WIFI_SECURITY_SAE)
+    {
+        strcpy(m->wm_Status,
+            "Cannot connect: security type is unknown.");
+        return;
+    }
+    m->wm_Protected = m->wm_SecurityProfile != WIFI_SECURITY_OPEN;
+
+    if ((m->wm_Protected && m->wm_Key[0] != '\0' &&
+         !WifiValidateProfileCredential(m->wm_SecurityProfile,
+             (CONST_STRPTR)m->wm_Key)) ||
+        (!m->wm_Protected && m->wm_Key[0] != '\0'))
+    {
+        strcpy(m->wm_Status,
+            "Password must be printable ASCII and within the security limit.");
+        return;
+    }
+
     if (!WifiDevice(m))
         return;
     if (m->wm_SSID[0] == '\0')
@@ -1264,7 +2117,7 @@ static void DoConnect(struct WifiMsg *m)
      * separate round trip.
      */
     if (m->wm_Protected && m->wm_Key[0] == '\0' &&
-        !PrefsHaveNetwork(m->wm_SSID))
+        !PrefsHaveNetwork(m->wm_SSID, m->wm_SecurityProfile))
     {
         m->wm_Result = WRES_NEEDKEY;
         snprintf(m->wm_Status, sizeof(m->wm_Status),
@@ -1276,9 +2129,23 @@ static void DoConnect(struct WifiMsg *m)
      * to put in it, so a reconnect to a remembered network keeps its key. */
     if (!m->wm_Protected || m->wm_Key[0] != '\0')
     {
-        SavePrefs(&backup);
-        if (!MergePrefs(PREFS_ENVARC, m->wm_SSID, m->wm_Key) ||
-            !MergePrefs(PREFS_ENV, m->wm_SSID, m->wm_Key))
+        if (!SavePrefs(&backup))
+        {
+            strcpy(m->wm_Status, (const char *)_(MSG_ST_CANNOT_WRITE_PREFS));
+            FreePrefsBackup(&backup);
+            return;
+        }
+        if ((WifiVolatile &&
+             (m->wm_SecurityProfile == WIFI_SECURITY_SAE
+                ? !WifiWriteVolatileProfilePrefs(m->wm_SSID, m->wm_Key,
+                      m->wm_SecurityProfile)
+                : !WifiWriteVolatilePrefs(m->wm_SSID, m->wm_Key,
+                      m->wm_Protected))) ||
+            (!WifiVolatile &&
+             (!MergePrefs(PREFS_ENVARC, m->wm_SSID, m->wm_Key,
+                  m->wm_SecurityProfile) ||
+              !MergePrefs(PREFS_ENV, m->wm_SSID, m->wm_Key,
+                  m->wm_SecurityProfile))))
         {
             strcpy(m->wm_Status, (const char *)_(MSG_ST_CANNOT_WRITE_PREFS));
             RestorePrefs(&backup);
@@ -1291,8 +2158,15 @@ static void DoConnect(struct WifiMsg *m)
 
     /* Blaming the passphrase and keeping it are contradictory: put the file
      * back, so an untested passphrase never becomes the remembered one. */
-    if (m->wm_Result == WRES_NEEDKEY)
-        RestorePrefs(&backup);
+    if (m->wm_Result == WRES_NEEDKEY ||
+        (WifiVolatile && m->wm_Result != WRES_OK))
+    {
+        if (!RestorePrefs(&backup))
+        {
+            m->wm_Result = WRES_FAILED;
+            strcpy(m->wm_Status, (const char *)_(MSG_ST_CANNOT_WRITE_PREFS));
+        }
+    }
     FreePrefsBackup(&backup);
 }
 
@@ -1369,6 +2243,7 @@ VOID WifiWorker(VOID)
 
             case WCMD_CONNECT:
                 DoConnect(m);
+                WifiClearSecret(m->wm_Key, sizeof(m->wm_Key));
                 break;
 
             case WCMD_DISCONNECT:

@@ -33,7 +33,7 @@ include $(SRCDIR)/$(CURDIR)/make.opt
     location=$(PORTSSOURCEDIR)/esp-idf destination=$(PORTSDIR)/esp-idf \
     srcdir="$(IDFBASEDIR)"
 
-IDFPROJECTDIR := $(PORTSDIR)/esp-idf/project-$(P4_BOARD)
+IDFPROJECTDIR := $(PORTSDIR)/esp-idf/project-$(P4_BOARD)-$(P4_FLASH_LAYOUT)
 IDFBOOTLOADER := $(IDFPROJECTDIR)/build/bootloader/bootloader.bin
 
 # The board's partition layout is an input kept in this tree. Generate its
@@ -43,7 +43,7 @@ IDFBOOTLOADER := $(IDFPROJECTDIR)/build/bootloader/bootloader.bin
 # the same tool is a second build artifact and validates that MD5 record.
 IDFPARTTOOL    := $(IDFARCHSRCDIR)/components/partition_table/gen_esp32part.py
 P4PARTCSV      := $(P4_BOARD_PARTITION_CSV)
-P4PARTDIR      := $(OSGENDIR)/boot/boards/$(P4_BOARD)
+P4PARTDIR      := $(OSGENDIR)/boot/boards/$(P4_BOARD)/$(P4_FLASH_LAYOUT)
 P4PARTBIN      := $(P4PARTDIR)/esp32p4-partition-table.bin
 P4PARTREPORT   := $(P4PARTDIR)/esp32p4-partition-table.decoded.csv
 
@@ -57,17 +57,23 @@ esp32p4-bootloader : $(IDFBOOTLOADER)
 	@$(ECHO) "Bootloader is $(IDFBOOTLOADER)"
 
 $(IDFBOOTLOADER) : $(P4_BOARD_SDKCONFIG) \
-                   $(SRCDIR)/$(CURDIR)/$(IDFPATCHFILE)
+                   $(SRCDIR)/$(CURDIR)/$(IDFPATCHFILE) \
+                   $(SRCDIR)/$(CURDIR)/$(IDFABPATCHFILE) \
+                   $(SRCDIR)/$(CURDIR)/aros_ab_check.h
 	@$(ECHO) "Building   esp32p4 bootloader from $(IDFBASEDIR)"
 	%mkdirs_q $(IDFPROJECTDIR)
 	@$(CP) -r $(SRCDIR)/$(CURDIR)/project/* $(IDFPROJECTDIR)/
 	@$(CP) $(P4_BOARD_SDKCONFIG) $(IDFPROJECTDIR)/sdkconfig.defaults
+	@$(CP) $(SRCDIR)/$(CURDIR)/aros_ab_check.h \
+	    $(IDFARCHSRCDIR)/components/bootloader_support/private_include/aros_ab_check.h
 	@cd $(IDFPROJECTDIR) && \
 	    IDF_PATH=$(IDFARCHSRCDIR) \
 	    cmake -G Ninja -B build -DIDF_TARGET=esp32p4 \
 	          -DSDKCONFIG_DEFAULTS=sdkconfig.defaults > cmake.log 2>&1 && \
 	    ninja -C build bootloader > build.log 2>&1 || \
 	    { $(ECHO) "failed - see $(IDFPROJECTDIR)/{cmake,build}.log" ; exit 1 ; }
+	@$(PYTHON) $(SRCDIR)/arch/riscv-esp32p4/tools/check-artifact-size.py \
+	    "$@" $$(( $(P4_BOARD_PARTITION_OFFSET) - $(P4_BOARD_BOOTLOADER_OFFSET) )) --label Bootloader
 	@$(ECHO) "Built      $@"
 
 #MM esp32p4-partition-table : esp32p4-bootloader-fetch
@@ -92,6 +98,9 @@ $(P4PARTREPORT): $(P4PARTBIN)
 #
 #MM esp32p4-flash-partition-table : esp32p4-partition-table
 esp32p4-flash-partition-table:
+	@if test "$(P4_FLASH_LAYOUT)" = ab; then \
+	    $(ECHO) "A/B migration is not qualified; refusing standalone table write"; exit 2; \
+	fi
 	@if test -z "$(ESP32P4_PORT)"; then \
 	    $(ECHO) "Set ESP32P4_PORT to the board's explicit serial device"; \
 	    exit 2; \

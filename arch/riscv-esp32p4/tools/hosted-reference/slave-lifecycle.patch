@@ -1,0 +1,42 @@
+--- a/slave/main/slave_control.c
++++ b/slave/main/slave_control.c
+@@ -196,3 +196,4 @@
+ /* FreeRTOS event group to signal when we are connected*/
+ static esp_event_handler_instance_t instance_any_id;
++static uint8_t wifi_event_handler_registered;
+ 
+@@ -698,5 +699,21 @@
+ }
+ 
++/* RPC handlers run serially. Keep one handler for the lifetime of the
++ * persistent default event loop, including failed init and deinit retries.
++ * Register before init so even an immediate driver event has a consumer.
++ * This prevents duplicate notifications; it is not an attempt-ID fence. */
++static esp_err_t ensure_wifi_event_handler(void)
++{
++	esp_err_t ret;
++	if (wifi_event_handler_registered)
++		return ESP_OK;
++	ret = esp_event_handler_instance_register(WIFI_EVENT,
++			ESP_EVENT_ANY_ID, &event_handler, NULL, &instance_any_id);
++	if (ret == ESP_OK)
++		wifi_event_handler_registered = 1;
++	return ret;
++}
++
+ static esp_err_t req_wifi_init(Rpc *req, Rpc *resp, void *priv_data)
+ {
+ 	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+@@ -730,11 +747,6 @@
++	RPC_RET_FAIL_IF(ensure_wifi_event_handler());
+ 	RPC_RET_FAIL_IF(esp_wifi_init(&cfg));
+ 
+-	ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
+-			ESP_EVENT_ANY_ID,
+-			&event_handler,
+-			NULL,
+-			&instance_any_id));
+-
+ 	return ESP_OK;
+ }
+ 

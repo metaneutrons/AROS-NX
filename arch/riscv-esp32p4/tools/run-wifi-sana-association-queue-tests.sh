@@ -1,0 +1,341 @@
+#!/bin/sh
+# Build host tests from the real SANA association queue helpers, selected
+# BeginIO switch arms, common epilogue, and AbortIO body. The harness models
+# the dispatch boundary, not the full device lifecycle.
+set -eu
+
+test_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+repo_root=$(CDPATH= cd -- "$test_root/../.." && pwd)
+source_file=${SANA_DEVICE_SOURCE:-$test_root/network/sana_device.c}
+header_file="$test_root/network/sana_device.h"
+bridge_file="$test_root/network/device_bridge.h"
+sana_header="$repo_root/compiler/include/devices/sana2.h"
+wireless_header="$repo_root/compiler/include/devices/sana2wireless.h"
+io_header="$repo_root/compiler/include/exec/io.h"
+errors_header="$repo_root/compiler/include/exec/errors.h"
+test_tmp=$(mktemp -d "${TMPDIR:-/tmp}/p4-wifi-sana-association-queue.XXXXXX")
+extract="$test_tmp/sana_association_queue_extract.inc"
+cases="$test_tmp/sana_association_queue_cases.inc"
+epilogue="$test_tmp/sana_association_queue_epilogue.inc"
+abort_body="$test_tmp/sana_abort_io_body.inc"
+trap 'command rm -f "$test_tmp"/test-* "$extract" "$cases" "$epilogue" "$abort_body"; command rmdir "$test_tmp"' EXIT HUP INT TERM
+
+: > "$extract"
+: > "$cases"
+: > "$epilogue"
+: > "$abort_body"
+
+UBSAN_OPTIONS="${UBSAN_OPTIONS:+$UBSAN_OPTIONS:}halt_on_error=1"
+ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}halt_on_error=1"
+export UBSAN_OPTIONS ASAN_OPTIONS
+
+extract_define() {
+    macro_name=$1
+    macro_file=$2
+    awk -v name="$macro_name" \
+        '$1 == "#define" && $2 == name { print; count++ }
+         END { if (count != 1) exit 1 }' "$macro_file" >> "$extract" || {
+        echo "could not uniquely extract $macro_name from $macro_file" >&2
+        exit 1
+    }
+}
+
+extract_block() {
+    block_kind=$1
+    block_name=$2
+    block_file=$3
+    awk -v name="$block_name" '
+        !capture && ($0 ~ "^(struct|enum)[[:space:]]+" name "[[:space:]]*$" ||
+                     $0 ~ "^(struct|enum)[[:space:]]+" name "[[:space:]]*\\{") {
+            capture = 1
+            started = 0
+            depth = 0
+        }
+        capture {
+            print
+            line = $0
+            opens = gsub(/\{/, "", line)
+            closes = gsub(/\}/, "", line)
+            if (opens != 0) started = 1
+            depth += opens - closes
+            if (started && depth == 0) { found = 1; exit }
+        }
+        END { if (!found) exit 1 }
+    ' "$block_file" >> "$extract" || {
+        echo "could not extract $block_kind $block_name from $block_file" >&2
+        exit 1
+    }
+}
+
+extract_function() {
+    function_name=$1
+    matches=$(awk -v name="$function_name" '
+        $0 ~ "^[[:space:]]*static[[:space:]].*" name "[[:space:]]*\\(" { count++ }
+        END { print count + 0 }
+    ' "$source_file")
+    if [ "$matches" -ne 1 ]; then
+        echo "expected one source definition of $function_name, found $matches" >&2
+        exit 1
+    fi
+    awk -v name="$function_name" '
+        !candidate && !copy && $0 ~ "^[[:space:]]*static[[:space:]].*" name "[[:space:]]*\\(" {
+            candidate = 1
+            candidate_text = $0 ORS
+            next
+        }
+        candidate {
+            candidate_text = candidate_text $0 ORS
+            line = $0
+            opens = gsub(/\{/, "", line)
+            closes = gsub(/\}/, "", line)
+            if (opens != 0) {
+                copy = 1
+                depth = opens - closes
+                printf "%s", candidate_text
+                candidate = 0
+                candidate_text = ""
+                if (depth == 0) { found = 1; exit }
+            } else if (index($0, ";") != 0) {
+                candidate = 0
+                candidate_text = ""
+            }
+            next
+        }
+        copy {
+            print
+            line = $0
+            opens = gsub(/\{/, "", line)
+            closes = gsub(/\}/, "", line)
+            depth += opens - closes
+            if (depth == 0) { found = 1; exit }
+        }
+        END { if (!found) exit 1 }
+    ' "$source_file" >> "$extract" || {
+        echo "could not extract sana_device.c helper: $function_name" >&2
+        exit 1
+    }
+}
+
+extract_supported_commands() {
+    awk '
+        !capture && $0 ~ "^static[[:space:]]+const[[:space:]]+UWORD[[:space:]]+p4wlan_supported_commands\\[\\][[:space:]]*=" {
+            capture = 1
+        }
+        capture {
+            print
+            line = $0
+            opens = gsub(/\{/, "", line)
+            closes = gsub(/\}/, "", line)
+            depth += opens - closes
+            if (opens != 0) started = 1
+            if (started && depth == 0) { found = 1; exit }
+        }
+        END { if (!found) exit 1 }
+    ' "$source_file" >> "$extract" || {
+        echo "could not extract production supported-command array from $source_file" >&2
+        exit 1
+    }
+}
+
+extract_case() {
+    case_name=$1
+    awk -v name="$case_name" '
+        $0 ~ "^[[:space:]]*case[[:space:]]+" name ":[[:space:]]*$" {
+            count++
+            if (count == 1) {
+                capture = 1
+                print
+            } else {
+                capture = 0
+            }
+            next
+        }
+        capture && $0 ~ "^[[:space:]]*(case[[:space:]]+|default[[:space:]]*:)" {
+            capture = 0
+            next
+        }
+        capture { print }
+        END { if (count != 1) exit 1 }
+    ' "$source_file" >> "$cases" || {
+        echo "could not extract BeginIO case $case_name from $source_file" >&2
+        exit 1
+    }
+    printf '\n' >> "$cases"
+}
+
+extract_common_epilogue() {
+    awk '
+        !in_function && $0 ~ "^static void p4wlan_begin_sana\\(" {
+            in_function = 1
+        }
+        in_function && !in_switch && $0 ~ "switch[[:space:]]*\\(command\\)[[:space:]]*\\{" {
+            in_switch = 1
+        }
+        in_switch {
+            line = $0
+            opens = gsub(/\{/, "", line)
+            closes = gsub(/\}/, "", line)
+            depth += opens - closes
+            if (opens != 0) started = 1
+            if (started && depth == 0) {
+                in_switch = 0
+                epilogue = 1
+            }
+            next
+        }
+        epilogue {
+            if ($0 ~ /^}[[:space:]]*$/) { found = 1; exit }
+            print
+        }
+        END { if (!found) exit 1 }
+    ' "$source_file" > "$epilogue" || {
+        echo "could not extract common BeginIO epilogue from $source_file" >&2
+        exit 1
+    }
+}
+
+extract_abort_io_body() {
+    awk '
+        !signature && $0 ~ "^AROS_LH1\\(LONG,[[:space:]]*abort_io," {
+            signature = 1
+            next
+        }
+        signature && $0 ~ "^[[:space:]]*\\{" { body = 1; next }
+        body && $0 ~ "AROS_LIBFUNC_INIT" { next }
+        body && $0 ~ "AROS_LIBFUNC_EXIT" { found = 1; exit }
+        body { print }
+        END { if (!found) exit 1 }
+    ' "$source_file" > "$abort_body" || {
+        echo "could not extract production AbortIO body from $source_file" >&2
+        exit 1
+    }
+}
+
+for macro_name in S2EVENT_ONLINE S2EVENT_OFFLINE S2EVENT_CONNECT \
+                  S2EVENT_DISCONNECT S2EVENT_CONNECT_FAILED \
+                  S2EVENT_ERROR; do
+    extract_define "$macro_name" "$sana_header"
+done
+for macro_name in P4_WIFI_LINK_UNKNOWN P4_WIFI_LINK_UP P4_WIFI_LINK_DOWN; do
+    extract_define "$macro_name" "$bridge_file"
+done
+for macro_name in S2_SETOPTIONS S2_GETNETWORKINFO \
+                  S2_GETWIRELESSCAPABILITIES S2_GETFULLMACCAPABILITIES; do
+    extract_define "$macro_name" "$wireless_header"
+done
+for macro_name in S2_DEVICEQUERY S2_GETSTATIONADDRESS S2_CONFIGINTERFACE \
+                  S2_BROADCAST S2_MULTICAST S2_GETGLOBALSTATS S2_ONLINE; do
+    extract_define "$macro_name" "$sana_header"
+done
+for macro_name in SANA2_MAX_ADDR_BITS SANA2_MAX_ADDR_BYTES; do
+    extract_define "$macro_name" "$sana_header"
+done
+extract_define NSCMD_DEVICEQUERY "$repo_root/compiler/include/devices/newstyle.h"
+extract_define S2_OFFLINE "$sana_header"
+extract_define S2_ONEVENT "$sana_header"
+extract_define P4WLAN_MAX_REQUESTS "$header_file"
+extract_define P4WLAN_MAX_EVENTS "$header_file"
+for macro_name in CMD_READ CMD_WRITE CMD_FLUSH CMD_NONSTD; do
+    extract_define "$macro_name" "$io_header"
+done
+for macro_name in IOERR_ABORTED; do
+    extract_define "$macro_name" "$errors_header"
+done
+for macro_name in S2ERR_NO_RESOURCES S2ERR_BAD_ARGUMENT S2ERR_BAD_STATE \
+                  S2ERR_BAD_ADDRESS S2ERR_OUTOFSERVICE \
+                  S2ERR_NOT_SUPPORTED S2WERR_GENERIC_ERROR \
+                  S2WERR_UNIT_OFFLINE S2WERR_NULL_POINTER S2WERR_BAD_EVENT \
+                  S2WERR_BAD_STATDATA S2WERR_UNIT_ONLINE \
+                  S2WERR_SRC_ADDRESS S2WERR_IS_CONFIGURED; do
+    extract_define "$macro_name" "$sana_header"
+done
+
+extract_block enum p4wlan_request_kind "$header_file"
+extract_block enum p4wlan_request_state "$header_file"
+extract_block struct p4wlan_request "$header_file"
+extract_block struct p4wlan_opener "$header_file"
+extract_block struct p4wlan_association "$header_file"
+extract_block struct p4wlan_unit "$header_file"
+extract_block struct esp32p4wlan_base "$header_file"
+extract_supported_commands
+extract_function p4wlan_mac_valid
+extract_function p4wlan_mac_equal
+extract_function p4wlan_resource_valid
+extract_function p4wlan_zero_bytes
+extract_function p4wlan_wipe_bytes
+extract_function p4wlan_fullmac_capabilities
+extract_function p4wlan_add_done_locked
+extract_function p4wlan_find_opener_locked
+extract_function p4wlan_first_done
+extract_function p4wlan_finish_request
+extract_function p4wlan_finish_done
+extract_function p4wlan_queue_done_locked
+extract_function p4wlan_drop_pin_locked
+extract_function p4wlan_retire_association_locked
+extract_function p4wlan_drop_teardown_locked
+extract_function p4wlan_invalidate_selection_locked
+extract_function p4wlan_replace_selection_locked
+extract_function p4wlan_cancel_opener_association_locked
+extract_function p4wlan_flush_opener_locked
+extract_function p4wlan_flush_all_locked
+extract_function p4wlan_event_locked
+extract_function p4wlan_alloc_request
+extract_function p4wlan_enqueue_locked
+extract_function p4wlan_fullmac_terminal_locked
+extract_function p4wlan_event_mask_valid
+extract_function p4wlan_event_ready_locked
+extract_function p4wlan_onevent_immediate_locked
+extract_function p4wlan_online_locked
+extract_function p4wlan_configure_interface_locked
+extract_function p4wlan_begin_teardown_locked
+extract_function p4wlan_disassociate_opener_locked
+extract_function p4wlan_link_lost_locked
+extract_function p4wlan_set_offline_locked
+extract_function p4wlan_term_io
+extract_function p4wlan_immediate_error
+extract_function p4wlan_association_cancelled
+extract_function p4wlan_confirmed_target_matches
+extract_function p4wlan_association_failed_locked
+extract_function p4wlan_associate_one
+extract_function p4wlan_link_info_equal
+extract_function p4wlan_maintain_link
+extract_block struct p4wlan_network_publication "$source_file"
+extract_function p4wlan_network_info_locked
+
+for case_name in S2_SETOPTIONS S2_GETNETWORKINFO \
+                 S2_GETWIRELESSCAPABILITIES S2_GETFULLMACCAPABILITIES \
+                 S2_CONFIGINTERFACE S2_OFFLINE S2_ONEVENT CMD_FLUSH; do
+    extract_case "$case_name"
+done
+extract_common_epilogue
+extract_abort_io_body
+
+for policy_config in disabled-default disabled-peer-gate disabled-no-policy \
+                     diagnostic-risk diagnostic-partial production-qualified; do
+    case "$policy_config" in
+        disabled-default)
+            policy_flags='-DP4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED=0 -DP4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED=0 -DP4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED=0 -DP4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED=0' ;;
+        disabled-peer-gate)
+            policy_flags='-DP4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED=0 -DP4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED=1 -DP4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED=1 -DP4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED=1' ;;
+        disabled-no-policy)
+            policy_flags='-DP4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED=1 -DP4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED=0 -DP4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED=0 -DP4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED=0' ;;
+        diagnostic-risk)
+            policy_flags='-DP4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED=1 -DP4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED=0 -DP4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED=0 -DP4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED=1' ;;
+        diagnostic-partial)
+            policy_flags='-DP4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED=1 -DP4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED=1 -DP4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED=0 -DP4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED=1' ;;
+        production-qualified)
+            policy_flags='-DP4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED=1 -DP4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED=1 -DP4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED=1 -DP4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED=0' ;;
+    esac
+    for test_opt in 0 2; do
+        # Intentional word splitting passes the four independent policy gates.
+        # shellcheck disable=SC2086
+        "${CC:-cc}" -std=c99 -Wall -Wextra -Werror -pedantic \
+            -O"$test_opt" -fsanitize=address,undefined -fno-omit-frame-pointer \
+            $policy_flags -I"$test_tmp" -isystem "$repo_root/compiler/include" \
+            "$test_root/tools/test-wifi-sana-association-queue.c" \
+            -o "$test_tmp/test-$policy_config-o$test_opt"
+        printf '%s O%s: ' "$policy_config" "$test_opt"
+        "$test_tmp/test-$policy_config-o$test_opt"
+        command rm -f "$test_tmp/test-$policy_config-o$test_opt"
+    done
+done

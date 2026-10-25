@@ -13,6 +13,15 @@
 
 #include "touch_policy.h"
 
+/* Routine diagnostics are opt-in; failures and warnings remain unconditional. */
+#ifndef TOUCHSCREEN_DIAGNOSTICS
+#define TOUCHSCREEN_DIAGNOSTICS 0
+#endif
+
+#if TOUCHSCREEN_DIAGNOSTICS != 0 && TOUCHSCREEN_DIAGNOSTICS != 1
+#error "TOUCHSCREEN_DIAGNOSTICS must be 0 or 1"
+#endif
+
 /*
  * What the preferences change: the calibration (starting from the measured
  * default), the gesture parameters and the mode. The worker's file part

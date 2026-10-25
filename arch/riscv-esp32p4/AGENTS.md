@@ -83,6 +83,21 @@ also inspect `riscv-aros-gcc -print-sysroot`: GCC may still point at the former
 Developer tree. The P4 fbgfx build explicitly selects this build's generated
 includes; do not silently update the abandoned sysroot as a workaround.
 
+When patching an installed BSP instead of rebuilding the complete package,
+verify the dependency closure of every replaced member against the actual
+backup, not current source filenames. In particular, WLAN and sdcard must use
+the same SDMMC host ABI as the bundled esp32p4sdmmc.resource. Refresh the host
+and both consumers together when that ABI changes. Confirm compiled ABI values
+and complete linked module artifacts; an architecture-object target alone is
+not a rebuilt sdcard.device. Do not run parallel top-level mmake targets in
+one build tree: they can race while regenerating shared makefiles.
+
+WirelessManager compiles copied sources from its generated tree. Before a
+documented quick build after edits under `WirelessManager/src`, run
+`gmake workbench-network-wirelessmanager-setup`, compare the affected source
+against the generated copy, then invalidate its objects and build the quick
+target. A quick target alone can skip the copy dependency and rebuild old code.
+
 ## Capture the console from the first byte
 
 Use `tools/reset-and-log.py`, not esptool followed by a reader:
@@ -103,6 +118,14 @@ was moved into a later report only so it could be read, and a `SW_SYS_RESET`
 loop was misattributed for the same reason.  A measurement you cannot reliably
 read is not a measurement.
 
+For causal reset diagnosis use `--once --attempt-log <new.jsonl>` with a
+separate raw stdout capture. This issues one explicit reset pulse, retains
+all received bytes and never retries silent/download boots. Inspect the
+journal's final status, duration and classification; exit 0 is not a boot
+pass. Opening the port can itself reset the device, and host receipt phases
+do not identify the execution that generated buffered bytes. The legacy
+default may discard failed attempts and is not a single-reset continuity test.
+
 ## Confirm availability before interactive hardware tests
 
 The user often works remotely and cannot necessarily see or touch the D1001.
@@ -114,6 +137,13 @@ authorization does not waive this synchronization step.  A run started before
 that confirmation is non-interactive evidence only and must not be counted as
 an interactive acceptance test, even if the user later reports that they
 missed it.
+
+Fabian clarified on2026-10-11 that reproducible development firmware/volumes
+do not require a fresh full flash backup before every rewrite. A retained
+known-good image or reproducible build can provide recovery. Continue to
+verify board identity, exact range, image identity and post-write readback.
+This does not waive preservation of irreplaceable data or authorize new
+bootloader/partition-table/NVS writes. Keep existing factory/recovery backups.
 
 Fabian explicitly authorizes flashing this development board and headless
 UART/boot tests without a new consent request. Verify the board identity,

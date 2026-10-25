@@ -2,7 +2,17 @@
 
 include $(SRCDIR)/config/aros.cfg
 
-FILES := main worker locale
+FILES := main worker locale volatile_config
+
+# The read-only ESP32 delivery uses RAM-only first-use configuration, including
+# Workbench launch. Other ports retain the generic persistent default.
+ifeq ($(AROS_TARGET_ARCH),esp32p4)
+USER_CPPFLAGS += -DWIFI_VOLATILE_DEFAULT=1
+USER_CPPFLAGS += -DWIFI_P4_FLASH_HELPERS=1
+ifeq ($(P4_WIFI_ASSOC_DIAGNOSTICS),1)
+USER_CPPFLAGS += -DWIFI_ACCESS_DIAGNOSTICS=1
+endif
+endif
 
 EXEDIR := $(AROS_PREFS)
 
@@ -13,7 +23,7 @@ EXEDIR := $(AROS_PREFS)
 
 #MM  workbench-prefs-wifi : includes linklibs workbench-prefs-wifi-catalogs
 
-%build_prog mmake=workbench-prefs-wifi \
+%build_prog mmake=workbench-prefs-wifi nix=yes \
     progname=WiFi targetdir=$(EXEDIR) \
     files=$(FILES) uselibs="mui"
 

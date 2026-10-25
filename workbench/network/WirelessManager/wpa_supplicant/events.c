@@ -30,6 +30,7 @@
 #include "ap/hostapd.h"
 #include "notify.h"
 #include "common/ieee802_11_defs.h"
+#include "common/security_summary.h"
 #include "blacklist.h"
 #include "wpas_glue.h"
 #include "wps_supplicant.h"
@@ -112,6 +113,12 @@ static void wpa_supplicant_stop_countermeasures(void *eloop_ctx,
 void wpa_supplicant_mark_disassoc(struct wpa_supplicant *wpa_s)
 {
 	int bssid_changed;
+	int fullmac_sae;
+
+	fullmac_sae = wpa_s->fullmac_profile ==
+		WPA_FULLMAC_PROFILE_SAE_CCMP_PMF ||
+		(wpa_s->current_ssid &&
+		 (wpa_s->current_ssid->key_mgmt & WPA_KEY_MGMT_SAE));
 
 	wpa_supplicant_set_state(wpa_s, WPA_DISCONNECTED);
 	bssid_changed = !is_zero_ether_addr(wpa_s->bssid);
@@ -123,9 +130,24 @@ void wpa_supplicant_mark_disassoc(struct wpa_supplicant *wpa_s)
 
 	eapol_sm_notify_portEnabled(wpa_s->eapol, FALSE);
 	eapol_sm_notify_portValid(wpa_s->eapol, FALSE);
-	if (wpa_key_mgmt_wpa_psk(wpa_s->key_mgmt))
+	if (wpa_key_mgmt_wpa_psk(wpa_s->key_mgmt) || fullmac_sae)
 		eapol_sm_notify_eap_success(wpa_s->eapol, FALSE);
 	wpa_s->ap_ies_from_associnfo = 0;
+	wpabuf_free(wpa_s->pending_eapol_rx);
+	wpa_s->pending_eapol_rx = NULL;
+	os_memset(&wpa_s->pending_eapol_rx_time, 0,
+		  sizeof(wpa_s->pending_eapol_rx_time));
+	os_memset(wpa_s->pending_eapol_rx_src, 0,
+		  sizeof(wpa_s->pending_eapol_rx_src));
+	wpa_s->fullmac_profile = 0;
+	wpa_s->fullmac_pwe = 0;
+	wpa_s->fullmac_ssid = NULL;
+	os_memset(&wpa_s->fullmac_summary, 0,
+		  sizeof(wpa_s->fullmac_summary));
+	os_memset(wpa_s->fullmac_bssid, 0, sizeof(wpa_s->fullmac_bssid));
+	os_memset(wpa_s->fullmac_ssid_bytes, 0,
+		  sizeof(wpa_s->fullmac_ssid_bytes));
+	wpa_s->fullmac_ssid_len = 0;
 }
 
 
@@ -419,6 +441,102 @@ static int freq_allowed(int *freqs, int freq)
 }
 
 
+static int wpa_supplicant_summary_offload_enabled(
+	struct wpa_supplicant *wpa_s)
+{
+	const unsigned int required = WPA_DRIVER_FLAGS_SECURITY_SUMMARY |
+		WPA_DRIVER_FLAGS_4WAY_HANDSHAKE;
+
+	return (wpa_s->drv_flags & required) == required;
+}
+
+
+static int wpa_supplicant_fullmac_summary_enabled(
+	struct wpa_supplicant *wpa_s)
+{
+	const unsigned int required = WPA_DRIVER_FLAGS_SECURITY_SUMMARY |
+		WPA_DRIVER_FLAGS_FULLMAC_ASSOCIATION |
+		WPA_DRIVER_FLAGS_CANCEL_PENDING;
+
+	return (wpa_s->drv_flags & required) == required;
+}
+
+
+static int wpa_supplicant_summary_has_data(
+	const struct wpa_security_summary *summary)
+{
+	return summary->flags || summary->proto || summary->key_mgmt ||
+		summary->pairwise_cipher || summary->group_cipher;
+}
+
+
+static int wpa_supplicant_fullmac_summary_matches_ssid(
+	struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
+	const struct wpa_security_summary *summary)
+{
+	struct wpa_driver_capa capa;
+	unsigned int profile, pwe;
+
+	if (!wpa_supplicant_fullmac_summary_enabled(wpa_s) ||
+	    wpa_drv_get_capa(wpa_s, &capa) < 0 ||
+	    !wpa_supplicant_fullmac_config_match(wpa_s, ssid, &capa, summary,
+						 &profile, &pwe))
+		return 0;
+
+	return profile == WPA_FULLMAC_PROFILE_WPA2_CCMP ||
+		profile == WPA_FULLMAC_PROFILE_SAE_CCMP_PMF;
+}
+
+
+static int wpa_supplicant_summary_matches_ssid(
+	struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
+	const struct wpa_security_summary *summary)
+{
+	if (!wpa_supplicant_summary_offload_enabled(wpa_s) || ssid->disabled ||
+	    ssid->mode != WPAS_MODE_INFRA || ssid->mixed_cell ||
+	    (ssid->auth_alg && ssid->auth_alg != WPA_AUTH_ALG_OPEN))
+		return 0;
+
+#ifdef CONFIG_WPS
+	if (ssid->key_mgmt & WPA_KEY_MGMT_WPS)
+		return 0;
+#endif /* CONFIG_WPS */
+
+#ifdef CONFIG_IEEE80211W
+	/* The summary has no PMF capability or management-cipher fields. */
+	if (ssid->ieee80211w != NO_MGMT_FRAME_PROTECTION)
+		return 0;
+#endif /* CONFIG_IEEE80211W */
+
+	return wpa_security_summary_match(summary, 1,
+		ssid->proto, ssid->key_mgmt, ssid->pairwise_cipher,
+		ssid->group_cipher);
+}
+
+
+static int wpa_supplicant_summary_open_profile(struct wpa_ssid *ssid)
+{
+	int i;
+
+	if (ssid->key_mgmt != WPA_KEY_MGMT_NONE ||
+	    ssid->mode != WPAS_MODE_INFRA || ssid->mixed_cell ||
+	    (ssid->auth_alg && ssid->auth_alg != WPA_AUTH_ALG_OPEN))
+		return 0;
+
+	for (i = 0; i < NUM_WEP_KEYS; i++) {
+		if (ssid->wep_key_len[i])
+			return 0;
+	}
+
+#ifdef CONFIG_IEEE80211W
+	if (ssid->ieee80211w != NO_MGMT_FRAME_PROTECTION)
+		return 0;
+#endif /* CONFIG_IEEE80211W */
+
+	return 1;
+}
+
+
 static struct wpa_bss *
 wpa_supplicant_select_bss_wpa(struct wpa_supplicant *wpa_s,
 			      struct wpa_scan_results *scan_res,
@@ -435,6 +553,7 @@ wpa_supplicant_select_bss_wpa(struct wpa_supplicant *wpa_s,
 	for (i = 0; i < scan_res->num; i++) {
 		const u8 *ssid_;
 		u8 wpa_ie_len, rsn_ie_len, ssid_len;
+		int summary_only = 0, bss_has_wpa_ie;
 		bss = scan_res->res[i];
 
 		ie = wpa_scan_get_ie(bss, WLAN_EID_SSID);
@@ -443,9 +562,11 @@ wpa_supplicant_select_bss_wpa(struct wpa_supplicant *wpa_s,
 
 		ie = wpa_scan_get_vendor_ie(bss, WPA_IE_VENDOR_TYPE);
 		wpa_ie_len = ie ? ie[1] : 0;
+		bss_has_wpa_ie = ie != NULL;
 
 		ie = wpa_scan_get_ie(bss, WLAN_EID_RSN);
 		rsn_ie_len = ie ? ie[1] : 0;
+		bss_has_wpa_ie |= ie != NULL;
 
 		wpa_printf(MSG_DEBUG, "%d: " MACSTR " ssid='%s' "
 			   "wpa_ie_len=%u rsn_ie_len=%u caps=0x%x",
@@ -464,9 +585,26 @@ wpa_supplicant_select_bss_wpa(struct wpa_supplicant *wpa_s,
 			continue;
 		}
 
-		if (wpa_ie_len == 0 && rsn_ie_len == 0) {
-			wpa_printf(MSG_DEBUG, "   skip - no WPA/RSN IE");
-			continue;
+		if (!bss_has_wpa_ie) {
+			/* A driver summary is a separate, explicit offload route. It
+			 * does not become an AP IE and is trusted only for a device
+			 * with matching per-device summary and offload capabilities. */
+			int psk_summary = wpa_security_summary_protected(
+				&bss->security_summary);
+			int sae_summary = wpa_security_summary_sae(
+				&bss->security_summary);
+			int legacy_route =
+				wpa_supplicant_summary_offload_enabled(wpa_s);
+			int fullmac_route =
+				wpa_supplicant_fullmac_summary_enabled(wpa_s);
+
+			if (!(psk_summary && (legacy_route || fullmac_route)) &&
+			    !(sae_summary && fullmac_route)) {
+				wpa_printf(MSG_DEBUG, "   skip - no WPA/RSN IE or "
+					   "usable security summary");
+				continue;
+			}
+			summary_only = 1;
 		}
 
 		for (ssid = group; ssid; ssid = ssid->pnext) {
@@ -499,7 +637,18 @@ wpa_supplicant_select_bss_wpa(struct wpa_supplicant *wpa_s,
 				continue;
 			}
 
-			if (!wpa_supplicant_ssid_bss_match(wpa_s, ssid, bss))
+			if (summary_only) {
+				if (!wpa_supplicant_fullmac_summary_matches_ssid(
+					    wpa_s, ssid, &bss->security_summary) &&
+				    !wpa_supplicant_summary_matches_ssid(
+					    wpa_s, ssid, &bss->security_summary))
+					continue;
+			} else if (ssid->key_mgmt & WPA_KEY_MGMT_SAE) {
+				/* SAE is only implemented here through typed FullMAC. This
+				 * bounded route requires a summary-only scan result; a genuine
+				 * IE would enter the legacy software/SME path. */
+				continue;
+			} else if (!wpa_supplicant_ssid_bss_match(wpa_s, ssid, bss))
 				continue;
 
 			if (!freq_allowed(ssid->freq_list, bss->freq)) {
@@ -537,6 +686,7 @@ wpa_supplicant_select_bss_non_wpa(struct wpa_supplicant *wpa_s,
 	for (i = 0; i < scan_res->num; i++) {
 		const u8 *ssid_;
 		u8 wpa_ie_len, rsn_ie_len, ssid_len;
+		int summary_open = 0, bss_has_wpa_ie;
 		bss = scan_res->res[i];
 
 		ie = wpa_scan_get_ie(bss, WLAN_EID_SSID);
@@ -545,9 +695,30 @@ wpa_supplicant_select_bss_non_wpa(struct wpa_supplicant *wpa_s,
 
 		ie = wpa_scan_get_vendor_ie(bss, WPA_IE_VENDOR_TYPE);
 		wpa_ie_len = ie ? ie[1] : 0;
+		bss_has_wpa_ie = ie != NULL;
 
 		ie = wpa_scan_get_ie(bss, WLAN_EID_RSN);
 		rsn_ie_len = ie ? ie[1] : 0;
+		bss_has_wpa_ie |= ie != NULL;
+
+		/* Summary-capable devices must provide a valid open summary before
+		 * their BSS can enter any non-WPA path. Unexpected summaries from a
+		 * device without the capability are also not trusted. This keeps
+		 * protected/unknown BSSes out of WEP, WPS and mixed-cell fallback. */
+		if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_SECURITY_SUMMARY) {
+			if (!wpa_security_summary_open(&bss->security_summary) ||
+			    bss_has_wpa_ie) {
+				wpa_printf(MSG_DEBUG, "   skip - not a known open "
+					   "security summary");
+				continue;
+			}
+			summary_open = 1;
+		} else if (wpa_supplicant_summary_has_data(
+				   &bss->security_summary)) {
+			wpa_printf(MSG_DEBUG, "   skip - unadvertised security "
+				   "summary");
+			continue;
+		}
 
 		wpa_printf(MSG_DEBUG, "%d: " MACSTR " ssid='%s' "
 			   "wpa_ie_len=%u rsn_ie_len=%u caps=0x%x",
@@ -571,6 +742,15 @@ wpa_supplicant_select_bss_non_wpa(struct wpa_supplicant *wpa_s,
 
 			if (ssid->disabled) {
 				wpa_printf(MSG_DEBUG, "   skip - disabled");
+				continue;
+			}
+
+			/* The summary has no authenticated-mode metadata. A known-open
+			 * result is therefore usable only by a plain infrastructure
+			 * profile, never by WEP, WPS, mixed-cell, or PMF fallback. */
+			if (summary_open &&
+			    !wpa_supplicant_summary_open_profile(ssid)) {
+				wpa_printf(MSG_DEBUG, "   skip - profile is not plain open");
 				continue;
 			}
 
@@ -1110,6 +1290,74 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 }
 
 
+static int wpa_supplicant_event_fullmac_assoc(
+	struct wpa_supplicant *wpa_s, union wpa_event_data *data)
+{
+	struct wpa_driver_capa capa;
+	struct wpa_ssid *ssid = wpa_s->fullmac_ssid;
+	u8 bssid[ETH_ALEN] = { 0 };
+	unsigned int profile, pwe;
+	int bssid_changed;
+
+	/* Typed completion must be an unambiguous CONNECT from the active attempt.
+	 * Do not inspect association IEs or run the generic AP/config-selection
+	 * path: this route has no host-generated IE or software handshake. */
+	if (!data || !data->assoc_info.fullmac_profile ||
+	    !data->assoc_info.fullmac_cookie ||
+	    data->assoc_info.req_ies || data->assoc_info.req_ies_len ||
+	    data->assoc_info.resp_ies || data->assoc_info.resp_ies_len ||
+	    data->assoc_info.beacon_ies || data->assoc_info.beacon_ies_len ||
+	    !wpa_s->fullmac_profile ||
+	    data->assoc_info.fullmac_profile != wpa_s->fullmac_profile ||
+	    wpa_s->wpa_state != WPA_ASSOCIATING || wpa_s->reassociate || !ssid ||
+	    wpa_s->current_ssid != ssid || ssid->disabled ||
+	    wpa_s->disconnected || wpa_s->interface_removed ||
+	    wpa_s->key_mgmt != ssid->key_mgmt ||
+	    !ssid->ssid || !wpa_s->fullmac_ssid_len ||
+	    ssid->ssid_len != wpa_s->fullmac_ssid_len ||
+	    os_memcmp(ssid->ssid, wpa_s->fullmac_ssid_bytes,
+		      wpa_s->fullmac_ssid_len) ||
+	    (ssid->bssid_set &&
+	     os_memcmp(ssid->bssid, wpa_s->fullmac_bssid, ETH_ALEN)) ||
+	    is_zero_ether_addr(wpa_s->fullmac_bssid) ||
+	    (wpa_s->fullmac_bssid[0] & 1) ||
+	    wpa_drv_get_capa(wpa_s, &capa) < 0 ||
+	    !wpa_supplicant_fullmac_config_match(wpa_s, ssid, &capa,
+						 &wpa_s->fullmac_summary,
+						 &profile, &pwe) ||
+	    profile != wpa_s->fullmac_profile || pwe != wpa_s->fullmac_pwe ||
+	    wpa_drv_get_bssid(wpa_s, bssid) != 0 ||
+	    is_zero_ether_addr(bssid) ||
+	    os_memcmp(bssid, wpa_s->fullmac_bssid, ETH_ALEN))
+		return -1;
+
+	bssid_changed = os_memcmp(wpa_s->bssid, bssid, ETH_ALEN) != 0;
+	os_memcpy(wpa_s->bssid, bssid, ETH_ALEN);
+	os_memset(wpa_s->pending_bssid, 0, ETH_ALEN);
+	if (bssid_changed)
+		wpas_notify_bssid_changed(wpa_s);
+
+	/* A pre-association EAPOL frame has no attempt cookie. Never replay it into
+	 * a firmware-authenticated FullMAC session. */
+	wpabuf_free(wpa_s->pending_eapol_rx);
+	wpa_s->pending_eapol_rx = NULL;
+	os_memset(&wpa_s->pending_eapol_rx_time, 0,
+		  sizeof(wpa_s->pending_eapol_rx_time));
+	os_memset(wpa_s->pending_eapol_rx_src, 0,
+		  sizeof(wpa_s->pending_eapol_rx_src));
+	wpa_supplicant_cancel_auth_timeout(wpa_s);
+	wpa_s->eapol_received = 0;
+	eapol_sm_notify_portEnabled(wpa_s->eapol, TRUE);
+	eapol_sm_notify_portValid(wpa_s->eapol, TRUE);
+	eapol_sm_notify_eap_success(wpa_s->eapol, TRUE);
+	wpa_supplicant_cancel_scan(wpa_s);
+	wpa_msg(wpa_s, MSG_INFO, "Associated with " MACSTR,
+		MAC2STR(bssid));
+	wpa_supplicant_set_state(wpa_s, WPA_COMPLETED);
+	return 0;
+}
+
+
 static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 				       union wpa_event_data *data)
 {
@@ -1127,6 +1375,19 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 		return;
 	}
 #endif /* CONFIG_AP */
+
+	/* Once a typed attempt is active (or an SAE profile is selected), consume
+	 * every association event here. Invalid, stale or legacy-form events must
+	 * not fall through to generic association/AP-IE/EAPOL processing. */
+	if (wpa_s->fullmac_profile ||
+	    (wpa_s->current_ssid &&
+	     (wpa_s->current_ssid->key_mgmt & WPA_KEY_MGMT_SAE)) ||
+	    (data && data->assoc_info.fullmac_profile)) {
+		if (wpa_supplicant_event_fullmac_assoc(wpa_s, data) < 0)
+			wpa_printf(MSG_WARNING,
+				   "WPA: Refusing uncorrelated FullMAC association event");
+		return;
+	}
 
 	ft_completed = wpa_ft_is_completed(wpa_s->wpa);
 	if (data && wpa_supplicant_event_associnfo(wpa_s, data) < 0)
@@ -1270,6 +1531,22 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 		/* Set static WEP keys again */
 		wpa_set_wep_keys(wpa_s, wpa_s->current_ssid);
 	}
+}
+
+
+static void wpa_supplicant_event_assoc_failed(struct wpa_supplicant *wpa_s)
+{
+	/* Only a correlated in-progress attempt may enter this path. A generic
+	 * local failure says nothing about AP rejection or a former link's loss. */
+	if (wpa_s->wpa_state != WPA_AUTHENTICATING &&
+	    wpa_s->wpa_state != WPA_ASSOCIATING)
+		return;
+	wpa_printf(MSG_DEBUG, "Association attempt failed (cause unspecified)");
+	wpa_supplicant_cancel_auth_timeout_no_blacklist(wpa_s);
+	wpa_sm_notify_disassoc(wpa_s->wpa);
+	wpa_supplicant_mark_disassoc(wpa_s);
+	if (!wpa_s->interface_removed && !wpa_s->disconnected)
+		wpa_supplicant_req_scan(wpa_s, 5, 0);
 }
 
 
@@ -1599,6 +1876,9 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 		break;
 	case EVENT_ASSOC:
 		wpa_supplicant_event_assoc(wpa_s, data);
+		break;
+	case EVENT_ASSOC_FAILED:
+		wpa_supplicant_event_assoc_failed(wpa_s);
 		break;
 	case EVENT_DISASSOC:
 		wpa_printf(MSG_DEBUG, "Disassociation notification");

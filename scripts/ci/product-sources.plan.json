@@ -22,6 +22,25 @@
         "sha256": "883d22e0b9aefc31a383c462adacdbd7941e6862559c5b27e59599db8114e783",
         "size": 2337668
       }
+    },
+    {
+      "role": "product:mesa@26.0.0",
+      "filename": "mesa-26.0.0.tar.xz",
+      "candidates": [
+        {
+          "url": "https://archive.mesa3d.org/mesa-26.0.0.tar.xz"
+        },
+        {
+          "url": "https://sources.buildroot.net/mesa3d/mesa-26.0.0.tar.xz"
+        }
+      ],
+      "representation": "archive",
+      "normalization": "exact-bytes-v1",
+      "integrity": {
+        "kind": "locked",
+        "sha256": "2a44e98e64d5c36cec64633de2d0ec7eff64703ee25b35364ba8fcaa84f33f72",
+        "size": 43776320
+      }
     }
   ]
 }
