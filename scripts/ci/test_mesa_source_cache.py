@@ -26,11 +26,11 @@ MESA_SOURCE_GUARD = (
     "MESA_ARCHIVE_CHECKSUMS := "
     f"{MESA_FILENAME}=sha256:{MESA_SHA256}"
 )
-ZLIB_ROLE = "product:chromium-zlib@da752eb2a3660cf1bf8dac620f6380b89dd953a7"
+ZLIB_ROLE = "product:chromium-zlib@2b1b62fed03e8b8a64ea39a96d5cc74cd10e2429"
 ZLIB_CANDIDATES = [
     "https://raw.githubusercontent.com/metaneutrons/aros-toolchains/f35ecea2918c8c8314bf6878b4401af6ae45132d/toolchains/source-seeds/chromium-zlib-da752eb2.tar.gz",
-    "https://chromium.googlesource.com/chromium/src/+archive/da752eb2a3660cf1bf8dac620f6380b89dd953a7/third_party/zlib.tar.gz",
-    "https://chromium.googlesource.com/chromium/src.git/+archive/da752eb2a3660cf1bf8dac620f6380b89dd953a7/third_party/zlib.tar.gz",
+    "https://chromium.googlesource.com/chromium/src/+archive/2b1b62fed03e8b8a64ea39a96d5cc74cd10e2429/third_party/zlib.tar.gz",
+    "https://chromium.googlesource.com/chromium/src.git/+archive/2b1b62fed03e8b8a64ea39a96d5cc74cd10e2429/third_party/zlib.tar.gz",
 ]
 
 
@@ -100,8 +100,8 @@ class MesaSourceCacheTests(unittest.TestCase):
                 "normalization": "canonical-tar-gzip-v1",
                 "integrity": {
                     "kind": "locked",
-                    "sha256": "883d22e0b9aefc31a383c462adacdbd7941e6862559c5b27e59599db8114e783",
-                    "size": 2337668,
+                    "sha256": "3d56d66841a3380102abc6883fac7f756658417a9e6bc64af32a25aa57c3aeb6",
+                    "size": 3261973,
                 },
             },
         )
@@ -110,10 +110,10 @@ class MesaSourceCacheTests(unittest.TestCase):
             zlib_staging[0],
             {
                 "role": ZLIB_ROLE,
-                "destination": "portssources/chromium-da752eb2a3660cf1bf8dac620f6380b89dd953a7/zlib.tar.gz",
+                "destination": "portssources/chromium-2b1b62fed03e8b8a64ea39a96d5cc74cd10e2429/zlib.tar.gz",
                 "source_guard": {
                     "path": "workbench/libs/z/make.opt",
-                    "line": "ZLIB_CHROMIUM_REVISION := da752eb2a3660cf1bf8dac620f6380b89dd953a7",
+                    "line": "ZLIB_CHROMIUM_REVISION := 2b1b62fed03e8b8a64ea39a96d5cc74cd10e2429",
                 },
             },
         )
@@ -197,7 +197,7 @@ class MesaSourceCacheTests(unittest.TestCase):
         staging_entries = []
         specs = [
             (MESA_ROLE, MESA_FILENAME, "portssources/mesa-26.0.0.tar.xz", "mesa.cfg", "MESA_TEST_GUARD := mesa"),
-            (ZLIB_ROLE, "zlib.tar.gz", "portssources/chromium-da752eb2a3660cf1bf8dac620f6380b89dd953a7/zlib.tar.gz", "zlib.cfg", "ZLIB_TEST_GUARD := zlib"),
+            (ZLIB_ROLE, "zlib.tar.gz", "portssources/chromium-2b1b62fed03e8b8a64ea39a96d5cc74cd10e2429/zlib.tar.gz", "zlib.cfg", "ZLIB_TEST_GUARD := zlib"),
         ]
         for role, filename, destination, guard_path, guard_line in specs:
             payload = payloads[filename]

@@ -1,7 +1,7 @@
 
 include $(SRCDIR)/config/aros.cfg
 
-LIBPNGVERSION=1.6.58
+LIBPNGVERSION=1.6.59
 REPOSITORIES =  \
     cache:// \
     https://downloads.sourceforge.net/project/libpng/libpng16/$(LIBPNGVERSION) \
@@ -11,8 +11,9 @@ ARCHSUFFIX := "tar.gz"
 #PATCHSPEC := $(ARCHBASE)-aros.diff:$(ARCHBASE):-f,-p1
 ARCHSRCDIR := $(PORTSDIR)/libpng/$(ARCHBASE)
 
-# The same digest is pinned by conda-forge's libpng feedstock for 1.6.58.
-ARCHCHECKSUMS := $(ARCHBASE).tar.gz=sha256:8c9b05b675ca7301a458df2c2e46f26e1d41ff36b8863f8c33530bc58c2e6225
+# The same digest is pinned by conda-forge's libpng feedstock for 1.6.59, and the
+# archive content is identical to the pnggroup/libpng tag v1.6.59.
+ARCHCHECKSUMS := $(ARCHBASE).tar.gz=sha256:86a3e4b501f7f50e392c4e456ea158893e9a595b1c63eb88c7bb9f6cf8772dad
 
 %fetch mmake=libpng-fetch archive=$(ARCHBASE) destination=$(PORTSDIR)/libpng \
     location=$(PORTSSOURCEDIR) archive_origins=$(REPOSITORIES) suffixes=$(ARCHSUFFIX) \

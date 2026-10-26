@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "kind": "native-metamake-policy-v1",
+  "profile": "rpi-aarch64",
+  "project": "AROS",
+  "configuration_source": "mmake.config.in",
+  "template": "config/make.tmpl",
+  "substitutions": [
+    {
+      "name": "@aros_target_suffix@",
+      "value": ""
+    },
+    {
+      "name": "@mmake_ignore_dirs@",
+      "value": ""
+    }
+  ],
+  "global_snapshots": [
+    {
+      "source": "config/host.cfg.in",
+      "configured_path": "$(TOP)/bin/$(AROS_HOST_ARCH)-$(AROS_HOST_CPU)/gen/host/config/host.cfg",
+      "text": "# Actual host selectors are explicit host_environment bindings.\n"
+    },
+    {
+      "source": "config/target.cfg.in",
+      "configured_path": "$(TOP)/bin/$(AROS_TARGET_ARCH)-$(AROS_TARGET_CPU)/gen/config/target.cfg",
+      "text": "CPU := aarch64\nARCH := raspi\nFAMILY := \nAROS_TARGET_PLATFORM := raspi-aarch64\nAROS_TOOLCHAIN := llvm\nUSE_MMU := 1\nOPT_MESAGL := 26.0.0\nAROS_TOOLCHAIN_RELEASE := 0\nCROSSTOOLS_PORTS_INCLUDES := ports-includes\nFLAVOUR := standalone\nKERNEL_TOOLCHAIN := llvm\nTARGET_LIBATOMIC := yes\nTARGET_USELOGRES := no\nTARGET_BINUTILS_VER := \nTARGET_GCC_VER := \nAROS_TARGET_ICONSET := Gorilla\nAROS_TARGET_BOOTLOADER := \nAROS_TARGET_TOOLCHAIN := yes\nPCI_HIDD_TARGET := \nJPEGXL_TOOLCHAINSUPPORT := \nNOUVEAU_TOOLCHAINSUPPORT := \nOBJC_TARGET := no-objc\nTARGET_UNITTESTS := no\nSTARTUP_DEBUG := 0\nTARGET_RUST := no\nTARGET_RUST_VER := 1.98.1\nTARGET_LLVM_VER := 11.0.0\nTARGET_LLVM_RUNTIMES_STYLE := separate\n"
+    }
+  ],
+  "environment": [
+    {
+      "name": "AROS_TARGET_CPU",
+      "value": "aarch64"
+    },
+    {
+      "name": "AROS_TARGET_ARCH",
+      "value": "raspi"
+    },
+    {
+      "name": "AROS_TARGET_VARIANT",
+      "value": ""
+    },
+    {
+      "name": "AROS_TARGET_CPU32",
+      "value": ""
+    },
+    {
+      "name": "AROS_TARGET_ICONSET",
+      "value": "Gorilla"
+    },
+    {
+      "name": "AROS_TARGET_BOOTLOADER",
+      "value": ""
+    }
+  ],
+  "host_environment": [
+    {
+      "host": "macos-aarch64",
+      "bindings": [
+        {
+          "name": "AROS_HOST_ARCH",
+          "value": "darwin"
+        },
+        {
+          "name": "AROS_HOST_CPU",
+          "value": "aarch64"
+        }
+      ]
+    },
+    {
+      "host": "linux-aarch64",
+      "bindings": [
+        {
+          "name": "AROS_HOST_ARCH",
+          "value": "linux"
+        },
+        {
+          "name": "AROS_HOST_CPU",
+          "value": "aarch64"
+        }
+      ]
+    },
+    {
+      "host": "linux-x86_64",
+      "bindings": [
+        {
+          "name": "AROS_HOST_ARCH",
+          "value": "linux"
+        },
+        {
+          "name": "AROS_HOST_CPU",
+          "value": "x86_64"
+        }
+      ]
+    }
+  ],
+  "declared_absent": [
+    "DEBUG",
+    "EBFPACKEDEXES",
+    "LLVM_CMAKE_FILES",
+    "MESA3DGL_GALLIUMCORE",
+    "OPT_HOST_ALSA",
+    "OPT_HOST_ANDROIDGFX",
+    "OPT_HOST_PULSEAUDIO",
+    "OPT_HOST_SDLGFX",
+    "OPT_HOST_X11GFX",
+    "OPT_HOST_X11_HOSTGL"
+  ],
+  "evidence_sources": [
+    "Makefile.in",
+    "configure.in",
+    "config/host.cfg.in",
+    "config/target.cfg.in",
+    "config/make.cfg.in",
+    "config/config.h.in",
+    "compiler/include/geninc.cfg.in",
+    "tools/MetaMake/dirnode.c",
+    "tools/MetaMake/cache.c",
+    "tools/MetaMake/var.c",
+    "tools/MetaMake/project.c",
+    "tools/genmf/genmf.py"
+  ],
+  "closed_environment": true,
+  "out_of_source": true,
+  "architecture_hook_families": [
+    "module",
+    "linklib",
+    "set-archincludes"
+  ]
+}

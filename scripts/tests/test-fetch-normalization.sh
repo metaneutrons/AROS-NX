@@ -61,8 +61,8 @@ python3 "$source_root/tools/genmf/genmf.py" \
     }
 assert_contains 'zlib-fetch :' "$task_tmp/zlib.mk"
 assert_contains '--normalization "canonical-tar-gzip-v1"' "$task_tmp/zlib.mk"
-assert_contains '--normalized-size "2337668"' "$task_tmp/zlib.mk"
-assert_contains 'zlib.tar.gz=sha256:883d22e0b9aefc31a383c462adacdbd7941e6862559c5b27e59599db8114e783' "$task_tmp/zlib.mk"
+assert_contains '--normalized-size "3261973"' "$task_tmp/zlib.mk"
+assert_contains 'zlib.tar.gz=sha256:3d56d66841a3380102abc6883fac7f756658417a9e6bc64af32a25aa57c3aeb6' "$task_tmp/zlib.mk"
 
 # Evaluate generated recipes without running their commands. The normalized
 # source has both flags; a legacy exact-byte recipe expands neither flag.
@@ -91,7 +91,7 @@ zlib_make_output=$(
 ) || fail "dry-run of generated zlib fetch target failed: $zlib_make_output"
 printf '%s\n' "$zlib_make_output" > "$task_tmp/zlib-make.output"
 assert_contains '--normalization "canonical-tar-gzip-v1"' "$task_tmp/zlib-make.output"
-assert_contains '--normalized-size "2337668"' "$task_tmp/zlib-make.output"
+assert_contains '--normalized-size "3261973"' "$task_tmp/zlib-make.output"
 assert_contains 'fetch-probe' "$task_tmp/zlib-make.output"
 
 jpeg_make_output=$(
