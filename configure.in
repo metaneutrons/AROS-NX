@@ -628,6 +628,13 @@ re-running configure])])
 esac
 
 base_ar_name=${HOST_TOOLCHAIN_PREFIX}ar${HOST_TOOLCHAIN_SUFFIX}
+dnl Apple's command line tools ship ar and ranlib but no llvm-ar, so a clang
+dnl host there finds no llvm-ar next to it. Prefer the LLVM name, then the
+dnl plain one.
+AC_CHECK_PROGS(aros_host_ar_found,[$base_ar_name ar])
+if test "x$aros_host_ar_found" != "x"; then
+    base_ar_name=$aros_host_ar_found
+fi
 AROS_PROG(AR_BASE,$base_ar_name)
 aros_host_ar_flags="cr"
 aros_host_cmd_ar="$AR_BASE $aros_host_ar_flags"
@@ -635,6 +642,10 @@ AROS_PATH_PROG(aros_host_plain_ar,$aros_host_cmd_ar)
 aros_host_ar=`echo $aros_host_cmd_ar | sed -e "s|$base_ar_name|$aros_host_plain_ar|g"`
 AROS_REQUIRED(ar,$aros_host_ar)
 base_ranlib_name=${HOST_TOOLCHAIN_PREFIX}ranlib${HOST_TOOLCHAIN_SUFFIX}
+AC_CHECK_PROGS(aros_host_ranlib_found,[$base_ranlib_name ranlib])
+if test "x$aros_host_ranlib_found" != "x"; then
+    base_ranlib_name=$aros_host_ranlib_found
+fi
 AROS_PROG(RANLIB_BASE,$base_ranlib_name)
 AROS_PATH_PROG(aros_host_ranlib,$RANLIB_BASE)
 AROS_REQUIRED(ranlib,$aros_host_ranlib)

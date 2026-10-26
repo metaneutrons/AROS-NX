@@ -50,8 +50,10 @@ AHI_OPTIONS+=--with-target-asflags="$(AFLAGS)"
 # AHI configure runs AC_CHECK_TOOL for objcopy/strip and falls back to
 # ":" / bare names when the toolchain prefix doesn't match. Force the
 # values so the per-driver MODEFILE binaries (RPiPWM/RPiHDMI etc.)
-# get produced by llvm-objcopy.
+# get produced by llvm-objcopy. SFDC is forced for the same reason: its
+# PATH search would pick up an older sfdc such as the one in Homebrew's
+# amiga-gcc.
 #
 %build_with_configure mmake=workbench-devs-AHI-subsystem prefix=$(EXEDIR) \
     extraoptions="$(AHI_OPTIONS)" usecppflags=no gnuflags=no \
-    config_env_extra="OBJCOPY=$(OBJCOPY) STRIP=$(STRIP_PLAIN)"
+    config_env_extra="OBJCOPY=$(OBJCOPY) STRIP=$(STRIP_PLAIN) SFDC=$(SFDC)"
