@@ -137,6 +137,18 @@ ifeq ($(AROS_TOOLCHAIN),llvm)
 # flag reset above empties TARGET_CFLAGS, so restore grub's own -Os.
 export KERNEL_CFLAGS   := -Os
 
+# The boot components are plain ELF images. Apple's ld cannot link ELF and
+# macOS has no objcopy, nm or strip for it, so on a Darwin host the
+# toolchain's lld and LLVM binutils do the work.
+# Clang 23 also rejects the GNU as switch -Wa,--32, the --target flags already
+# select the 32-bit ISA.
+GRUB2_ASM32_FLAG := -Wa,--32
+ifeq ($(AROS_HOST_ARCH),darwin)
+GRUB2_LLD_FLAG := -fuse-ld=lld
+GRUB2_ASM32_FLAG :=
+GRUB2_BINUTILS_ENV := TARGET_OBJCOPY="$(TARGET_OBJCOPY)" TARGET_NM="$(NM_PLAIN)" TARGET_STRIP="$(STRIP_PLAIN)"
+endif
+
 GRUB2_LLVM_ISA_FLAGS   := --target=$(AROS_TARGET_CPU)-pc-linux-gnu
 GRUB2_LLVM_ISA32_FLAGS := --target=$(AROS_TARGET_CPU32)-pc-linux-gnu -march=i486 -m32
 ifneq ($(AROS_TARGET_CPU32),)
@@ -144,19 +156,23 @@ GRUB2_HOST_ENV=grub_cv_target_cc_link_format=-melf_$(AROS_TARGET_CPU32)
 GRUB2_EFI32_ENV=grub_cv_target_cc_link_format=-melf_$(AROS_TARGET_CPU32)
 GRUB2_HOST_ENV+=TARGET_CFLAGS="$(GRUB2_LLVM_ISA32_FLAGS)"
 GRUB2_EFI32_ENV+=TARGET_CFLAGS="$(GRUB2_LLVM_ISA32_FLAGS)"
-GRUB2_HOST_ENV+=TARGET_LDFLAGS="$(GRUB2_LLVM_ISA32_FLAGS) -nostartfiles"
-GRUB2_EFI32_ENV+=TARGET_LDFLAGS="$(GRUB2_LLVM_ISA32_FLAGS) -nostartfiles"
-GRUB2_HOST_ENV+=TARGET_CCASFLAGS="$(GRUB2_LLVM_ISA32_FLAGS) -Wa,--32"
-GRUB2_EFI32_ENV+=TARGET_CCASFLAGS="$(GRUB2_LLVM_ISA32_FLAGS) -Wa,--32"
+GRUB2_HOST_ENV+=TARGET_LDFLAGS="$(GRUB2_LLVM_ISA32_FLAGS) -nostartfiles $(GRUB2_LLD_FLAG)"
+GRUB2_EFI32_ENV+=TARGET_LDFLAGS="$(GRUB2_LLVM_ISA32_FLAGS) -nostartfiles $(GRUB2_LLD_FLAG)"
+GRUB2_HOST_ENV+=TARGET_CCASFLAGS="$(GRUB2_LLVM_ISA32_FLAGS) $(GRUB2_ASM32_FLAG)"
+GRUB2_EFI32_ENV+=TARGET_CCASFLAGS="$(GRUB2_LLVM_ISA32_FLAGS) $(GRUB2_ASM32_FLAG)"
 else
 GRUB2_HOST_ENV=grub_cv_target_cc_link_format=-melf_$(AROS_TARGET_CPU)
 GRUB2_HOST_ENV+=TARGET_CFLAGS="$(GRUB2_LLVM_ISA_FLAGS)"
-GRUB2_HOST_ENV+=TARGET_LDFLAGS="$(GRUB2_LLVM_ISA_FLAGS) -nostartfiles"
+GRUB2_HOST_ENV+=TARGET_LDFLAGS="$(GRUB2_LLVM_ISA_FLAGS) -nostartfiles $(GRUB2_LLD_FLAG)"
 endif
 GRUB2_EFI_ENV=grub_cv_target_cc_link_format=-melf_$(AROS_TARGET_CPU)
 GRUB2_EFI_ENV+=TARGET_CFLAGS="$(GRUB2_LLVM_ISA_FLAGS)"
-GRUB2_EFI_ENV+=TARGET_LDFLAGS="$(GRUB2_LLVM_ISA_FLAGS) -nostartfiles"
+GRUB2_EFI_ENV+=TARGET_LDFLAGS="$(GRUB2_LLVM_ISA_FLAGS) -nostartfiles $(GRUB2_LLD_FLAG)"
 endif
+
+GRUB2_HOST_ENV+=$(GRUB2_BINUTILS_ENV)
+GRUB2_EFI_ENV+=$(GRUB2_BINUTILS_ENV)
+GRUB2_EFI32_ENV+=$(GRUB2_BINUTILS_ENV)
 
 grub2-host-touchfileflag := $(GENDIR)/arch/all-pc/boot/.grub2-files-touched
 grub2-efi-host-touchfileflag := $(GENDIR)/arch/all-pc/boot/.grub2-files-touched

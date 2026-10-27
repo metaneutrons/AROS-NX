@@ -48,18 +48,29 @@ ifeq ($(AROS_TOOLCHAIN),llvm)
 # modules and ignores -Ttext, producing images grub-mkimage rejects
 # ("its start address is 0x0 instead of 0x9000"). Use a bare linux triple
 # so clang generates plain ELF and drives the system linker instead.
+
+# The boot components are plain ELF images. Apple's ld cannot link ELF and
+# macOS has no objcopy, nm or strip for it, so on a Darwin host the
+# toolchain's lld and LLVM binutils do the work.
+ifeq ($(AROS_HOST_ARCH),darwin)
+GRUB2_LLD_FLAG := -fuse-ld=lld
+GRUB2_BINUTILS_ENV := TARGET_OBJCOPY="$(TARGET_OBJCOPY)" TARGET_NM="$(NM_PLAIN)" TARGET_STRIP="$(STRIP_PLAIN)"
+endif
+
 GRUB2_LLVM_ISA_FLAGS   := --target=$(AROS_TARGET_CPU)-pc-linux-gnu
 GRUB2_LLVM_ISA32_FLAGS := --target=$(AROS_TARGET_CPU32)-pc-linux-gnu -march=i486 -m32
 ifneq ($(AROS_TARGET_CPU32),)
 GRUB2_ENV=grub_cv_target_cc_link_format=-melf_$(AROS_TARGET_CPU32)
 GRUB2_ENV+=TARGET_CFLAGS="$(GRUB2_LLVM_ISA32_FLAGS)"
-GRUB2_ENV+=TARGET_LDFLAGS="$(GRUB2_LLVM_ISA32_FLAGS) -nostartfiles"
+GRUB2_ENV+=TARGET_LDFLAGS="$(GRUB2_LLVM_ISA32_FLAGS) -nostartfiles $(GRUB2_LLD_FLAG)"
 GRUB2_ENV+=TARGET_CCASFLAGS="$(GRUB2_LLVM_ISA32_FLAGS)"
 else
 GRUB2_ENV=grub_cv_target_cc_link_format=-melf_$(AROS_TARGET_CPU)
 GRUB2_ENV+=TARGET_CFLAGS="$(GRUB2_LLVM_ISA_FLAGS)"
-GRUB2_ENV+=TARGET_LDFLAGS="$(GRUB2_LLVM_ISA_FLAGS) -nostartfiles"
+GRUB2_ENV+=TARGET_LDFLAGS="$(GRUB2_LLVM_ISA_FLAGS) -nostartfiles $(GRUB2_LLD_FLAG)"
 endif
+
+GRUB2_ENV+=$(GRUB2_BINUTILS_ENV)
 
 grub2-aros--CROSS_CPP=$(TARGET_CPP)
 grub2-aros--CROSS_CC=$(TARGET_CC)

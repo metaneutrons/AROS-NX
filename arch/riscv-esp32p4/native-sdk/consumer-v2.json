@@ -156,7 +156,7 @@
     },
     {
       "path": "configure.in",
-      "sha256": "715d96905d246e8286c5cd187b88fc22b7c7fb1245f5641125831735373bfd5a"
+      "sha256": "87444bb0ef9a8166f44cf60ec6a2538c35f9f3fd7aa7f2f96bccb50a34f9b75a"
     },
     {
       "path": "mmake.config.in",
