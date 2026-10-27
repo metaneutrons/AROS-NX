@@ -52,6 +52,10 @@ AHI_OPTIONS+=--with-target-asflags="$(AFLAGS)"
 # values so the per-driver MODEFILE binaries (RPiPWM/RPiHDMI etc.)
 # get produced by llvm-objcopy.
 #
+# configure also looks for SFDC in PATH. On a case-insensitive host file
+# system that finds a foreign sfdc (Homebrew's amiga-gcc ships one) instead of
+# the one built for AROS, so SFDC is forced to the AROS tool as well.
+#
 %build_with_configure mmake=workbench-devs-AHI-subsystem prefix=$(EXEDIR) \
     extraoptions="$(AHI_OPTIONS)" usecppflags=no gnuflags=no \
-    config_env_extra="OBJCOPY=$(OBJCOPY) STRIP=$(STRIP_PLAIN)"
+    config_env_extra="OBJCOPY=$(OBJCOPY) STRIP=$(STRIP_PLAIN) SFDC=$(SFDC)"
