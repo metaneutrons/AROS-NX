@@ -120,7 +120,7 @@
     },
     {
       "path": "compiler/sdk/pc-x86_64/metamake-v1.json",
-      "sha256": "49ac593c288f252c7b2e323016ba52b561204a11803418ea7805bb8d2623d25d"
+      "sha256": "4d72a13434e7b1e3bb443f8daf013db637bd1d6ae519c933890ba10cd98687da"
     },
     {
       "path": "compiler/sdk/probes/application.c",
@@ -152,7 +152,7 @@
     },
     {
       "path": "config/llvm_def",
-      "sha256": "7bd6bcbe3813e0cd55e0998053d182b7bc8c97dcfd0b85028e9f7f55af4ad61b"
+      "sha256": "105cea6ab21beabd59f0ce9c72349435c99d6012981875d22aae70494f10dc10"
     },
     {
       "path": "config/make-autotools.tmpl",
@@ -180,7 +180,7 @@
     },
     {
       "path": "configure.in",
-      "sha256": "715d96905d246e8286c5cd187b88fc22b7c7fb1245f5641125831735373bfd5a"
+      "sha256": "57c473d3db2a7738b78b323482dabe9218611f141695529d76d9894c018c4563"
     },
     {
       "path": "mmake.config.in",
@@ -208,7 +208,7 @@
     },
     {
       "path": "tools/crosstools/llvm/mmakefile.src",
-      "sha256": "fd7233f9e4e5fac2896287f31d6d79d88a86153cbe368b534384bb9175c5c936"
+      "sha256": "eed61b1a534e65781f49312d601616f26f99a45899dcaeece2749860a25e898b"
     },
     {
       "path": "tools/genctbl/Makefile",

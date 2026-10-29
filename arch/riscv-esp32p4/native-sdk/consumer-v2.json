@@ -128,7 +128,7 @@
     },
     {
       "path": "config/llvm_def",
-      "sha256": "7bd6bcbe3813e0cd55e0998053d182b7bc8c97dcfd0b85028e9f7f55af4ad61b"
+      "sha256": "105cea6ab21beabd59f0ce9c72349435c99d6012981875d22aae70494f10dc10"
     },
     {
       "path": "config/make-autotools.tmpl",
@@ -156,7 +156,7 @@
     },
     {
       "path": "configure.in",
-      "sha256": "87444bb0ef9a8166f44cf60ec6a2538c35f9f3fd7aa7f2f96bccb50a34f9b75a"
+      "sha256": "57c473d3db2a7738b78b323482dabe9218611f141695529d76d9894c018c4563"
     },
     {
       "path": "mmake.config.in",

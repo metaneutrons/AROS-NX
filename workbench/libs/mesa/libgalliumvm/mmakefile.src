@@ -12,7 +12,7 @@ ifeq ($(OPT_LLVM),)
 ifneq ($(TARGET_LLVM_VER),)
 OPT_LLVM := $(TARGET_LLVM_VER)
 else
-OPT_LLVM := 11.0.0
+OPT_LLVM := 23.1.0
 endif
 endif
 LLVM_VERSION_MAJOR := $(word 1,$(subst ., ,$(OPT_LLVM)))

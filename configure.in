@@ -1842,7 +1842,7 @@ case "$target_os" in
                 dnl static C runtime instead of the weak stdc.library stubs,
                 dnl which would dereference a NULL StdCBase at early boot.
                 aros_config_ldflags="$aros_config_ldflags -lstdc.static"
-                default_llvm_version="20.1.0"
+                default_llvm_version="23.1.0"
                 aros_kernel_isa_flags="-arch arm64"
                 aros_kernel_ldflags="-arch arm64"
                 aros_nominal_depth=8
