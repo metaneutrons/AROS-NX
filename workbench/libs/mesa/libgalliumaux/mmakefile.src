@@ -20,10 +20,14 @@ MESA3DGL_GALLIUM_AUXILIARY_C_SOURCES := $(filter %.c, $(C_SOURCES) $(NIR_SOURCES
 GALLIUM_AUXILIARY_GENERATED_SOURCES := $(filter %.c, $(GENERATED_SOURCES))
 GALLIUM_AUXILIARY_GENERATED_HEADERS := $(filter %.h, $(GENERATED_SOURCES))
 else
-include $(SRCDIR)/$(CURDIR)/galliumaux-26.0.0.sources
+include $(SRCDIR)/$(CURDIR)/galliumaux-26.2.5.sources
 MESA3DGL_GALLIUM_AUXILIARY_C_SOURCES := $(MESA26_GALLIUMAUX_STATIC_C_SOURCES)
 GALLIUM_AUXILIARY_GENERATED_SOURCES := $(MESA26_GALLIUMAUX_GENERATED_C_SOURCES)
 GALLIUM_AUXILIARY_GENERATED_HEADERS := $(MESA26_GALLIUMAUX_GENERATED_HEADERS)
+ifeq ($(AROS_TOOLCHAIN),llvm)
+GALLIUM_AUXILIARY_GENERATED_SOURCES += \
+            gallivm/lp_bld_nir_no_integer_algebraic.c
+endif
 endif
 
 #MM- mesa3dgl-linklibs : mesa3d-linklib-galliumauxiliary
@@ -130,6 +134,25 @@ $(top_builddir)/$(CUR_MESADIR)/driver_trace/tr_util.h: \
 	%mkdir_q dir="$(dir $@)"
 	$(Q)$(ECHO) "Generating $(if $(filter /%,$@),$(if $(filter $(SRCDIR)/%,$(abspath $@)),$(patsubst $(SRCDIR)/%,%,$(abspath $@)),$(patsubst $(TOP)/%,%,$(abspath $@))),$(patsubst $(SRCDIR)/%,%,$(abspath $(SRCDIR)/$(CURDIR)/$@)))"
 	$(Q)$(PYTHON) $(PYTHON_FLAGS) $(top_srcdir)/$(CUR_MESADIR)/driver_trace/enums2names.py $(tr_util_inputs) -C $(top_builddir)/$(CUR_MESADIR)/driver_trace/tr_util.c -H $(top_builddir)/$(CUR_MESADIR)/driver_trace/tr_util.h
+endif
+
+ifeq ($(MESA_GALLIUM_AUX_LAYOUT),new)
+# nir_algebraic pass for the draw module's software stages (Mesa >= 26.2)
+$(top_builddir)/$(CUR_MESADIR)/draw/draw_nir_lower_opcodes.c: \
+	$(top_srcdir)/$(CUR_MESADIR)/draw/draw_nir_lower_opcodes.py \
+	$(top_srcdir)/src/compiler/nir/nir_algebraic.py $(top_srcdir)/src/compiler/nir/nir_opcodes.py
+	%mkdir_q dir="$(dir $@)"
+	$(Q)$(ECHO) "Generating $(if $(filter /%,$@),$(if $(filter $(SRCDIR)/%,$(abspath $@)),$(patsubst $(SRCDIR)/%,%,$(abspath $@)),$(patsubst $(TOP)/%,%,$(abspath $@))),$(patsubst $(SRCDIR)/%,%,$(abspath $(SRCDIR)/$(CURDIR)/$@)))"
+	$(Q)$(PYTHON) $(PYTHON_FLAGS) $< -p $(top_srcdir)/src/compiler/nir/ > $@.tmp && mv -f $@.tmp $@
+
+# gallivm's pass for LLVM without native integers; it needs LLVM headers and
+# is therefore added only to the LLVM toolchain's generated objects above.
+$(top_builddir)/$(CUR_MESADIR)/gallivm/lp_bld_nir_no_integer_algebraic.c: \
+	$(top_srcdir)/$(CUR_MESADIR)/gallivm/lp_bld_nir_no_integer_algebraic.py \
+	$(top_srcdir)/src/compiler/nir/nir_algebraic.py $(top_srcdir)/src/compiler/nir/nir_opcodes.py
+	%mkdir_q dir="$(dir $@)"
+	$(Q)$(ECHO) "Generating $(if $(filter /%,$@),$(if $(filter $(SRCDIR)/%,$(abspath $@)),$(patsubst $(SRCDIR)/%,%,$(abspath $@)),$(patsubst $(TOP)/%,%,$(abspath $@))),$(patsubst $(SRCDIR)/%,%,$(abspath $(SRCDIR)/$(CURDIR)/$@)))"
+	$(Q)$(PYTHON) $(PYTHON_FLAGS) $< -p $(top_srcdir)/src/compiler/nir/ > $@.tmp && mv -f $@.tmp $@
 endif
 
 #MM
