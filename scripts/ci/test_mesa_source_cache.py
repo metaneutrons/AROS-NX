@@ -84,6 +84,10 @@ class MesaSourceCacheTests(unittest.TestCase):
         mesa_cfg = (ROOT / "workbench/libs/mesa/mesa.cfg").read_text(encoding="utf-8")
         self.assertIn("OPT_MESAGL=26.2.5", mesa_cfg.splitlines())
         self.assertIn(MESA_SOURCE_GUARD, mesa_cfg.splitlines())
+        mesautil_inventory = (
+            ROOT / "workbench/libs/mesa/libmesautil/mesautil-26.2.5.sources"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("mesa-sha1.c", mesautil_inventory.split())
 
         # Pin the existing Zlib source contract so adding Mesa cannot silently
         # replace or weaken the source that was already shared by product CI.

@@ -29,7 +29,6 @@ MESA26_UTIL_STATIC_C_SOURCES := \
 	log.c \
 	lut.c \
 	mesa-blake3.c \
-	mesa-sha1.c \
 	mesa_cache_db.c \
 	mesa_cache_db_multipart.c \
 	os_file.c \
