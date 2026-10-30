@@ -280,7 +280,7 @@ endif
 # sanstats are host-side post-processing tools, not AROS compiler components.
 LLVM_CMAKEOPTIONS       := -Wno-dev                                                                                                     \
     -DDEFAULT_SYSROOT="$(AROS_TOOLCHAIN_DEFAULT_SYSROOT)"                                                                               \
-    -DCMAKE_INSTALL_BINDIR="$(LLVM_BIN_DIR)"                                                                                           \
+    -DCMAKE_INSTALL_BINDIR=bin                                                                                                          \
     -DLLVM_TARGETS_TO_BUILD=$(LLVM_TARGETS)                                                                                             \
     -DLLVM_DEFAULT_TARGET_TRIPLE=$(AROS_TARGET_CPU)-unknown-aros                                                                        \
     -DLLVM_ENABLE_PROJECTS=""                                                                                                           \

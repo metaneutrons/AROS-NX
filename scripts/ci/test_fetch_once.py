@@ -108,6 +108,8 @@ class FetchOnceTests(unittest.TestCase):
             )
             self.assertNotIn("compiler-rt-target-fetch-once := yes", output)
             self.assertNotIn("llvm-runtimes-target-fetch-once := yes", output)
+            self.assertIn("-DCMAKE_INSTALL_BINDIR=bin", output)
+            self.assertNotIn('-DCMAKE_INSTALL_BINDIR="$(LLVM_BIN_DIR)"', output)
             for target in (
                 "crosstools-compiler-rt-release-cmakeflag",
                 "crosstools-compiler-rt32-release-cmakeflag",
