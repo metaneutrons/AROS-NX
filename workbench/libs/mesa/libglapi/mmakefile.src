@@ -11,7 +11,7 @@ CUR_MESADIR_OLD := src/mapi
 CUR_MESADIR_NEW := src/mesa/glapi
 
 # Select the locked Mesa 26 layout before the archive is fetched.
-ifeq ($(OPT_MESAGL),26.0.0)
+ifeq ($(OPT_MESAGL),26.2.5)
 CUR_MESADIR := $(CUR_MESADIR_NEW)
 MESA_GLAPI_LAYOUT := new
 else

@@ -88,7 +88,7 @@
     },
     {
       "path": "aros-targets.toml",
-      "sha256": "6151204a2b21f05c11440b85bc2d88c441d87605f9222dfc8462affd81286505"
+      "sha256": "16e856f40a28ae7a7195f3c3ba205b255af48f93c90597d7c92261df814d570d"
     },
     {
       "path": "compiler/crt/stdc/mmakefile.src",
@@ -120,7 +120,7 @@
     },
     {
       "path": "compiler/sdk/pc-x86_64/metamake-v1.json",
-      "sha256": "4d72a13434e7b1e3bb443f8daf013db637bd1d6ae519c933890ba10cd98687da"
+      "sha256": "64a92e96b8f674fd42eb13ec9c3a8fcf4c6e3f2ff758d3137c9080776829e76b"
     },
     {
       "path": "compiler/sdk/probes/application.c",
@@ -180,7 +180,7 @@
     },
     {
       "path": "configure.in",
-      "sha256": "57c473d3db2a7738b78b323482dabe9218611f141695529d76d9894c018c4563"
+      "sha256": "c56c209f74dc81f4c38ad6a36c8e89d9e9941104b92d8bbfd85ccc81c76b091f"
     },
     {
       "path": "mmake.config.in",

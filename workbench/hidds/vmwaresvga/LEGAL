@@ -17,7 +17,7 @@ changes are recorded in patches/vmwgfx-aros.diff.
 
 (c)
 (Mesa's svga gallium driver and its winsys/svga/drm are compiled from the
-Mesa port; their AROS changes are in workbench/libs/mesa/mesa-26.0.0-aros.diff.)
+Mesa port; their AROS changes are in workbench/libs/mesa/mesa-26.2.5-aros.diff.)
 
 (d)
 libdrm's KMS wrappers (MIT), from the nouveau hidd, with additions.
