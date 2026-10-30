@@ -72,7 +72,7 @@
     },
     {
       "path": "arch/riscv-esp32p4/native-sdk/metamake-v1.json",
-      "sha256": "e16de2e3fbf412297b7bc6197e6f98d5f792367a187fb5d61fa8389aec5f35d7"
+      "sha256": "083f0a176d04f1a28d10b370149b21504e4d6df79d478c563753cf050a0d2924"
     },
     {
       "path": "arch/riscv-esp32p4/native-sdk/probes/application.c",

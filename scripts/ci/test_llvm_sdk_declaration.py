@@ -83,6 +83,10 @@ class LlvmSdkDeclarationTests(unittest.TestCase):
         target = snapshots["config/target.cfg.in"]
         self.assertIn("AROS_TOOLCHAIN := gnu\n", target)
         self.assertIn("KERNEL_TOOLCHAIN := gnu\n", target)
+        self.assertIn(f"TARGET_LLVM_VER := {LLVM_VERSION}\n", target)
+        self.assertIn(
+            f"TARGET_LLVM_RUNTIMES_STYLE := {LLVM_RUNTIME_STYLE}\n", target
+        )
 
 
 if __name__ == "__main__":
