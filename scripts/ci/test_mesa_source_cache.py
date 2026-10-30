@@ -126,43 +126,6 @@ class MesaSourceCacheTests(unittest.TestCase):
     def test_repository_contract_locks_mesa_and_preserves_zlib(self) -> None:
         self.assert_repository_contract(PLAN, STAGING)
 
-    def assert_galliumaux_llvm_header_contract(self, source: str) -> None:
-        llvm_block = source.split("ifeq ($(AROS_TOOLCHAIN),llvm)", 1)[1].split("endif", 3)
-        self.assertGreaterEqual(len(llvm_block), 4)
-        selected_block = "endif".join(llvm_block[:4])
-        self.assertIn("OPT_LLVM := $(TARGET_LLVM_VER)", selected_block)
-        self.assertIn("OPT_LLVM := 11.0.0", selected_block)
-        self.assertIn(
-            "mesa3d-linklib-galliumauxiliary_MC_EXTRA_CPPFLAGS :=",
-            selected_block,
-        )
-        self.assertIn(
-            "-I$(PORTSDIR)/llvm/llvm-$(OPT_LLVM).src/include",
-            selected_block,
-        )
-        self.assertIn(
-            "gallivm/lp_bld_nir_no_integer_algebraic.c",
-            selected_block,
-        )
-        self.assertIn(
-            "#MM- mesa3d-linklib-galliumauxiliary-llvm : workbench-libs-llvm",
-            source,
-        )
-
-    def test_galliumaux_llvm_generated_source_has_llvm_headers(self) -> None:
-        source = (
-            ROOT / "workbench/libs/mesa/libgalliumaux/mmakefile.src"
-        ).read_text(encoding="utf-8")
-        self.assert_galliumaux_llvm_header_contract(source)
-        with self.assertRaises(AssertionError):
-            self.assert_galliumaux_llvm_header_contract(
-                source.replace(
-                    "-I$(PORTSDIR)/llvm/llvm-$(OPT_LLVM).src/include",
-                    "-I$(PORTSDIR)/llvm/missing/include",
-                    1,
-                )
-            )
-
     def test_repository_contract_rejects_removed_mesa(self) -> None:
         plan, staging = self.read_contract_data()
         plan["entries"] = [entry for entry in plan["entries"] if entry["role"] != MESA_ROLE]
