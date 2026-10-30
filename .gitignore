@@ -3069,3 +3069,27 @@
 # Tracked, hand-written mmakefiles that predate mmakefile.src are unaffected,
 # since .gitignore does not untrack already-committed files.
 mmakefile
+
+# Operating-system metadata and transient filesystem artefacts.
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100/
+.fseventsd/
+.Spotlight-V100/
+.TemporaryItems/
+.Trashes/
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.stackdump
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
