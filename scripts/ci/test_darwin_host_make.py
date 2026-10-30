@@ -6,6 +6,7 @@ import platform
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -136,6 +137,32 @@ def _homebrew_llvm_archive_tools() -> tuple[str, str] | None:
     return None
 
 
+def _system_gnu_archive_tools() -> tuple[str, str] | None:
+    """Prefer the system GNU pair over unrelated toolchains earlier in PATH."""
+    if platform.system() == "Darwin":
+        return None
+    ar = Path("/usr/bin/ar")
+    ranlib = Path("/usr/bin/ranlib")
+    if not ar.is_file() or not ranlib.is_file():
+        return None
+    try:
+        ar_version = subprocess.run(
+            [str(ar), "--version"], capture_output=True, text=True,
+            timeout=10, check=False,
+        )
+        ranlib_version = subprocess.run(
+            [str(ranlib), "--version"], capture_output=True, text=True,
+            timeout=10, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if (ar_version.returncode == 0 and ranlib_version.returncode == 0
+            and "GNU ar" in ar_version.stdout
+            and "GNU ranlib" in ranlib_version.stdout):
+        return str(ar), str(ranlib)
+    return None
+
+
 class DarwinHostMakeContractTests(unittest.TestCase):
     def test_source_and_generated_configure_select_gmake_for_darwin(self) -> None:
         source = (ROOT / "configure.in").read_text()
@@ -210,6 +237,9 @@ class DarwinHostMakeRecipeTests(unittest.TestCase):
     def test_selected_archive_tools_accept_response_files(self) -> None:
         self.assertTrue(_archive_pair_supports_response_files(self.ar, self.ranlib))
 
+    def test_response_file_probe_rejects_non_archive_tools(self) -> None:
+        self.assertFalse(_archive_pair_supports_response_files(sys.executable, sys.executable))
+
     def test_apple_make_381_fails_before_creating_response_file(self) -> None:
         apple_make = Path("/usr/bin/make")
         if platform.system() != "Darwin" or not apple_make.is_file():
@@ -227,6 +257,9 @@ class DarwinHostMakeRecipeTests(unittest.TestCase):
     @staticmethod
     def _archive_tools() -> tuple[str, str]:
         candidates = []
+        system_gnu = _system_gnu_archive_tools()
+        if system_gnu is not None:
+            candidates.append(system_gnu)
         llvm_ar = shutil.which("llvm-ar")
         llvm_ranlib = shutil.which("llvm-ranlib")
         if (llvm_ar and llvm_ranlib
