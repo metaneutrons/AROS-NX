@@ -280,7 +280,7 @@ endif
 # sanstats are host-side post-processing tools, not AROS compiler components.
 LLVM_CMAKEOPTIONS       := -Wno-dev                                                                                                     \
     -DDEFAULT_SYSROOT="$(AROS_TOOLCHAIN_DEFAULT_SYSROOT)"                                                                               \
-    -DCMAKE_INSTALL_BINDIR="$(LLVM_BIN_DIR)"                                                                                           \
+    -DCMAKE_INSTALL_BINDIR=bin                                                                                                          \
     -DLLVM_TARGETS_TO_BUILD=$(LLVM_TARGETS)                                                                                             \
     -DLLVM_DEFAULT_TARGET_TRIPLE=$(AROS_TARGET_CPU)-unknown-aros                                                                        \
     -DLLVM_ENABLE_PROJECTS=""                                                                                                           \
@@ -637,7 +637,7 @@ LLVM_COMPILER_RT_CMAKEOPTIONS :=                                                
 %build_with_cmake mmake=crosstools-compiler-rt package=compiler-rt srcdir=$(COMPILER_RT_LINKLIB_SRCDIR)                                 \
     prefix="$(CROSSTOOLSDIR)" extraoptions="$(LLVM_COMPILER_RT_CMAKEOPTIONS)" compiler=host usecppflags=no
 
-%build_with_cmake mmake=crosstools-compiler-rt-release package=compiler-rt-release srcdir=$(COMPILER_RT_BUILDBASE)                      \
+%build_with_cmake mmake=crosstools-compiler-rt-release package=compiler-rt-release srcdir=$(COMPILER_RT_LINKLIB_SRCDIR)                \
     prefix="$(CROSSTOOLSDIR)" extraoptions="$(LLVM_COMPILER_RT_CMAKEOPTIONS)" compiler=host usecppflags=no metadeps="setup sdk-includes-1"
 
 # Clang's driver looks for libclang_rt.builtins-armhf.a on hard-float targets,
@@ -687,7 +687,7 @@ LLVM_COMPILER_RT32_CMAKEOPTIONS :=                                              
 %build_with_cmake mmake=crosstools-compiler-rt32 package=compiler-rt32 srcdir=$(COMPILER_RT_LINKLIB_SRCDIR)                             \
     prefix="$(CROSSTOOLSDIR)" extraoptions="$(LLVM_COMPILER_RT32_CMAKEOPTIONS)" compiler=host usecppflags=no
 
-%build_with_cmake mmake=crosstools-compiler-rt32-release package=compiler-rt32-release srcdir=$(COMPILER_RT_BUILDBASE)                  \
+%build_with_cmake mmake=crosstools-compiler-rt32-release package=compiler-rt32-release srcdir=$(COMPILER_RT_LINKLIB_SRCDIR)            \
     prefix="$(CROSSTOOLSDIR)" extraoptions="$(LLVM_COMPILER_RT32_CMAKEOPTIONS)" compiler=host usecppflags=no metadeps="setup sdk-includes-1"
 endif
 
@@ -695,6 +695,9 @@ endif
 # upstream publishes only the monorepo, so a single fetch replaces the nine
 # below and the AROS patches are applied to it in one go.
 ifeq ($(LLVM_MONOREPO),yes)
+
+crosstools-llvm-project-fetch-once := yes
+crosstools-llvm-project-fetch-once-marker := $(HOSTDIR)/Ports/host/llvm-project/.$(LLVM_PROJECT_ARCHBASE)-materialized
 
 %fetch mmake=crosstools-llvm-project-fetch archive=$(LLVM_PROJECT_ARCHBASE)                                                             \
     archive_origins=$(LLVM_REPOSITORY) suffixes="tar.xz"                                                                                \

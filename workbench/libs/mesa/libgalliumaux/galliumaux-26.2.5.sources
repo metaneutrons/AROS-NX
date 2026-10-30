@@ -1,4 +1,4 @@
-# Mesa 26.0.0 Gallium auxiliary inventory for the AROS new-layout recipe.
+# Mesa 26.2.5 Gallium auxiliary inventory for the AROS new-layout recipe.
 # Paths are relative to src/gallium/auxiliary. The base list preserves the
 # wildcard directory order and the explicit filters/additions in
 # workbench/libs/mesa/libgalliumaux/mmakefile.src.
@@ -76,12 +76,6 @@ MESA26_GALLIUMAUX_STATIC_C_SOURCES := \
 	pipebuffer/pb_bufmgr_slab.c \
 	pipebuffer/pb_cache.c \
 	pipebuffer/pb_validate.c \
-	postprocess/pp_celshade.c \
-	postprocess/pp_colors.c \
-	postprocess/pp_init.c \
-	postprocess/pp_mlaa.c \
-	postprocess/pp_program.c \
-	postprocess/pp_run.c \
 	rtasm/rtasm_execmem.c \
 	rtasm/rtasm_x86sse.c \
 	tgsi/tgsi_aa_point.c \
@@ -92,7 +86,6 @@ MESA26_GALLIUMAUX_STATIC_C_SOURCES := \
 	tgsi/tgsi_from_mesa.c \
 	tgsi/tgsi_info.c \
 	tgsi/tgsi_iterate.c \
-	tgsi/tgsi_lowering.c \
 	tgsi/tgsi_parse.c \
 	tgsi/tgsi_point_sprite.c \
 	tgsi/tgsi_sanity.c \
@@ -206,7 +199,8 @@ MESA26_GALLIUMAUX_GENERATED_C_SOURCES := \
 	driver_trace/tr_util.c \
 	util/u_tracepoints.c \
 	indices/u_indices_gen.c \
-	indices/u_unfilled_gen.c
+	indices/u_unfilled_gen.c \
+	draw/draw_nir_lower_opcodes.c
 
 MESA26_GALLIUMAUX_GENERATED_HEADERS := \
 	driver_trace/tr_util.h \

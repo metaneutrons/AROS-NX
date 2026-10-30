@@ -72,7 +72,7 @@
     },
     {
       "path": "arch/riscv-esp32p4/native-sdk/metamake-v1.json",
-      "sha256": "8b272f174be9ca09388474523f9e1578c77665d4962e2746f01caabeed572073"
+      "sha256": "083f0a176d04f1a28d10b370149b21504e4d6df79d478c563753cf050a0d2924"
     },
     {
       "path": "arch/riscv-esp32p4/native-sdk/probes/application.c",
@@ -84,7 +84,7 @@
     },
     {
       "path": "aros-targets.toml",
-      "sha256": "6151204a2b21f05c11440b85bc2d88c441d87605f9222dfc8462affd81286505"
+      "sha256": "16e856f40a28ae7a7195f3c3ba205b255af48f93c90597d7c92261df814d570d"
     },
     {
       "path": "compiler/crt/stdc/mmakefile.src",
@@ -128,7 +128,7 @@
     },
     {
       "path": "config/llvm_def",
-      "sha256": "7bd6bcbe3813e0cd55e0998053d182b7bc8c97dcfd0b85028e9f7f55af4ad61b"
+      "sha256": "105cea6ab21beabd59f0ce9c72349435c99d6012981875d22aae70494f10dc10"
     },
     {
       "path": "config/make-autotools.tmpl",
@@ -148,7 +148,7 @@
     },
     {
       "path": "config/make.tmpl",
-      "sha256": "8661d2bf16e94d6fdb5b89f26663bb813766afb02209e6e0368b94858812ec75"
+      "sha256": "f36e924e88a1be6eb4f8dcbb78d00c0e895fec65767c48729b41da53e89c10ff"
     },
     {
       "path": "config/target.cfg.in",
@@ -156,7 +156,7 @@
     },
     {
       "path": "configure.in",
-      "sha256": "87444bb0ef9a8166f44cf60ec6a2538c35f9f3fd7aa7f2f96bccb50a34f9b75a"
+      "sha256": "c56c209f74dc81f4c38ad6a36c8e89d9e9941104b92d8bbfd85ccc81c76b091f"
     },
     {
       "path": "mmake.config.in",

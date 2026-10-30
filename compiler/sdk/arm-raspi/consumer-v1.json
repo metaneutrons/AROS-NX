@@ -60,7 +60,7 @@
     },
     {
       "path": "aros-targets.toml",
-      "sha256": "6151204a2b21f05c11440b85bc2d88c441d87605f9222dfc8462affd81286505"
+      "sha256": "16e856f40a28ae7a7195f3c3ba205b255af48f93c90597d7c92261df814d570d"
     },
     {
       "path": "compiler/crt/stdc/mmakefile.src",
@@ -84,7 +84,7 @@
     },
     {
       "path": "compiler/sdk/arm-raspi/metamake-v1.json",
-      "sha256": "a1204909f333b4f5d47025b4eb35a3945bce9ad4c365b5353b0716d9bd368e11"
+      "sha256": "d2489f64a10b458d8218b7301eabbcc7476b2a0c2253749f1fa5eeaf34ddc107"
     },
     {
       "path": "compiler/sdk/config-common.mk",
@@ -124,7 +124,7 @@
     },
     {
       "path": "config/llvm_def",
-      "sha256": "7bd6bcbe3813e0cd55e0998053d182b7bc8c97dcfd0b85028e9f7f55af4ad61b"
+      "sha256": "105cea6ab21beabd59f0ce9c72349435c99d6012981875d22aae70494f10dc10"
     },
     {
       "path": "config/make-autotools.tmpl",
@@ -144,7 +144,7 @@
     },
     {
       "path": "config/make.tmpl",
-      "sha256": "8661d2bf16e94d6fdb5b89f26663bb813766afb02209e6e0368b94858812ec75"
+      "sha256": "f36e924e88a1be6eb4f8dcbb78d00c0e895fec65767c48729b41da53e89c10ff"
     },
     {
       "path": "config/target.cfg.in",
@@ -152,7 +152,7 @@
     },
     {
       "path": "configure.in",
-      "sha256": "715d96905d246e8286c5cd187b88fc22b7c7fb1245f5641125831735373bfd5a"
+      "sha256": "c56c209f74dc81f4c38ad6a36c8e89d9e9941104b92d8bbfd85ccc81c76b091f"
     },
     {
       "path": "mmake.config.in",
@@ -180,7 +180,11 @@
     },
     {
       "path": "tools/crosstools/llvm/mmakefile.src",
-      "sha256": "fd7233f9e4e5fac2896287f31d6d79d88a86153cbe368b534384bb9175c5c936"
+      "sha256": "68e55506cb627e9f98a6ba44aa314e4cdab52d5ac102521ba593656cd1a8d4e9"
+    },
+    {
+      "path": "tools/fetch-once.sh",
+      "sha256": "57628911b31399899b2cdc4c140776169216b8a567122c24b276e867bbf04315"
     },
     {
       "path": "tools/genctbl/Makefile",
