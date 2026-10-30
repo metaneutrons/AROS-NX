@@ -144,7 +144,7 @@
     },
     {
       "path": "config/make.tmpl",
-      "sha256": "8661d2bf16e94d6fdb5b89f26663bb813766afb02209e6e0368b94858812ec75"
+      "sha256": "f36e924e88a1be6eb4f8dcbb78d00c0e895fec65767c48729b41da53e89c10ff"
     },
     {
       "path": "config/target.cfg.in",
@@ -180,7 +180,11 @@
     },
     {
       "path": "tools/crosstools/llvm/mmakefile.src",
-      "sha256": "eed61b1a534e65781f49312d601616f26f99a45899dcaeece2749860a25e898b"
+      "sha256": "da72d647c4a8c099551e0a35ffe335e3da88944652802de710d03d0c8df4b03a"
+    },
+    {
+      "path": "tools/fetch-once.sh",
+      "sha256": "57628911b31399899b2cdc4c140776169216b8a567122c24b276e867bbf04315"
     },
     {
       "path": "tools/genctbl/Makefile",

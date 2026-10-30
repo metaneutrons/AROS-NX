@@ -3663,6 +3663,12 @@ endif
 
 #MM
 %(mmake) :
+ifeq ($(%(mmake)-once),yes)
+	$(Q)$(SRCDIR)/tools/fetch-once.sh $(%(mmake)-once-marker) -- \
+	    $(FETCH) -ao "%(archive_origins)" -a %(archive) -s "%(suffixes)" -l $(%(mmake)-location) \
+	    -d %(destination) $(%(mmake)-baseflag) -po "%(patches_origins)" -p "%(patches_specs)" \
+	    -cs "%(checksums)" $(%(mmake)-normalization-flags)
+else
 	$(Q)$(ECHO) "Fetching   %(archive) ..."
 	$(Q)$(FETCH) -ao "%(archive_origins)" -a %(archive) -s "%(suffixes)" -l $(%(mmake)-location) \
 	-d %(destination) $(%(mmake)-baseflag) -po "%(patches_origins)" -p "%(patches_specs)" \
@@ -3670,6 +3676,7 @@ endif
 	$(Q)$(IF) ! $(TEST) -f $(%(mmake)-fetchedflag) ; then \
 		 $(TOUCH) $(%(mmake)-fetchedflag) ; \
 	fi
+endif
 %end
 #------------------------------------------------------------------------------
 

@@ -696,6 +696,9 @@ endif
 # below and the AROS patches are applied to it in one go.
 ifeq ($(LLVM_MONOREPO),yes)
 
+crosstools-llvm-project-fetch-once := yes
+crosstools-llvm-project-fetch-once-marker := $(HOSTDIR)/Ports/host/llvm-project/.$(LLVM_PROJECT_ARCHBASE)-materialized
+
 %fetch mmake=crosstools-llvm-project-fetch archive=$(LLVM_PROJECT_ARCHBASE)                                                             \
     archive_origins=$(LLVM_REPOSITORY) suffixes="tar.xz"                                                                                \
     location=$(PORTSSOURCEDIR) destination=$(HOSTDIR)/Ports/host/llvm-project                                                           \

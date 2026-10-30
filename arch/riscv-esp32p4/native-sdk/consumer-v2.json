@@ -148,7 +148,7 @@
     },
     {
       "path": "config/make.tmpl",
-      "sha256": "8661d2bf16e94d6fdb5b89f26663bb813766afb02209e6e0368b94858812ec75"
+      "sha256": "f36e924e88a1be6eb4f8dcbb78d00c0e895fec65767c48729b41da53e89c10ff"
     },
     {
       "path": "config/target.cfg.in",
