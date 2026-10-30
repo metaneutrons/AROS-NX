@@ -133,7 +133,11 @@ class MesaSourceCacheTests(unittest.TestCase):
         self.assertIn("OPT_LLVM := $(TARGET_LLVM_VER)", selected_block)
         self.assertIn("OPT_LLVM := 11.0.0", selected_block)
         self.assertIn(
-            "USER_INCLUDES += -I$(PORTSDIR)/llvm/llvm-$(OPT_LLVM).src/include",
+            "mesa3d-linklib-galliumauxiliary_MC_EXTRA_CPPFLAGS :=",
+            selected_block,
+        )
+        self.assertIn(
+            "-I$(PORTSDIR)/llvm/llvm-$(OPT_LLVM).src/include",
             selected_block,
         )
         self.assertIn(
@@ -153,8 +157,8 @@ class MesaSourceCacheTests(unittest.TestCase):
         with self.assertRaises(AssertionError):
             self.assert_galliumaux_llvm_header_contract(
                 source.replace(
-                    "USER_INCLUDES += -I$(PORTSDIR)/llvm/llvm-$(OPT_LLVM).src/include",
-                    "USER_INCLUDES +=",
+                    "-I$(PORTSDIR)/llvm/llvm-$(OPT_LLVM).src/include",
+                    "-I$(PORTSDIR)/llvm/missing/include",
                     1,
                 )
             )

@@ -32,7 +32,8 @@ else
 OPT_LLVM := 11.0.0
 endif
 endif
-USER_INCLUDES += -I$(PORTSDIR)/llvm/llvm-$(OPT_LLVM).src/include
+mesa3d-linklib-galliumauxiliary_MC_EXTRA_CPPFLAGS := \
+            -I$(PORTSDIR)/llvm/llvm-$(OPT_LLVM).src/include
 GALLIUM_AUXILIARY_GENERATED_SOURCES += \
             gallivm/lp_bld_nir_no_integer_algebraic.c
 endif
