@@ -108,6 +108,16 @@ class FetchOnceTests(unittest.TestCase):
             )
             self.assertNotIn("compiler-rt-target-fetch-once := yes", output)
             self.assertNotIn("llvm-runtimes-target-fetch-once := yes", output)
+            for target in (
+                "crosstools-compiler-rt-release-cmakeflag",
+                "crosstools-compiler-rt32-release-cmakeflag",
+            ):
+                with self.subTest(target=target):
+                    self.assertIn(
+                        f"$({target}) : TMP_SRCDIR := $(shell $(ECHO) "
+                        "$(COMPILER_RT_LINKLIB_SRCDIR)",
+                        output,
+                    )
 
     def test_only_llvm_consumers_seal_fetch_once_helper(self) -> None:
         for profile in ("arm-raspi", "pc-x86_64", "rpi-aarch64"):

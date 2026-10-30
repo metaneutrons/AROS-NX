@@ -180,7 +180,7 @@
     },
     {
       "path": "tools/crosstools/llvm/mmakefile.src",
-      "sha256": "da72d647c4a8c099551e0a35ffe335e3da88944652802de710d03d0c8df4b03a"
+      "sha256": "dc1b3f98fcec786997ecd4d51b7a4c4823f627225e35ea0ea37bfafb85b0191b"
     },
     {
       "path": "tools/fetch-once.sh",

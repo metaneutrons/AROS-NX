@@ -637,7 +637,7 @@ LLVM_COMPILER_RT_CMAKEOPTIONS :=                                                
 %build_with_cmake mmake=crosstools-compiler-rt package=compiler-rt srcdir=$(COMPILER_RT_LINKLIB_SRCDIR)                                 \
     prefix="$(CROSSTOOLSDIR)" extraoptions="$(LLVM_COMPILER_RT_CMAKEOPTIONS)" compiler=host usecppflags=no
 
-%build_with_cmake mmake=crosstools-compiler-rt-release package=compiler-rt-release srcdir=$(COMPILER_RT_BUILDBASE)                      \
+%build_with_cmake mmake=crosstools-compiler-rt-release package=compiler-rt-release srcdir=$(COMPILER_RT_LINKLIB_SRCDIR)                \
     prefix="$(CROSSTOOLSDIR)" extraoptions="$(LLVM_COMPILER_RT_CMAKEOPTIONS)" compiler=host usecppflags=no metadeps="setup sdk-includes-1"
 
 # Clang's driver looks for libclang_rt.builtins-armhf.a on hard-float targets,
@@ -687,7 +687,7 @@ LLVM_COMPILER_RT32_CMAKEOPTIONS :=                                              
 %build_with_cmake mmake=crosstools-compiler-rt32 package=compiler-rt32 srcdir=$(COMPILER_RT_LINKLIB_SRCDIR)                             \
     prefix="$(CROSSTOOLSDIR)" extraoptions="$(LLVM_COMPILER_RT32_CMAKEOPTIONS)" compiler=host usecppflags=no
 
-%build_with_cmake mmake=crosstools-compiler-rt32-release package=compiler-rt32-release srcdir=$(COMPILER_RT_BUILDBASE)                  \
+%build_with_cmake mmake=crosstools-compiler-rt32-release package=compiler-rt32-release srcdir=$(COMPILER_RT_LINKLIB_SRCDIR)            \
     prefix="$(CROSSTOOLSDIR)" extraoptions="$(LLVM_COMPILER_RT32_CMAKEOPTIONS)" compiler=host usecppflags=no metadeps="setup sdk-includes-1"
 endif
 
