@@ -72,7 +72,7 @@
     },
     {
       "path": "arch/riscv-esp32p4/native-sdk/metamake-v1.json",
-      "sha256": "8b272f174be9ca09388474523f9e1578c77665d4962e2746f01caabeed572073"
+      "sha256": "e16de2e3fbf412297b7bc6197e6f98d5f792367a187fb5d61fa8389aec5f35d7"
     },
     {
       "path": "arch/riscv-esp32p4/native-sdk/probes/application.c",
@@ -84,7 +84,7 @@
     },
     {
       "path": "aros-targets.toml",
-      "sha256": "6151204a2b21f05c11440b85bc2d88c441d87605f9222dfc8462affd81286505"
+      "sha256": "16e856f40a28ae7a7195f3c3ba205b255af48f93c90597d7c92261df814d570d"
     },
     {
       "path": "compiler/crt/stdc/mmakefile.src",
@@ -156,7 +156,7 @@
     },
     {
       "path": "configure.in",
-      "sha256": "87444bb0ef9a8166f44cf60ec6a2538c35f9f3fd7aa7f2f96bccb50a34f9b75a"
+      "sha256": "af82c84476e65e97c4697289431a8e0aa627490ab39021544e482a3d2da0af36"
     },
     {
       "path": "mmake.config.in",

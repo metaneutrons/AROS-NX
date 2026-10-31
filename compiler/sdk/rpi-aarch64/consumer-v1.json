@@ -52,7 +52,7 @@
     },
     {
       "path": "aros-targets.toml",
-      "sha256": "6151204a2b21f05c11440b85bc2d88c441d87605f9222dfc8462affd81286505"
+      "sha256": "16e856f40a28ae7a7195f3c3ba205b255af48f93c90597d7c92261df814d570d"
     },
     {
       "path": "compiler/crt/stdc/mmakefile.src",
@@ -92,7 +92,7 @@
     },
     {
       "path": "compiler/sdk/rpi-aarch64/metamake-v1.json",
-      "sha256": "4b52138e5a07c80a1a922247495853bbe615084979d3d50276dd70606e38d087"
+      "sha256": "c2cbfc6a3382ba1837b2f3c1f4fd4bf3596324411d0780e74ac547b4b5708303"
     },
     {
       "path": "compiler/startup/mmakefile.src",
@@ -144,7 +144,7 @@
     },
     {
       "path": "configure.in",
-      "sha256": "715d96905d246e8286c5cd187b88fc22b7c7fb1245f5641125831735373bfd5a"
+      "sha256": "af82c84476e65e97c4697289431a8e0aa627490ab39021544e482a3d2da0af36"
     },
     {
       "path": "mmake.config.in",
@@ -172,7 +172,7 @@
     },
     {
       "path": "tools/crosstools/llvm/mmakefile.src",
-      "sha256": "fd7233f9e4e5fac2896287f31d6d79d88a86153cbe368b534384bb9175c5c936"
+      "sha256": "eed61b1a534e65781f49312d601616f26f99a45899dcaeece2749860a25e898b"
     },
     {
       "path": "tools/genctbl/Makefile",

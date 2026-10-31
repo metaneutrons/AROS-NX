@@ -67,6 +67,75 @@ def _gnu_make(minimum_major: int = 4) -> str | None:
     return None
 
 
+def _archive_pair_supports_response_files(ar: str, ranlib: str) -> bool:
+    """Prove the archive pair accepts the response syntax used by mklib_q."""
+    try:
+        with tempfile.TemporaryDirectory(prefix="aros-archive-rsp-") as temporary:
+            fixture = Path(temporary)
+            members = [fixture / "first.o", fixture / "second.o"]
+            response = fixture / "members.rsp"
+            archive = fixture / "libprobe.a"
+            for member in members:
+                member.write_bytes(b"archive response-file capability probe\n")
+            response.write_text("".join(f"{member}\n" for member in members))
+            create = subprocess.run(
+                [ar, "cr", str(archive), f"@{response}"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            if create.returncode != 0:
+                return False
+            index = subprocess.run(
+                [ranlib, str(archive)],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            if index.returncode != 0:
+                return False
+            listing = subprocess.run(
+                [ar, "t", str(archive)],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            return (listing.returncode == 0
+                    and listing.stdout.splitlines() == [member.name for member in members])
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def _homebrew_llvm_archive_tools() -> tuple[str, str] | None:
+    """Locate keg-only Homebrew LLVM tools that are intentionally absent from PATH."""
+    if platform.system() != "Darwin":
+        return None
+    brew = shutil.which("brew")
+    if brew is None:
+        return None
+    try:
+        result = subprocess.run(
+            [brew, "--prefix", "llvm"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    bindir = Path(result.stdout.strip()) / "bin"
+    ar = bindir / "llvm-ar"
+    ranlib = bindir / "llvm-ranlib"
+    if ar.is_file() and ranlib.is_file():
+        return str(ar), str(ranlib)
+    return None
+
+
 class DarwinHostMakeContractTests(unittest.TestCase):
     def test_source_and_generated_configure_select_gmake_for_darwin(self) -> None:
         source = (ROOT / "configure.in").read_text()
@@ -138,6 +207,9 @@ class DarwinHostMakeRecipeTests(unittest.TestCase):
         self.assertEqual(members.returncode, 0, members.stderr)
         self.assertIn("trivial.o", members.stdout.splitlines())
 
+    def test_selected_archive_tools_accept_response_files(self) -> None:
+        self.assertTrue(_archive_pair_supports_response_files(self.ar, self.ranlib))
+
     def test_apple_make_381_fails_before_creating_response_file(self) -> None:
         apple_make = Path("/usr/bin/make")
         if platform.system() != "Darwin" or not apple_make.is_file():
@@ -154,17 +226,21 @@ class DarwinHostMakeRecipeTests(unittest.TestCase):
 
     @staticmethod
     def _archive_tools() -> tuple[str, str]:
+        candidates = []
         llvm_ar = shutil.which("llvm-ar")
         llvm_ranlib = shutil.which("llvm-ranlib")
         if (llvm_ar and llvm_ranlib
                 and Path(llvm_ar).resolve().parent == Path(llvm_ranlib).resolve().parent):
-            return llvm_ar, llvm_ranlib
+            candidates.append((llvm_ar, llvm_ranlib))
+        homebrew = _homebrew_llvm_archive_tools()
+        if homebrew is not None and homebrew not in candidates:
+            candidates.append(homebrew)
         ar, ranlib = shutil.which("ar"), shutil.which("ranlib")
         if ar and ranlib:
-            version = subprocess.run([ar, "--version"], capture_output=True,
-                                     text=True, timeout=10, check=False)
-            if version.returncode == 0 and re.search(r"(?mi)^(GNU ar|LLVM)", version.stdout):
-                return ar, ranlib
+            candidates.append((ar, ranlib))
+        for candidate in candidates:
+            if _archive_pair_supports_response_files(*candidate):
+                return candidate
         raise AssertionError("response-file-capable llvm-ar/llvm-ranlib or GNU ar/ranlib is required")
 
     def _run_nested_recipe(self, host_make: str, archive: Path) -> subprocess.CompletedProcess[str]:

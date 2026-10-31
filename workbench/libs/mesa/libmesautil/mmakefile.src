@@ -73,7 +73,7 @@ $(top_builddir)/$(CUR_MESADIR)/%.c: $(top_srcdir)/$(CUR_MESADIR)/%.py $(top_srcd
 endif
 
 ifeq ($(MESA_UTIL_LAYOUT),new)
-include $(SRCDIR)/$(CURDIR)/mesautil-26.0.0.sources
+include $(SRCDIR)/$(CURDIR)/mesautil-26.2.5.sources
 MESA_UTIL_NEW_C_FILES := $(MESA26_UTIL_STATIC_C_SOURCES)
 # blake3_impl.h enables NEON on little-endian aarch64; retain the upstream
 # implementation under the same target-architecture gate.
