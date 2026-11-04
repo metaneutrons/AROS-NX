@@ -112,7 +112,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: metaneutrons/aros-tools
-          ref: ca26c8e201cf4dbfdcc71ee50d66c896696a7382
+          ref: a5bffa8d38db7c9bb2759dd79ec770ec375565f0
           path: dependencies/aros-tools
           persist-credentials: false
       - name: Install audited build prerequisites
