@@ -348,6 +348,16 @@ endif
 LLVM_CMAKEOPTIONS       +=-DLLVM_EXTERNAL_LLD_SOURCE_DIR="$(LLVMLLD_BUILDBASE)"
 LLVM_CMAKEOPTIONS       +=-DLLVM_EXTERNAL_CLANG_SOURCE_DIR="$(CLANG_BUILDBASE)"
 
+# The component libraries and tools link with an absolute build RPATH that the
+# install step later rewrites to $ORIGIN-relative. The linker computes the ELF
+# build-id before that rewrite, so identical files from two build directories
+# ship different build-ids and independent builds are not byte-identical.
+# Linking with the install RPATH from the start keeps the id independent of the
+# build directory. Mach-O hosts already reproduce and are left as they are.
+ifneq (darwin,$(AROS_HOST_ARCH))
+LLVM_CMAKEOPTIONS       += -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON
+endif
+
 #LLVM_CMAKEOPTIONS      +=-DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
 
 # Producer builds pass deterministic file/debug/macro prefix maps here. The
