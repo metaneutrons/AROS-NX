@@ -16,6 +16,31 @@ CONTRACT = SDK / "consumer-v2.json"
 
 
 class NativeSdkDeclarationTests(unittest.TestCase):
+    def test_board_projection_excludes_the_stateful_build_guard(self) -> None:
+        contract = json.loads(CONTRACT.read_bytes())
+        projection = "arch/riscv-esp32p4/native-sdk/board.mk"
+        self.assertEqual(
+            contract["make_include_bindings"]
+            ["arch/riscv-esp32p4/board/board.mk"],
+            projection,
+        )
+        inputs = {entry["path"] for entry in contract["inputs"]}
+        self.assertIn("arch/riscv-esp32p4/board/board.mk", inputs)
+        self.assertIn(projection, inputs)
+
+        projected_text = (ROOT / projection).read_text()
+        self.assertNotIn("$(shell", projected_text)
+        self.assertNotIn("ifeq", projected_text)
+        self.assertNotIn("ifneq", projected_text)
+
+        wrapper = (ROOT / "arch/riscv-esp32p4/board/build-profile.mk").read_text()
+        self.assertIn("include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk", wrapper)
+        self.assertIn("$(shell $(PYTHON)", wrapper)
+        self.assertIn(
+            "include $(SRCDIR)/arch/riscv-esp32p4/board/build-profile.mk",
+            (ROOT / "config/make.cfg.in").read_text(),
+        )
+
     def test_reviewed_source_seals_are_current(self) -> None:
         before = CONTRACT.read_bytes()
         subprocess.run([sys.executable, str(SDK / "export.py"), "--check"],
