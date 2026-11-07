@@ -280,7 +280,7 @@ endif
 # sanstats are host-side post-processing tools, not AROS compiler components.
 LLVM_CMAKEOPTIONS       := -Wno-dev                                                                                                     \
     -DDEFAULT_SYSROOT="$(AROS_TOOLCHAIN_DEFAULT_SYSROOT)"                                                                               \
-    -DCMAKE_INSTALL_BINDIR="$(LLVM_BIN_DIR)"                                                                                           \
+    -DCMAKE_INSTALL_BINDIR=bin                                                                                                          \
     -DLLVM_TARGETS_TO_BUILD=$(LLVM_TARGETS)                                                                                             \
     -DLLVM_DEFAULT_TARGET_TRIPLE=$(AROS_TARGET_CPU)-unknown-aros                                                                        \
     -DLLVM_ENABLE_PROJECTS=""                                                                                                           \
@@ -347,6 +347,23 @@ endif
 
 LLVM_CMAKEOPTIONS       +=-DLLVM_EXTERNAL_LLD_SOURCE_DIR="$(LLVMLLD_BUILDBASE)"
 LLVM_CMAKEOPTIONS       +=-DLLVM_EXTERNAL_CLANG_SOURCE_DIR="$(CLANG_BUILDBASE)"
+
+# compiler-rt installs its builtins under lib/clang/$(LLVM_VERSION), the
+# layout every toolchain contract names. From LLVM 16 the clang driver and the
+# header install default to lib/clang/<major version> instead, which
+# splits headers and builtins across two directories. Pin clang's single
+# resource directory to the full version so driver, headers and builtins agree.
+LLVM_CMAKEOPTIONS       += -DCLANG_RESOURCE_DIR=../lib/clang/$(LLVM_VERSION)
+
+# The component libraries and tools link with an absolute build RPATH that the
+# install step later rewrites to $ORIGIN-relative. The linker computes the ELF
+# build-id before that rewrite, so identical files from two build directories
+# ship different build-ids and independent builds are not byte-identical.
+# Linking with the install RPATH from the start keeps the id independent of the
+# build directory. Mach-O hosts already reproduce and are left as they are.
+ifneq (darwin,$(AROS_HOST_ARCH))
+LLVM_CMAKEOPTIONS       += -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON
+endif
 
 #LLVM_CMAKEOPTIONS      +=-DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
 
@@ -637,7 +654,7 @@ LLVM_COMPILER_RT_CMAKEOPTIONS :=                                                
 %build_with_cmake mmake=crosstools-compiler-rt package=compiler-rt srcdir=$(COMPILER_RT_LINKLIB_SRCDIR)                                 \
     prefix="$(CROSSTOOLSDIR)" extraoptions="$(LLVM_COMPILER_RT_CMAKEOPTIONS)" compiler=host usecppflags=no
 
-%build_with_cmake mmake=crosstools-compiler-rt-release package=compiler-rt-release srcdir=$(COMPILER_RT_BUILDBASE)                      \
+%build_with_cmake mmake=crosstools-compiler-rt-release package=compiler-rt-release srcdir=$(COMPILER_RT_LINKLIB_SRCDIR)                \
     prefix="$(CROSSTOOLSDIR)" extraoptions="$(LLVM_COMPILER_RT_CMAKEOPTIONS)" compiler=host usecppflags=no metadeps="setup sdk-includes-1"
 
 # Clang's driver looks for libclang_rt.builtins-armhf.a on hard-float targets,
@@ -645,22 +662,11 @@ LLVM_COMPILER_RT_CMAKEOPTIONS :=                                                
 # (copied, not symlinked, as AROS' build tools define no $(LN)).
 COMPILER_RT_CLANG_LIBDIR := $(CROSSTOOLSDIR)/lib/clang/$(LLVM_VERSION)/lib/aros
 
-# compiler-rt installs under the full LLVM version, but from clang 16 the
-# driver's resource directory is the major version only, so AddRunTimeLibs()
-# never finds the builtins there. Mirror them into the directory clang
-# actually searches.
-COMPILER_RT_RESOURCE_LIBDIR := $(CROSSTOOLSDIR)/lib/clang/$(LLVM_VERSION_MAJOR)/lib/aros
-
 #MM crosstools-compiler-rt-fixup : crosstools-compiler-rt
 crosstools-compiler-rt-fixup :
 	$(Q)$(IF) $(TEST) -f $(COMPILER_RT_CLANG_LIBDIR)/libclang_rt.builtins-arm.a -a \
 	    ! -e $(COMPILER_RT_CLANG_LIBDIR)/libclang_rt.builtins-armhf.a ; then \
 	    $(CP) $(COMPILER_RT_CLANG_LIBDIR)/libclang_rt.builtins-arm.a $(COMPILER_RT_CLANG_LIBDIR)/libclang_rt.builtins-armhf.a ; \
-	fi
-	$(Q)$(IF) $(TEST) -d $(COMPILER_RT_CLANG_LIBDIR) -a \
-	    "$(COMPILER_RT_CLANG_LIBDIR)" != "$(COMPILER_RT_RESOURCE_LIBDIR)" ; then \
-	    $(MKDIR) $(COMPILER_RT_RESOURCE_LIBDIR) ; \
-	    $(CP) $(COMPILER_RT_CLANG_LIBDIR)/libclang_rt.*.a $(COMPILER_RT_RESOURCE_LIBDIR)/ ; \
 	fi
 
 #MM crosstools-compiler-rt-release-fixup : crosstools-compiler-rt-release
@@ -687,7 +693,7 @@ LLVM_COMPILER_RT32_CMAKEOPTIONS :=                                              
 %build_with_cmake mmake=crosstools-compiler-rt32 package=compiler-rt32 srcdir=$(COMPILER_RT_LINKLIB_SRCDIR)                             \
     prefix="$(CROSSTOOLSDIR)" extraoptions="$(LLVM_COMPILER_RT32_CMAKEOPTIONS)" compiler=host usecppflags=no
 
-%build_with_cmake mmake=crosstools-compiler-rt32-release package=compiler-rt32-release srcdir=$(COMPILER_RT_BUILDBASE)                  \
+%build_with_cmake mmake=crosstools-compiler-rt32-release package=compiler-rt32-release srcdir=$(COMPILER_RT_LINKLIB_SRCDIR)            \
     prefix="$(CROSSTOOLSDIR)" extraoptions="$(LLVM_COMPILER_RT32_CMAKEOPTIONS)" compiler=host usecppflags=no metadeps="setup sdk-includes-1"
 endif
 
@@ -695,6 +701,9 @@ endif
 # upstream publishes only the monorepo, so a single fetch replaces the nine
 # below and the AROS patches are applied to it in one go.
 ifeq ($(LLVM_MONOREPO),yes)
+
+crosstools-llvm-project-fetch-once := yes
+crosstools-llvm-project-fetch-once-marker := $(HOSTDIR)/Ports/host/llvm-project/.$(LLVM_PROJECT_ARCHBASE)-materialized
 
 %fetch mmake=crosstools-llvm-project-fetch archive=$(LLVM_PROJECT_ARCHBASE)                                                             \
     archive_origins=$(LLVM_REPOSITORY) suffixes="tar.xz"                                                                                \

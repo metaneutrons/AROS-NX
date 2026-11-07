@@ -13,7 +13,7 @@ import unittest
 
 SOURCE_ROOT = Path(__file__).resolve().parents[4]
 PORT_ROOT = Path(__file__).resolve().parents[2]
-BOARD_MK = PORT_ROOT / "board/board.mk"
+BOARD_MK = PORT_ROOT / "board/build-profile.mk"
 PROFILE_MARKER = Path("config/esp32p4-build-profile.json")
 
 
