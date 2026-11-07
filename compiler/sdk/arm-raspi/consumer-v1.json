@@ -219,8 +219,8 @@
       "compiler_fpu": "neon-vfpv4",
       "arm_cpu_arch": 10,
       "arm_cpu_profile": 65,
-      "arm_fp_arch": 3,
-      "arm_simd_arch": 1,
+      "arm_fp_arch": 5,
+      "arm_simd_arch": 2,
       "arm_vfp_args": 1,
       "arm_arm_isa": 1,
       "arm_thumb_isa": 2
