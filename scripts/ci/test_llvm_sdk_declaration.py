@@ -13,20 +13,19 @@ LLVM_RUNTIME_STYLE = "umbrella"
 
 
 class LlvmSdkDeclarationTests(unittest.TestCase):
-    def test_release_compiler_rt_fixup_populates_clang_major_resource_dir(self) -> None:
+    def test_clang_resource_dir_is_the_full_version_compiler_rt_directory(self) -> None:
         recipe = (ROOT / "tools/crosstools/llvm/mmakefile.src").read_text()
-        for target in (
-            "crosstools-compiler-rt-fixup",
-            "crosstools-compiler-rt-release-fixup",
-        ):
-            with self.subTest(target=target):
-                body = recipe.split(f"{target} :\n", 1)[1].split("\n\n", 1)[0]
-                self.assertIn("$(MKDIR) $(COMPILER_RT_RESOURCE_LIBDIR)", body)
-                self.assertIn(
-                    "$(CP) $(COMPILER_RT_CLANG_LIBDIR)/libclang_rt.*.a "
-                    "$(COMPILER_RT_RESOURCE_LIBDIR)/",
-                    body,
-                )
+        self.assertIn(
+            "LLVM_CMAKEOPTIONS       += -DCLANG_RESOURCE_DIR=../lib/clang/$(LLVM_VERSION)\n",
+            recipe,
+        )
+        self.assertIn(
+            'COMPILER_RT_INSTALL_PATH="$(CROSSTOOLSDIR)/lib/clang/$(LLVM_VERSION)"',
+            recipe,
+        )
+        # A second resource directory makes the builtins selection ambiguous.
+        self.assertNotIn("COMPILER_RT_RESOURCE_LIBDIR", recipe)
+        self.assertNotIn("lib/clang/$(LLVM_VERSION_MAJOR)", recipe)
 
     def test_source_defaults_and_fallbacks_select_llvm_23(self) -> None:
         self.assertEqual((ROOT / "config/llvm_def").read_text().strip(), LLVM_VERSION)
