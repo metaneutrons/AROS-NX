@@ -213,6 +213,18 @@ assert_contains 'release GMP configure has no candidate prefix' "$release" 'gmp-
 assert_contains 'release ISL uses supported GMP prefix interface' "$release" '--with-gmp=system --with-gmp-prefix=/tmp/aros-host-gen/tools/crosstools/gnu/gnu-builddeps'
 assert_contains 'release MPFR selects private GMP' "$release" '--with-gmp=/tmp/aros-host-gen/tools/crosstools/gnu/gnu-builddeps'
 assert_contains 'release MPC selects private GMP and MPFR' "$release" '--with-gmp=/tmp/aros-host-gen/tools/crosstools/gnu/gnu-builddeps --with-mpfr=/tmp/aros-host-gen/tools/crosstools/gnu/gnu-builddeps'
+for lib in gmp isl mpfr mpc; do
+	args=$(printf '%s\n' "$release" | sed -n "s/^$lib-configure-args=//p")
+	assert_contains "release $lib pins one generic build triple" "$args" '--build=aarch64-apple-darwin --host=aarch64-apple-darwin'
+	classic_args=$(printf '%s\n' "$classic" | sed -n "s/^$lib-configure-args=//p")
+	assert_not_contains "classic $lib keeps CPU detection" "$classic_args" '--host='
+done
+release_linux=$(run_generated generated-params AROS_GNU_RELEASE_LAYOUT=yes AROS_HOST_ARCH=linux AROS_HOST_CPU=x86_64)
+assert_contains 'release linux x86_64 GMP uses the generic triple' "$release_linux" '--build=x86_64-pc-linux-gnu --host=x86_64-pc-linux-gnu'
+if run_generated generated-params AROS_GNU_RELEASE_LAYOUT=yes AROS_HOST_ARCH=linux AROS_HOST_CPU=riscv64 >/dev/null 2>&1; then
+	printf '%s\n' 'FAIL: release layout accepted a host without a generic triple' >&2
+	exit 1
+fi
 assert_contains 'release PKG_CONFIG lookup is isolated to build dependencies' "$release" 'PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR=/tmp/aros-host-gen/tools/crosstools/gnu/gnu-builddeps/lib/pkgconfig'
 assert_contains 'release GCC install receives DESTDIR candidate' "$release" 'gcc-install-args=prefix=/tmp/gnu-candidate exec_prefix=/tmp/gnu-candidate prefix=/ exec_prefix=/ bindir=/ libdir=/lib DESTDIR=/tmp/gnu-candidate'
 
