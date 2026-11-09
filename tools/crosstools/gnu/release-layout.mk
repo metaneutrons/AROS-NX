@@ -72,9 +72,31 @@ GNU_BINUTILS_BUILD_OPTS += $(GNU_BINUTILS_ZSTD_ENV)
 GNU_BINUTILS_ZSTD_OPTS := --with-zstd
 GNU_HOST_PACKAGES_USE_CROSSTOOLSDIR := no
 GNU_BUILDDEPS_PKG_CONFIG_ENV = PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR=$(GNU_BUILDDEPDIR)/lib/pkgconfig
-GNU_ISL_EXTRA_OPTS = --with-gmp=system --with-gmp-prefix=$(GNU_BUILDDEPDIR) --bindir=$(GNU_BUILDDEPDIR) --libdir=$(GNU_BUILDDEPDIR)/lib --without-piplib --disable-shared
-GNU_MPFR_EXTRA_OPTS = --with-gmp=$(GNU_BUILDDEPDIR) --bindir=$(GNU_BUILDDEPDIR) --libdir=$(GNU_BUILDDEPDIR)/lib --disable-shared
-GNU_MPC_EXTRA_OPTS = --with-gmp=$(GNU_BUILDDEPDIR) --with-mpfr=$(GNU_BUILDDEPDIR) --bindir=$(GNU_BUILDDEPDIR) --libdir=$(GNU_BUILDDEPDIR)/lib --disable-shared
+# GMP, ISL, MPFR and MPC derive CPU specific assembler and tuning tables from
+# config.guess unless build and host are fixed. A release candidate built on
+# different CPU models of one platform would then differ byte for byte. Pin one
+# generic triple per supported host platform and fail for any other host.
+GNU_HOST_LIB_TRIPLE :=
+ifeq ($(AROS_HOST_ARCH)-$(AROS_HOST_CPU),linux-x86_64)
+GNU_HOST_LIB_TRIPLE := x86_64-pc-linux-gnu
+endif
+ifeq ($(AROS_HOST_ARCH)-$(AROS_HOST_CPU),linux-aarch64)
+GNU_HOST_LIB_TRIPLE := aarch64-unknown-linux-gnu
+endif
+ifeq ($(AROS_HOST_ARCH)-$(AROS_HOST_CPU),darwin-x86_64)
+GNU_HOST_LIB_TRIPLE := x86_64-apple-darwin
+endif
+ifeq ($(AROS_HOST_ARCH)-$(AROS_HOST_CPU),darwin-aarch64)
+GNU_HOST_LIB_TRIPLE := aarch64-apple-darwin
+endif
+ifeq ($(GNU_HOST_LIB_TRIPLE),)
+$(error AROS_GNU_RELEASE_LAYOUT=yes has no generic host triple for $(AROS_HOST_ARCH)-$(AROS_HOST_CPU))
+endif
+GNU_HOST_LIB_TRIPLE_OPTS := --build=$(GNU_HOST_LIB_TRIPLE) --host=$(GNU_HOST_LIB_TRIPLE)
+GNU_GMP_EXTRA_OPTS += $(GNU_HOST_LIB_TRIPLE_OPTS)
+GNU_ISL_EXTRA_OPTS = --with-gmp=system --with-gmp-prefix=$(GNU_BUILDDEPDIR) --bindir=$(GNU_BUILDDEPDIR) --libdir=$(GNU_BUILDDEPDIR)/lib --without-piplib --disable-shared $(GNU_HOST_LIB_TRIPLE_OPTS)
+GNU_MPFR_EXTRA_OPTS = --with-gmp=$(GNU_BUILDDEPDIR) --bindir=$(GNU_BUILDDEPDIR) --libdir=$(GNU_BUILDDEPDIR)/lib --disable-shared $(GNU_HOST_LIB_TRIPLE_OPTS)
+GNU_MPC_EXTRA_OPTS = --with-gmp=$(GNU_BUILDDEPDIR) --with-mpfr=$(GNU_BUILDDEPDIR) --bindir=$(GNU_BUILDDEPDIR) --libdir=$(GNU_BUILDDEPDIR)/lib --disable-shared $(GNU_HOST_LIB_TRIPLE_OPTS)
 GNU_GCC_MATH_OPTS := --with-gmp=$(GNU_BUILDDEPDIR) --with-mpfr=$(GNU_BUILDDEPDIR) --with-mpc=$(GNU_BUILDDEPDIR)
 GNU_GCC_LAYOUT_OVERRIDE_OPTS := --prefix=$(GNU_CONFIGURE_PREFIX) --bindir=$(GNU_CONFIGURE_BINDIR) --libdir=$(GNU_CONFIGURE_LIBDIR) --with-native-system-header-dir=/include --with-sysroot=yes --with-build-sysroot=$(AROS_DEVELOPER) --with-isl=$(GNU_BUILDDEPDIR) $(GNU_GCC_MATH_OPTS)
 
