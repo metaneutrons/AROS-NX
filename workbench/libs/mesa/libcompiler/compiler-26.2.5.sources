@@ -239,9 +239,9 @@ MESA26_COMPILER_NIR_C_SOURCES := \
 	nir/nir_opt_dead_cf.c \
 	nir/nir_opt_dead_write_vars.c \
 	nir/nir_opt_find_array_copies.c \
-	nir/nir_opt_fp_math_ctrl.c \
 	nir/nir_opt_frag_coord_to_pixel_coord.c \
 	nir/nir_opt_fragdepth.c \
+	nir/nir_opt_fp_math_ctrl.c \
 	nir/nir_opt_gcm.c \
 	nir/nir_opt_generate_bfi.c \
 	nir/nir_opt_group_loads.c \
@@ -270,9 +270,9 @@ MESA26_COMPILER_NIR_C_SOURCES := \
 	nir/nir_opt_reassociate_bfi.c \
 	nir/nir_opt_rematerialize_compares.c \
 	nir/nir_opt_remove_phis.c \
-	nir/nir_opt_shared_vars_to_subgroup.c \
 	nir/nir_opt_shrink_stores.c \
 	nir/nir_opt_shrink_vectors.c \
+	nir/nir_opt_shared_vars_to_subgroup.c \
 	nir/nir_opt_sink.c \
 	nir/nir_opt_undef.c \
 	nir/nir_opt_uniform_atomics.c \

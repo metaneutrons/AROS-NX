@@ -3,7 +3,6 @@
 # ORCJIT's lp_bld_init_orc.cpp is not part of this configuration.
 
 MESA26_GALLIVM_C_SOURCES := \
-	lp_bld_nir_lower.c
     lp_bld_arit.c \
     lp_bld_arit_overflow.c \
     lp_bld_assert.c \
@@ -29,6 +28,7 @@ MESA26_GALLIVM_C_SOURCES := \
     lp_bld_logic.c \
     lp_bld_nir.c \
     lp_bld_nir_aos.c \
+    lp_bld_nir_lower.c \
     lp_bld_nir_soa.c \
     lp_bld_pack.c \
     lp_bld_passmgr.c \
