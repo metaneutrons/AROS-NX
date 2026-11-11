@@ -2,7 +2,8 @@
     Copyright (C) 1995-2026, The AROS Development Team. All rights reserved.
 */
 #include <aros/debug.h>
-#include <hidd/gfx.h>
+#include <proto/exec.h>
+#include <proto/graphics.h>
 #include <proto/oop.h>
 
 #include "cgxvideo_intern.h"
@@ -30,12 +31,15 @@
         none
 
     NOTES
+        The handle may still be locked or attached: it is unlocked and
+        detached first.
 
     EXAMPLE
 
     BUGS
 
     SEE ALSO
+        CreateVLayerHandleTagList()
 
     INTERNALS
 
@@ -45,8 +49,26 @@
 {
     AROS_LIBFUNC_INIT
 
-    if (VLayerHandle->obj)
-        OOP_DisposeObject(VLayerHandle->obj);
+    struct IntCGXVBase *base = GetCGXVBase(CGXVideoBase);
+    struct VLayerHandle *vh = VLayerHandle;
+
+    if (!vh)
+        return;
+
+    ObtainSemaphore(&base->handleLock);
+    ObtainSemaphore(&vh->lock);
+    cgxv_UnlockBuffer(vh);
+    cgxv_Detach(vh);
+    ReleaseSemaphore(&vh->lock);
+    ReleaseSemaphore(&base->handleLock);
+
+    if (vh->bm)
+        OOP_DisposeObject(vh->bm);
+    if (vh->colorkeypen >= 0)
+        ReleasePen(vh->screen->ViewPort.ColorMap, vh->colorkeypen);
+    st_Cleanup(&vh->track);
+    FreeVec(vh->nullbuffer);
+    FreeMem(vh, sizeof(struct VLayerHandle));
 
     AROS_LIBFUNC_EXIT
 } /* DeleteVLayerHandle */

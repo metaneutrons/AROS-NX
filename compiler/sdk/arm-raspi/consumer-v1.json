@@ -20,7 +20,7 @@
   "inputs": [
     {
       "path": "Makefile.in",
-      "sha256": "c51fb4b6dd57126574f823119f880bfa0d05ccf85afe33c03f12ebde45e0e5ca"
+      "sha256": "03c3f140b5a259883ab5bebe1d11f5b85e6209cbde1dee33d9cc3ef19ee8270e"
     },
     {
       "path": "arch/aarch64-native/exec/mmakefile.src",
@@ -56,15 +56,15 @@
     },
     {
       "path": "arch/riscv-native/exec/mmakefile.src",
-      "sha256": "de0cacd97869c266e34a315186272bdfd57982e7bd791c3ffe009e9c1ca6c8eb"
+      "sha256": "ffa63bc00e27ede8a7fa99f940472342059c60aec72bd571dd2276e863d70c73"
     },
     {
       "path": "aros-targets.toml",
-      "sha256": "6151204a2b21f05c11440b85bc2d88c441d87605f9222dfc8462affd81286505"
+      "sha256": "16e856f40a28ae7a7195f3c3ba205b255af48f93c90597d7c92261df814d570d"
     },
     {
       "path": "compiler/crt/stdc/mmakefile.src",
-      "sha256": "528207cdba02ce8ebd49d3ac999420c90f4abe9de4d82d2ee974f9edee797cf0"
+      "sha256": "fe940f65b9298b191737bdf11b1095b22ed5c3fde82c9cd8723f175a352a17a1"
     },
     {
       "path": "compiler/include/geninc.cfg.in",
@@ -84,7 +84,7 @@
     },
     {
       "path": "compiler/sdk/arm-raspi/metamake-v1.json",
-      "sha256": "a1204909f333b4f5d47025b4eb35a3945bce9ad4c365b5353b0716d9bd368e11"
+      "sha256": "74836060ff461541aaa72b85252376f54b4823b602c6219d37a2207d05a70cd7"
     },
     {
       "path": "compiler/sdk/config-common.mk",
@@ -144,7 +144,7 @@
     },
     {
       "path": "config/make.tmpl",
-      "sha256": "8661d2bf16e94d6fdb5b89f26663bb813766afb02209e6e0368b94858812ec75"
+      "sha256": "039045bc96fe315d52dc93b1de211e512a78a7a4887d0e8b9cc64a7731043314"
     },
     {
       "path": "config/target.cfg.in",
@@ -152,7 +152,7 @@
     },
     {
       "path": "configure.in",
-      "sha256": "715d96905d246e8286c5cd187b88fc22b7c7fb1245f5641125831735373bfd5a"
+      "sha256": "02a0e1a0bcdb66f93967299beeec7339fa23a58c1978f51cbd7f92b02de14dc0"
     },
     {
       "path": "mmake.config.in",
@@ -164,7 +164,7 @@
     },
     {
       "path": "tools/MetaMake/cache.c",
-      "sha256": "c9a80fec85c0bb2d269578acedf01e9a53c468d404966ec453d6967c042f2f61"
+      "sha256": "469e0cae3559e7a174dcc6abd618275728384c2e935de842ed3581f70dda5d51"
     },
     {
       "path": "tools/MetaMake/dirnode.c",
@@ -172,7 +172,7 @@
     },
     {
       "path": "tools/MetaMake/project.c",
-      "sha256": "655a2bfc2a500d02ae5ad4a4201b5568d54ee3312cd831c6b2d98f468354ca77"
+      "sha256": "6b1afbbbf3c1a4d0f8b57f76ab42475121352134c303f1c06c0e3ef81277187d"
     },
     {
       "path": "tools/MetaMake/var.c",
@@ -180,7 +180,7 @@
     },
     {
       "path": "tools/crosstools/llvm/mmakefile.src",
-      "sha256": "fd7233f9e4e5fac2896287f31d6d79d88a86153cbe368b534384bb9175c5c936"
+      "sha256": "eed61b1a534e65781f49312d601616f26f99a45899dcaeece2749860a25e898b"
     },
     {
       "path": "tools/genctbl/Makefile",

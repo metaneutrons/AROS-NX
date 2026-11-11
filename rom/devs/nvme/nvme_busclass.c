@@ -18,6 +18,7 @@
 #include <libraries/expansion.h>
 #include <utility/tagitem.h>
 #include <devices/trackdisk.h>
+#include <dos/dos.h>
 #include <devices/newstyle.h>
 #include <dos/bptr.h>
 #include <dos/dosextens.h>
@@ -78,7 +79,9 @@ static AROS_INTH1(NVME_IOIntCode, struct nvme_queue *, nvmeq)
 static void nvme_iotask(struct nvme_queue *nvmeq)
 {
     struct Task *thisTask = FindTask(NULL);
-    int i;
+    struct IORequest *tmr = nvme_OpenTimer(nvmeq->dev->dev_NVMEBase);
+    ULONG polled = 0, misses = 0, sigs;
+    int i, n;
 
     DIO(
         bug ("[NVME:Bus] %s(0x%p)\n", __func__, nvmeq);
@@ -86,7 +89,19 @@ static void nvme_iotask(struct nvme_queue *nvmeq)
     )
     SetSignal(0, SIGF_SINGLE);
     for (;;) {
-        Wait(SIGF_SINGLE);
+        if (!tmr) {
+            sigs = Wait(SIGF_SINGLE | SIGBREAKF_CTRL_C);
+        } else if (!(sigs = nvme_WaitTO(tmr, 0, 250000, SIGF_SINGLE | SIGBREAKF_CTRL_C))) {
+            /* A completion whose interrupt never came would otherwise wait forever */
+            if ((n = nvme_process_cq(nvmeq)) != 0) {
+                polled += n;
+                if (++misses <= 5 || (misses % 100) == 0)
+                    bug("[NVME] interrupt missed %u time(s), %u completion(s) collected by polling\n", misses, polled);
+            }
+        }
+        /* nvme_free_queue() wants the queue back */
+        if (sigs & SIGBREAKF_CTRL_C)
+            break;
         for (i = 0; i < nvmeq->q_depth; i ++) {
             struct completionevent_handler *slot = nvmeq->cehandlers[i];
 
@@ -114,6 +129,9 @@ static void nvme_iotask(struct nvme_queue *nvmeq)
             }
         }
     }
+    if (tmr)
+        nvme_CloseTimer(tmr);
+    Signal(nvmeq->q_IOStopper, SIGF_SINGLE);
 }
 
 OOP_Object *NVMEBus__Root__New(OOP_Class *cl, OOP_Object *o, struct pRoot_New *msg)
@@ -389,17 +407,18 @@ BOOL Hidd_NVMEBus_Start(OOP_Object *o, struct NVMEBase *NVMEBase)
                     HIDD_PCIDevice_GetVectorAttribs(data->ab_Dev->dev_Object, data->ab_Dev->dev_Queues[nn + 1]->cq_vector, vecAttribs);
 
                 if ((AdminIntLine == PCIIntLine) || ((vecAttribs[0].ti_Data != (IPTR)-1) && (vecAttribs[1].ti_Data != (IPTR)-1))) {
-                    UBYTE qIRQ, qVect;
+                    /* GIC INTIDs go past 255 (BCM2712 MSIs are 287 on) */
+                    IPTR qIRQ, qVect;
                     if (AdminIntLine != PCIIntLine) {
-                        qIRQ = (UBYTE)vecAttribs[0].ti_Data;
-                        qVect = (UBYTE)vecAttribs[1].ti_Data;
+                        qIRQ = vecAttribs[0].ti_Data;
+                        qVect = vecAttribs[1].ti_Data;
                     } else {
-                        qIRQ = (UBYTE)AdminIntLine;
-                        qVect = (UBYTE)AdminIntLine;
+                        qIRQ = AdminIntLine;
+                        qVect = AdminIntLine;
                     }
 
-                    D(bug ("[NVME:Bus] NVMEBus_Start:     IRQ #%u (vect:%u)\n", qIRQ, qVect);)
-                    data->ab_Dev->dev_Queues[0]->q_irq = qIRQ;
+                    D(bug ("[NVME:Bus] NVMEBus_Start:     IRQ #%u (vect:%u)\n", (unsigned)qIRQ, (unsigned)qVect);)
+                    data->ab_Dev->dev_Queues[nn + 1]->q_irq = qIRQ;
 #else
                 {
                     UBYTE qIRQ = (UBYTE)AdminIntLine, qVect = (UBYTE)AdminIntLine;
@@ -479,6 +498,7 @@ BOOL Hidd_NVMEBus_Start(OOP_Object *o, struct NVMEBase *NVMEBase)
             struct TagItem attrs[] = {
                 {aHidd_Name,                        (IPTR)GM_UNIQUENAME(LibName)    },
                 {aHidd_DriverData,                  (IPTR)data->ab_Dev              },
+                {aHidd_Parent,                      (IPTR)o                         },
                 {aHidd_StorageUnit_Number,          nn                              },
                 {aHidd_StorageUnit_Model,           (IPTR)data->ab_DevName          },
                 {aHidd_StorageUnit_Serial,          (IPTR)data->ab_DevSer           },
@@ -553,10 +573,10 @@ BOOL Hidd_NVMEBus_Start(OOP_Object *o, struct NVMEBase *NVMEBase)
                     } else {
                         /* Optional feature - no ranges defined still reports success. */
                         D(bug ("[NVME:Bus] NVMEBus_Start:      No LBA range reported, using nsze\n");)
-                        lbaEnd = id_ns->nsze << (id_ns->lbaf[lbaf].ds - 9);
+                        lbaEnd = id_ns->nsze;
                     }
                 } else
-                    lbaEnd = id_ns->nsze << (id_ns->lbaf[lbaf].ds - 9);
+                    lbaEnd = id_ns->nsze;
 
                 if (lbaEnd) {
                     if ((data->ab_Units[nn] = OOP_NewObject(NVMEBase->unitClass, NULL, attrs)) != NULL) {
@@ -576,7 +596,7 @@ BOOL Hidd_NVMEBus_Start(OOP_Object *o, struct NVMEBase *NVMEBase)
 
                             unit->au_SecShift = id_ns->lbaf[lbaf].ds;
                             D(bug ("[NVME:Bus] NVMEBus_Start:      Sector Size = %ubytes\n", 1 << unit->au_SecShift);)
-                            unit->au_SecCnt = id_ns->nsze << (unit->au_SecShift - 9);
+                            unit->au_SecCnt = id_ns->nsze;
                             D(bug ("[NVME:Bus] NVMEBus_Start:      # of Sectors = %u\n", unit->au_SecCnt);)
                             unit->au_Low = lbaStart;
                             unit->au_High = lbaEnd - 1;

@@ -25,6 +25,7 @@ typedef OOP_Object *HIDDT_GC;
 #define __Hidd_Gfx_NOMETHODBASE__
 #define __Hidd_Display_NOMETHODBASE__
 #define __Hidd_DMEnum_NOMETHODBASE__
+#define __Hidd_Compositor_NOMETHODBASE__
 #define __Hidd_BitMap_NOMETHODBASE__
 #define __Hidd_ColorMap_NOMETHODBASE__
 #define __Hidd_GC_NOMETHODBASE__
@@ -112,6 +113,10 @@ struct HIDD_ModeProperties
 #define COMPF_LEFT              (1 << COMPB_LEFT)        /* ... to the left of ...         */
 #define COMPB_RIGHT             3
 #define COMPF_RIGHT             (1 << COMPB_RIGHT)      /* ... and to the right of ...     */
+#define COMPB_SCALE             4
+#define COMPF_SCALE             (1 << COMPB_SCALE)      /* screens scale to the display:   */
+                                                        /* DisplayToBMCoords gives their   */
+                                                        /* own pixels                      */
 #define COMPB_ALPHA             7
 #define COMPF_ALPHA             (1 << COMPB_ALPHA)
 #define COMPB_SAME              8
@@ -119,6 +124,46 @@ struct HIDD_ModeProperties
 
 struct ViewPort;
 struct View;
+struct HIDD_DecodeCaps;
+struct HIDD_DecodeInterface;
+
+/*
+ * One thing the compositor places on a display: a whole screen bitmap or a
+ * composited layer surface inside a screen. Src and Dest are in pixels; a
+ * Dest of another size than Src asks for scaling. Shape (display relative)
+ * clips the request, NULL means the Dest rectangle.
+ */
+struct HIDD_CompositeRequest
+{
+    struct HIDD_CompositeRequest *Next;      /* back to front within the parent */
+    OOP_Object                   *BitMap;    /* HIDD bitmap object to show      */
+    struct Rectangle              Src;       /* source rectangle in BitMap      */
+    struct Rectangle              Dest;      /* destination, display pixels     */
+    struct Region                *Shape;     /* NULL = Dest rectangle           */
+    UBYTE                         Opacity;   /* 0..255 constant alpha           */
+    UBYTE                         AlphaMode; /* vHidd_CompAlpha_*               */
+    UWORD                         Flags;     /* CRF_*                           */
+    ULONG                         ZOrder;
+    APTR                          UserData;  /* compositor private              */
+};
+
+#define vHidd_CompAlpha_None     0
+#define vHidd_CompAlpha_Fixed    1
+#define vHidd_CompAlpha_PerPixel 2
+
+#define CRB_OPAQUE          0
+#define CRF_OPAQUE          (1 << CRB_OPAQUE)   /* covers everything behind it        */
+#define CRB_PLANE_OK        1
+#define CRF_PLANE_OK        (1 << CRB_PLANE_OK) /* may be scanned out by a plane      */
+#define CRB_PLANE_REQUIRED  2
+#define CRF_PLANE_REQUIRED  (1 << CRB_PLANE_REQUIRED) /* must not be blitted          */
+#define CRB_SCALED          3
+#define CRF_SCALED          (1 << CRB_SCALED)   /* Dest size differs from Src size    */
+#define CRB_UNDERLAY_OK     4
+#define CRF_UNDERLAY_OK     (1 << CRB_UNDERLAY_OK) /* may be scanned out below its screen,
+                                                 * shown through the screen's alpha: the
+                                                 * client keeps the screen transparent
+                                                 * over Dest where nothing is to cover it */
 
 /* A structure passed to ShowViewPorts() method */
 struct HIDD_ViewPortData
@@ -129,6 +174,13 @@ struct HIDD_ViewPortData
     APTR                      UserData; /* The driver can keep own stuff here   */
     OOP_Object               *PreviousBitmap; /* Kept alive until display swap    */
     ULONG                     Flags;
+    /* Composition parameters of this ViewPort, set by graphics.library from
+     * the ViewPortExtra (VideoControl() VTAG_COMPOSITION_* tags).           */
+    ULONG                     CompFlags;      /* COMPF_* for this screen          */
+    struct Hook              *PreAlphaHook;   /* called on the backdrop before an
+                                               * alpha screen is blended over it   */
+    struct HIDD_CompositeRequest *Surfaces;   /* composited layers of this screen,
+                                               * back to front; NULL = none        */
 };
 
 #define HIDD_VPDF_PREVIOUS_BITMAP_OWNED (1UL << 0)
@@ -144,6 +196,13 @@ struct HIDD_ViewPortData
    YOU CALLED SHOW ON BEFORE THIS CALL HAS NOT BEEN DISPOSED
 */
 #define fHidd_Display_Show_CopyBack 0x01
+
+/* Show the bitmap scaled to fill the display, driven in the compositor's
+   aHidd_Compositor_DisplayMode rather than in the bitmap's own mode. Only
+   used where the primary plane's HIDD_PlaneInfo scale range allows it. A
+   driver that cannot scale this bitmap after all (no plane for it) shows
+   nothing new and returns NULL; the compositor then composes it */
+#define fHidd_Display_Show_Scale    0x02
 
 enum
 {
@@ -455,6 +514,7 @@ enum
     vHidd_ColorModel_StaticPalette,
     vHidd_ColorModel_GrayScale,
     vHidd_ColorModel_StaticGray,
+    vHidd_ColorModel_Video,     /* scan-out only video bitmap (aHidd_BitMap_VideoFormat) */
 
     num_Hidd_CM
 };
@@ -604,6 +664,297 @@ enum
         ( ( ( idx ) = (attr) - HiddDisplayAttrBase) < num_Hidd_Display_Attrs)
 
 #define CLID_Hidd_Display IID_Hidd_Display
+
+/************* Compositor class *****************************/
+
+/*
+ * Every Display owns a compositor object (aHidd_Display_Compositor). The
+ * compositor is the composition policy: which bitmaps are shown where and
+ * how. graphics.library and Intuition reach it only through the Display.
+ */
+
+#include <interface/Hidd_Compositor.h>
+
+#define IS_COMPOSITOR_ATTR(attr, idx)  \
+        ( ( ( idx ) = (attr) - HiddCompositorAttrBase) < num_Hidd_Compositor_Attrs)
+
+#define CLID_Hidd_Compositor IID_Hidd_Compositor
+
+/*
+ * Scan-out planes. A display scans out one or more planes, each showing a
+ * rectangle of a bitmap at a position on the display, optionally scaled and
+ * blended. The base Display has exactly one plane (the primary), which is
+ * what Show() drives; a driver with more describes them through
+ * GetPlaneInfo() and applies a whole set at once with CommitPlanes(). The
+ * display's compositor assigns composition requests to planes within these
+ * constraints and blits whatever gets no plane into the primary one.
+ *
+ * Planes stack by HIDD_PlaneState.ZOrder, back to front, within each
+ * plane's ZMin..ZMax. An overlay whose ZMin is below the primary's ZMin can
+ * go under the primary (an underlay). The primary then shows it through its
+ * own straight alpha, if its AlphaModes have vHidd_CompAlpha_PerPixel; the
+ * driver blends the primary so only while a plane is below it.
+ */
+#define vHidd_Plane_Primary     0   /* full display scan-out, always present       */
+#define vHidd_Plane_Overlay     1   /* composed above or below the primary at a position */
+#define vHidd_Plane_Cursor      2   /* small, topmost; the mouse pointer           */
+
+#define PIB_NEEDS_DISPLAYMEM    0   /* only bitmaps in display memory can be scanned */
+#define PIF_NEEDS_DISPLAYMEM    (1 << PIB_NEEDS_DISPLAYMEM)
+#define PIB_FULL_WIDTH_ONLY     1   /* the plane spans the whole display width        */
+#define PIF_FULL_WIDTH_ONLY     (1 << PIB_FULL_WIDTH_ONLY)
+#define PIB_VSPLIT_ONLY         2   /* planes stack vertically only (copper lists)    */
+#define PIF_VSPLIT_ONLY         (1 << PIB_VSPLIT_ONLY)
+#define PIB_COLORKEY            3   /* destination colour key: the plane shows only    */
+#define PIF_COLORKEY            (1 << PIB_COLORKEY) /* where the primary has the key  */
+#define PIB_HIDE_OBSCURED       4   /* key-less plane partly covered: hide it rather   */
+#define PIF_HIDE_OBSCURED       (1 << PIB_HIDE_OBSCURED) /* than show it on top       */
+
+#define HIDD_PLANE_SCALE_UNITY  0x10000     /* 16.16 */
+
+struct HIDD_PlaneInfo
+{
+    ULONG   Type;           /* vHidd_Plane_*                                    */
+    ULONG   ZMin, ZMax;     /* z-order positions this plane can take            */
+    ULONG   PixFmtMask;     /* bit per vHidd_StdPixFmt_* the plane can scan out */
+    ULONG   ScaleMin;       /* 16.16; both UNITY = no scaling                   */
+    ULONG   ScaleMax;
+    ULONG   AlphaModes;     /* bit per vHidd_CompAlpha_*                        */
+    UWORD   PosAlignX;      /* position/size alignment in pixels (1 = any)      */
+    UWORD   PosAlignY;
+    UWORD   MaxWidth;       /* 0 = up to the display size                       */
+    UWORD   MaxHeight;
+    ULONG   Flags;          /* PIF_*                                            */
+    ULONG   VideoFmtMask;   /* bit per vHidd_VideoFmt_* the plane can scan out  */
+};
+
+struct HIDD_PlaneState
+{
+    ULONG            Plane;     /* plane index, 0 .. aHidd_Display_PlaneCount-1 */
+    OOP_Object      *BitMap;    /* NULL disables the plane                      */
+    struct Rectangle Src;       /* part of BitMap shown                         */
+    struct Rectangle Dest;      /* where on the display (size may differ = scale) */
+    UBYTE            Opacity;   /* for vHidd_CompAlpha_Fixed                    */
+    UBYTE            AlphaMode; /* vHidd_CompAlpha_*                            */
+    ULONG            ZOrder;
+    ULONG            Flags;     /* PSF_*                                        */
+    ULONG            ColorKey;  /* 0x00RRGGBB, with PSF_COLORKEY                */
+};
+
+/* HIDD_PlaneState.Flags */
+#define PSF_COLORKEY            (1 << 0)    /* show only where the primary has ColorKey */
+
+/*
+ * Scan-out only video formats (aHidd_BitMap_VideoFormat, HIDD_PlaneInfo.VideoFmtMask,
+ * moHidd_Display_QueryScanout). These are deliberately not vHidd_StdPixFmt_*: no
+ * blit or conversion path understands them, only planes scan them out and the
+ * owner writes them through moHidd_BitMap_LockBuffer.
+ */
+#define vHidd_VideoFmt_None     0
+#define vHidd_VideoFmt_YUYV     1   /* packed 4:2:2, Y0 U Y1 V, 2 bytes per pixel */
+#define vHidd_VideoFmt_UYVY     2   /* packed 4:2:2, U Y0 V Y1                    */
+#define vHidd_VideoFmt_NV12     3   /* planar Y + interleaved UV, 4:2:0           */
+#define vHidd_VideoFmt_I420     4   /* planar Y, U, V, 4:2:0                      */
+#define vHidd_VideoFmt_YV12     5   /* planar Y, V, U, 4:2:0                      */
+#define vHidd_VideoFmt_P010     6   /* as NV12, 16 bits per sample, value in the  */
+                                    /* top 10 bits (10-bit 4:2:0)                 */
+#define vHidd_VideoFmt_P012     7   /* as P010, value in the top 12 bits          */
+                                    /* (12-bit 4:2:0)                             */
+#define vHidd_VideoFmt_NV16     8   /* planar Y + interleaved UV, 4:2:2: the UV   */
+                                    /* plane has full height                      */
+#define vHidd_VideoFmt_P210     9   /* as NV16, 16 bits per sample, top 10 bits   */
+#define vHidd_VideoFmt_P212     10  /* as NV16, 16 bits per sample, top 12 bits   */
+#define vHidd_VideoFmt_NV24     11  /* planar Y + interleaved UV, 4:4:4: the UV   */
+                                    /* plane has full height and twice the Y      */
+                                    /* plane's row length                         */
+#define vHidd_VideoFmt_P410     12  /* as NV24, 16 bits per sample, top 10 bits   */
+#define vHidd_VideoFmt_P412     13  /* as NV24, 16 bits per sample, top 12 bits   */
+#define num_Hidd_VideoFmt       14
+
+/*
+ * aHidd_BitMap_VideoLayout: how a video bitmap's buffers lie in memory. Linear
+ * is what moHidd_BitMap_LockBuffer always hands the CPU; a driver that keeps
+ * buffers in another layout (its decoder's or its planes' native one) gives
+ * the CPU a linear staging copy.
+ */
+#define vHidd_VideoLayout_Linear    0
+#define vHidd_VideoLayout_Tiled     1   /* the driver's own tiling              */
+#define vHidd_VideoLayout_SAND128   2   /* 128-byte wide column strips (Broadcom) */
+
+/* aHidd_BitMap_ColorSpace */
+#define vHidd_ColorSpace_BT601  0
+#define vHidd_ColorSpace_BT709  1
+#define vHidd_ColorSpace_BT2020 2
+
+/* aHidd_BitMap_ColorRange: luma 16-235 / chroma 16-240, or all of 0-255 */
+#define vHidd_ColorRange_Limited    0
+#define vHidd_ColorRange_Full       1
+
+/* moHidd_BitMap_SwapBuffers flags */
+#define fHidd_Swap_NoWait       (1 << 0)    /* return before the displaced buffer is off scan-out */
+
+/* moHidd_Display_QueryScanout */
+struct HIDD_ScanoutCaps
+{
+    ULONG   Flags;          /* SCF_*                                           */
+    ULONG   MaxWidth;       /* largest source the plane scans out, 0 = display */
+    ULONG   MaxHeight;
+    ULONG   MaxBuffers;     /* buffers one scan-out bitmap may have (>= 1)     */
+    ULONG   ScaleMin;       /* 16.16, as HIDD_PlaneInfo                        */
+    ULONG   ScaleMax;
+    ULONG   ColorKey;       /* the display's key colour when SCF_COLORKEY      */
+};
+
+#define SCF_PLANE               (1 << 0)    /* a plane can show this format at this size   */
+#define SCF_COLORKEY            (1 << 1)    /* ... with a destination colour key           */
+#define SCF_SCALE               (1 << 2)    /* ... scaled (ScaleMin/ScaleMax give the range) */
+
+/*
+ * Hardware video decoding.
+ *
+ * A display with a decoder hands out decode interfaces
+ * (moHidd_Display_GetDecodeInterface), one per decode session, in the
+ * manner of ata.device's PIO and DMA interfaces: the base class allocates
+ * the driver's vector table (aHidd_Display_DecodeVectors) followed by the
+ * driver's session data (aHidd_Display_DecodeDataSize) and returns a pointer
+ * to the data part. Callers use the HIDD_Decode_*() stubs below, which find
+ * the table just before it.
+ *
+ * Frames are decoded into buffers of video bitmaps the same display created
+ * with aHidd_BitMap_DecodeTarget: each frame names its target as (bitmap,
+ * buffer), so a session can decode into as many bitmaps as its caller
+ * creates, at any time. Decoded buffers are shown like any other video
+ * bitmap buffer (planes, SwapBuffers, client surfaces).
+ *
+ * Codec vocabulary is VA-API's (<va/va.h>): a profile is a VAProfile value,
+ * SubmitParams' type a VABufferType (VAPictureParameterBufferType,
+ * VAIQMatrixBufferType, VASliceParameterBufferType, ...) and its data the
+ * matching VA structures. The surface IDs inside them (reference frames) are
+ * the caller's: the driver resolves each through the resolve hook given to
+ * GetDecodeInterface, CallHookPkt(resolve, iface, struct HIDD_DecodeSurfaceMsg *).
+ */
+struct HIDD_DecodeInterface
+{
+    ULONG   di_Size;        /* sizeof() the driver was built with. The base class
+                               always builds a full current table and fills the
+                               entries a shorter driver table lacks with stubs  */
+    BOOL  (*di_BeginFrame)     (APTR obj, OOP_Object *bitmap, ULONG buffer);
+    BOOL  (*di_SubmitParams)   (APTR obj, ULONG type, APTR data, ULONG size, ULONG count);
+    BOOL  (*di_SubmitBitstream)(APTR obj, APTR data, ULONG size);
+    BOOL  (*di_EndFrame)       (APTR obj);
+    ULONG (*di_Sync)           (APTR obj, OOP_Object *bitmap, ULONG buffer, ULONG timeoutms);
+    ULONG (*di_Status)         (APTR obj, OOP_Object *bitmap, ULONG buffer);
+};
+
+/* Message of the resolve hook: map SurfaceID to the buffer holding it */
+struct HIDD_DecodeSurfaceMsg
+{
+    ULONG        SurfaceID;     /* in: a surface ID from a VA structure     */
+    OOP_Object  *BitMap;        /* out: decode-target video bitmap          */
+    ULONG        Buffer;        /* out: buffer index                        */
+};                              /* the hook returns FALSE for unknown IDs   */
+
+/* di_Sync / di_Status results */
+#define vHidd_DecodeStatus_Ready    0   /* no decode pending on the buffer   */
+#define vHidd_DecodeStatus_Busy     1   /* decode in flight (Sync: timeout)  */
+#define vHidd_DecodeStatus_Error    2   /* the last decode into it failed    */
+
+/* Begin a frame decoded into buffer 'buffer' of decode-target 'bitmap' */
+static inline BOOL HIDD_Decode_BeginFrame(APTR iface, OOP_Object *bitmap, ULONG buffer)
+{
+    return ((struct HIDD_DecodeInterface *)iface)[-1].di_BeginFrame(iface, bitmap, buffer);
+}
+
+/* Pass 'count' VA structures of VABufferType 'type', each 'size' bytes */
+static inline BOOL HIDD_Decode_SubmitParams(APTR iface, ULONG type, APTR data, ULONG size, ULONG count)
+{
+    return ((struct HIDD_DecodeInterface *)iface)[-1].di_SubmitParams(iface, type, data, size, count);
+}
+
+/* Pass slice data (the bitstream of the slices given by the slice parameters) */
+static inline BOOL HIDD_Decode_SubmitBitstream(APTR iface, APTR data, ULONG size)
+{
+    return ((struct HIDD_DecodeInterface *)iface)[-1].di_SubmitBitstream(iface, data, size);
+}
+
+/* Start decoding the frame; returns without waiting for it */
+static inline BOOL HIDD_Decode_EndFrame(APTR iface)
+{
+    return ((struct HIDD_DecodeInterface *)iface)[-1].di_EndFrame(iface);
+}
+
+/* Wait up to timeoutms (~0 = for ever) for the decode into (bitmap, buffer) */
+static inline ULONG HIDD_Decode_Sync(APTR iface, OOP_Object *bitmap, ULONG buffer, ULONG timeoutms)
+{
+    return ((struct HIDD_DecodeInterface *)iface)[-1].di_Sync(iface, bitmap, buffer, timeoutms);
+}
+
+static inline ULONG HIDD_Decode_Status(APTR iface, OOP_Object *bitmap, ULONG buffer)
+{
+    return ((struct HIDD_DecodeInterface *)iface)[-1].di_Status(iface, bitmap, buffer);
+}
+
+/* moHidd_Display_QueryDecode */
+struct HIDD_DecodeCaps
+{
+    ULONG   Flags;          /* DCF_*                                           */
+    ULONG   MaxWidth;       /* largest picture the decoder handles             */
+    ULONG   MaxHeight;
+    ULONG   MinWidth;
+    ULONG   MinHeight;
+    ULONG   VideoFmtMask;   /* bit per vHidd_VideoFmt_* it can write           */
+    ULONG   LayoutMask;     /* bit per vHidd_VideoLayout_* it can write        */
+    ULONG   MaxReferences;  /* reference frames it can hold, 0 = codec maximum */
+};
+
+#define DCF_DECODE              (1 << 0)    /* the profile can be decoded at this size     */
+#define DCF_SCANOUT             (1 << 1)    /* ... into buffers a plane can scan out       */
+
+/*
+ * Client surfaces (moHidd_Display_AttachSurface). The hook is called from the
+ * compositor's context, with its lock dropped, as CallHookPkt(hook, display, msg).
+ * It must not block; see the composition plan for the locking rule.
+ */
+struct HIDD_SurfaceHookMsg
+{
+    ULONG                         Type;     /* vHidd_SurfaceHook_*                  */
+    struct HIDD_CompositeRequest *Request;  /* the attached request                 */
+    struct Rectangle              Rect;     /* Damage: screen bitmap coordinates    */
+    ULONG                         Plane;    /* PlaneGained: the plane index         */
+    ULONG                         Flags;    /* PlaneGained: SHF_*                   */
+};
+
+/* HIDD_SurfaceHookMsg.Flags */
+#define SHF_UNDERLAY            (1 << 0)    /* the plane is below the screen (CRF_UNDERLAY_OK):
+                                             * keep the screen transparent over Dest */
+
+#define vHidd_SurfaceHook_Damage        0   /* the screen changed under/around Dest: recompute Shape */
+#define vHidd_SurfaceHook_PlaneGained   1   /* the surface is scanned out by a plane; again when it
+                                             * moves between below and above the screen (SHF_*)   */
+#define vHidd_SurfaceHook_PlaneLost     2   /* the surface is no longer on a plane                   */
+#define vHidd_SurfaceHook_ScreenMoved   3   /* the screen moved on the display (informational)       */
+
+/* aHidd_Display_ColorKey default of the base class (CyberGraphX used the same value) */
+#define HIDD_DISPLAY_DEFAULT_COLORKEY   0x00080008
+
+/* CommitPlanes() flags */
+#define fHidd_Commit_NoWait     (1 << 0)    /* return before the new state is scanned out */
+#define fHidd_Commit_Test       (1 << 1)    /* validate only, change nothing              */
+
+/* aHidd_Compositor_ModePolicy */
+#define vHidd_Compositor_ModePolicy_FollowTop    0 /* display switches to the frontmost screen's mode, no scaling     */
+#define vHidd_Compositor_ModePolicy_Native       1 /* display keeps its own (highest) mode, every screen is scaled    */
+#define vHidd_Compositor_ModePolicy_ScaleLargest 2 /* display takes the mode of the largest screen shown, the smaller */
+                                                   /* screens are scaled up to it (prefs SCALE; NATIVEMODE = Native)   */
+
+/* Message passed to the backfill hook and the pre-alpha hook */
+struct HIDD_BackFillHookMsg
+{
+    void                        *dummy;
+    struct Rectangle            *bounds;
+    LONG                        offsetx;
+    LONG                        offsety;
+};
 
 /************* Graphics class *****************************/
 

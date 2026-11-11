@@ -52,7 +52,7 @@ OOP_Object *DWI2C__Root__New(OOP_Class *cl, OOP_Object *o,
 {
     struct dwi2c_staticdata *psd = PSD(cl);
     struct pRoot_New superMsg;
-    struct TagItem superTags[2];
+    struct TagItem superTags[3];
     OOP_Object *busObj;
     IPTR unit;
 
@@ -98,8 +98,11 @@ OOP_Object *DWI2C__Root__New(OOP_Class *cl, OOP_Object *o,
      */
     superTags[0].ti_Tag  = aHidd_I2C_Name;
     superTags[0].ti_Data = (IPTR)psd->ctrl[unit].name;
-    superTags[1].ti_Tag  = TAG_MORE;
-    superTags[1].ti_Data = (IPTR)msg->attrList;
+    /* The bus is the controller the device tree describes at this node */
+    superTags[1].ti_Tag  = psd->ctrl[unit].path[0] ? aHidd_DevicePath : TAG_IGNORE;
+    superTags[1].ti_Data = (IPTR)psd->ctrl[unit].path;
+    superTags[2].ti_Tag  = TAG_MORE;
+    superTags[2].ti_Data = (IPTR)msg->attrList;
 
     superMsg.mID      = msg->mID;
     superMsg.attrList = superTags;
@@ -129,10 +132,24 @@ void DWI2C__Root__Get(OOP_Class *cl, OOP_Object *o, struct pRoot_Get *msg)
         return;
     }
 
-    if (IS_I2CDW_ATTR(msg->attrID, idx) && idx == aoHidd_I2C_DW_Unit)
+    if (IS_I2CDW_ATTR(msg->attrID, idx))
     {
-        *msg->storage = (IPTR)(data->ctrl - PSD(cl)->ctrl);
-        return;
+        switch (idx)
+        {
+        case aoHidd_I2C_DW_Unit:
+            *msg->storage = (IPTR)(data->ctrl - PSD(cl)->ctrl);
+            return;
+
+        /* Both come from the controller record, which New() guarantees
+           but which Get can still be reached without during disposal */
+        case aoHidd_I2C_DW_MMIOBase:
+            *msg->storage = data->ctrl ? (IPTR)data->ctrl->base : 0;
+            return;
+
+        case aoHidd_I2C_DW_LastFail:
+            *msg->storage = data->ctrl ? (IPTR)data->ctrl->lastFail : 0;
+            return;
+        }
     }
 
     OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);

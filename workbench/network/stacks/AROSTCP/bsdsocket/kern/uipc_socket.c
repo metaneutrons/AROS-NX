@@ -120,6 +120,21 @@ extern struct ifnet *ifunit(register char *);
 #endif
 
 /*
+ * Lock a socket buffer for a send or a receive. It is held by another call
+ * - one that sleeps holding it, as a receive with MSG_WAITALL does - only
+ * when tasks share the socket. A call that may not block (SS_NBIO, or this
+ * call's MSG_DONTWAIT) does not wait for it: EWOULDBLOCK, as FreeBSD's
+ * SBLOCKWAIT(flags). Any other waits, as before.
+ */
+static int
+sblock_call(struct sockbuf *sb, struct SocketBase *p, int nowait)
+{
+    if((sb->sb_flags & SB_LOCK) && nowait)
+        return EWOULDBLOCK;
+    return sblock(sb, p);
+}
+
+/*
  * Socket operation routines.
  * These routines are called by the routines in
  * sys_socket.c or from a system process, and
@@ -471,7 +486,11 @@ int flags;
 #define	snderr(errno)	{ error = errno; splx(s); goto release; }
 
 restart:
-    if(error = sblock(&so->so_snd, uio->uio_procp))
+    s = splnet();       /* sowakeup() changes sb_flags at splnet */
+    error = sblock_call(&so->so_snd, uio->uio_procp,
+                        (so->so_state & SS_NBIO) || (flags & MSG_DONTWAIT));
+    splx(s);
+    if(error)
         goto out;
     do {
         s = splnet();
@@ -495,7 +514,8 @@ restart:
             if((atomic && resid > so->so_snd.sb_hiwat) ||
                     clen > so->so_snd.sb_hiwat)
                 snderr(EMSGSIZE);
-            if(so->so_state & SS_NBIO)
+            /* a non-blocking socket, or this call only (MSG_DONTWAIT) */
+            if((so->so_state & SS_NBIO) || (flags & MSG_DONTWAIT))
                 snderr(EWOULDBLOCK);
             sbunlock(&so->so_snd);
             error = sbwait(&so->so_snd, uio->uio_procp);
@@ -585,6 +605,10 @@ nopages:
 #endif
             if(dontroute)
                 so->so_options |= SO_DONTROUTE;
+            /* more of this write follows at once (FreeBSD's
+             * PRUS_MORETOCOME): TCP sends no part of a segment meanwhile */
+            if(!atomic && resid > 0 && space > 0)
+                so->so_snd.sb_flags |= SB_MORETOCOME;
             s = splnet();				/* XXX */
             error = (*so->so_proto->pr_usrreq)(so,
                                                (flags & MSG_OOB) ? PRU_SENDOOB : //PRU_SEND,
@@ -599,6 +623,7 @@ nopages:
                                                PRU_SEND_EOF : PRU_SEND,
                                                top, addr, control);
             splx(s);
+            so->so_snd.sb_flags &= ~SB_MORETOCOME;
             if(dontroute)
                 so->so_options &= ~SO_DONTROUTE;
             clen = 0;
@@ -611,7 +636,9 @@ nopages:
     } while(resid);
 
 release:
+    s = splnet();
     sbunlock(&so->so_snd);
+    splx(s);
 out:
     if(top)
         m_freem(top);
@@ -728,9 +755,12 @@ bad:
 
 
 restart:
-    if(error = sblock(&so->so_rcv, uio->uio_procp))
+    s = splnet();       /* sowakeup() changes sb_flags at splnet */
+    if(error = sblock_call(&so->so_rcv, uio->uio_procp,
+                           (so->so_state & SS_NBIO) || (flags & MSG_DONTWAIT))) {
+        splx(s);
         return (error);
-    s = splnet();
+    }
 
     m = so->so_rcv.sb_mb;
     /*
@@ -785,7 +815,8 @@ restart:
         if(uio->uio_resid == 0)
             goto release;
 
-        if(so->so_state & SS_NBIO) {
+        /* a non-blocking socket, or this call only (MSG_DONTWAIT) */
+        if((so->so_state & SS_NBIO) || (flags & MSG_DONTWAIT)) {
             error = EWOULDBLOCK;
             goto release;
         }
@@ -1008,9 +1039,9 @@ register struct socket *so;
     struct sockbuf asb;
     struct SocketBase *sb_base = FindSocketBase(FindTask(NULL));
 
+    s = splimp();
     sb->sb_flags |= SB_NOINTR;
     (void) sblock(sb, sb_base);
-    s = splimp();
     socantrcvmore(so);
     sbunlock(sb);
     asb = *sb;
@@ -1050,9 +1081,15 @@ struct mbuf *m0;
     }
 #endif
     if(level != SOL_SOCKET) {
-        if(so->so_proto && so->so_proto->pr_ctloutput)
-            return ((*so->so_proto->pr_ctloutput)
-                    (PRCO_SETOPT, so, level, optname, &m0));
+        if(so->so_proto && so->so_proto->pr_ctloutput) {
+            /* the daemon uses the pcb's options and memberships at splnet */
+            spl_t s = splnet();
+
+            error = (*so->so_proto->pr_ctloutput)
+                    (PRCO_SETOPT, so, level, optname, &m0);
+            splx(s);
+            return (error);
+        }
         error = ENOPROTOOPT;
     } else {
         switch(optname) {
@@ -1085,6 +1122,7 @@ struct mbuf *m0;
         case SO_REUSEADDR:
         case SO_REUSEPORT:
         case SO_OOBINLINE:
+        case SO_NOSIGPIPE:  /* stack never raises SIGPIPE; just record it */
             if(m == NULL || m->m_len < sizeof(int)) {
                 error = EINVAL;
                 goto bad;
@@ -1093,6 +1131,50 @@ struct mbuf *m0;
                 so->so_options |= optname;
             else
                 so->so_options &= ~optname;
+            break;
+
+        /*
+         * The receive time of each datagram (FreeBSD's SO_TIMESTAMP and
+         * SO_TS_CLOCK): SO_TS_REALTIME_MICRO (the default) gives
+         * SCM_TIMESTAMP, a struct timeval of the time gettimeofday() gives;
+         * SO_TS_MONOTONIC gives SCM_MONOTONIC, a struct timespec of
+         * CLOCK_MONOTONIC's. The other clocks are not implemented
+         * (EOPNOTSUPP, an AROS choice). The daemon reads both when a
+         * datagram comes in, so they change at splnet.
+         */
+        case SO_TIMESTAMP:
+            if(m == NULL || m->m_len < sizeof(int)) {
+                error = EINVAL;
+                goto bad;
+            }
+            {
+                spl_t s = splnet();
+
+                if(*mtod(m, int *))
+                    so->so_options |= SO_TIMESTAMP;
+                else
+                    so->so_options &= ~SO_TIMESTAMP;
+                splx(s);
+            }
+            break;
+
+        case SO_TS_CLOCK:
+            if(m == NULL || m->m_len < sizeof(int) ||
+                    *mtod(m, int *) < 0 || *mtod(m, int *) > SO_TS_CLOCK_MAX) {
+                error = EINVAL;
+                goto bad;
+            }
+            if(*mtod(m, int *) != SO_TS_REALTIME_MICRO &&
+                    *mtod(m, int *) != SO_TS_MONOTONIC) {
+                error = EOPNOTSUPP;
+                goto bad;
+            }
+            {
+                spl_t s = splnet();
+
+                so->so_ts_clock = *mtod(m, int *);
+                splx(s);
+            }
             break;
 
         case SO_BINDTODEVICE:
@@ -1108,8 +1190,12 @@ struct mbuf *m0;
             struct ifnet *ifp = NULL;
             int n;
 
+            /* IPv4 and IPv6 sockets share struct inpcb, and its inp_boundif
+             * is also an IPv6 socket's zone (netinet6/in6_pcb.c) */
             if(so->so_proto == NULL || so->so_proto->pr_domain == NULL ||
-                    so->so_proto->pr_domain->dom_family != AF_INET || so->so_pcb == NULL) {
+                    (so->so_proto->pr_domain->dom_family != AF_INET &&
+                     so->so_proto->pr_domain->dom_family != AF_INET6) ||
+                    so->so_pcb == NULL) {
                 error = ENOPROTOOPT;
                 goto bad;
             }
@@ -1124,6 +1210,7 @@ struct mbuf *m0;
                 goto bad;
             }
             sotoinpcb(so)->inp_boundif = ifp;
+            sotoinpcb(so)->inp_flags &= ~INP_BOUNDGONE;
             break;
         }
 
@@ -1146,6 +1233,8 @@ struct mbuf *m0;
                     error = ENOBUFS;
                     goto bad;
                 }
+                /* the application's size: no autosizing */
+                (optname == SO_SNDBUF ? &so->so_snd : &so->so_rcv)->sb_flags &= ~SB_AUTOSIZE;
                 break;
 
             case SO_SNDLOWAT:
@@ -1154,11 +1243,15 @@ struct mbuf *m0;
             case SO_RCVLOWAT:
                 so->so_rcv.sb_lowat = *mtod(m, int *);
                 break;
-            case SO_EVENTMASK:
+            case SO_EVENTMASK: {
+                spl_t s = splnet();
+
                 so->so_eventmask = *mtod(m, int *);
                 so->so_state |= SS_ASYNC;
                 so->so_rcv.sb_flags |= SB_ASYNC;
                 so->so_snd.sb_flags |= SB_ASYNC;
+                splx(s);
+            }
                 DEVENTS(log(LOG_DEBUG, "Setting SO_EVENTMASK = 0x%08lx", so->so_eventmask);)
             }
             break;
@@ -1206,8 +1299,12 @@ struct mbuf **mp;
 
     if(level != SOL_SOCKET) {
         if(so->so_proto && so->so_proto->pr_ctloutput) {
-            return ((*so->so_proto->pr_ctloutput)
-                    (PRCO_GETOPT, so, level, optname, mp));
+            spl_t s = splnet();
+            int error = (*so->so_proto->pr_ctloutput)
+                        (PRCO_GETOPT, so, level, optname, mp);
+
+            splx(s);
+            return (error);
         } else
             return (ENOPROTOOPT);
     } else {
@@ -1242,7 +1339,13 @@ struct mbuf **mp;
         case SO_REUSEPORT:
         case SO_BROADCAST:
         case SO_OOBINLINE:
+        case SO_NOSIGPIPE:
+        case SO_TIMESTAMP:
             *mtod(m, int *) = so->so_options & optname;
+            break;
+
+        case SO_TS_CLOCK:
+            *mtod(m, int *) = so->so_ts_clock;
             break;
 
         case SO_TYPE:
@@ -1300,8 +1403,9 @@ sohasoutofband(so)
 register struct socket *so;
 {
 #ifdef AMITCP
-    if(so->so_pgid)
-        Signal(so->so_pgid->thisTask, so->so_pgid->sigUrgMask);
+    /* a shared base has no task to signal until one sets the mask */
+    if(so->so_pgid && so->so_pgid->sigUrgMask)
+        Signal(so->so_pgid->sigUrgTask, so->so_pgid->sigUrgMask);
     soevent(so, FD_OOB);
 #else
     struct proc *p;

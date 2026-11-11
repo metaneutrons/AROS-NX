@@ -88,6 +88,7 @@ typedef struct
     struct MinNode node;
     struct Task *task;
     UBYTE sigbit;
+    BOOL signalled;     /* taken off the list by a signal or broadcast */
 } CondWaiter;
 
 typedef struct
@@ -122,16 +123,19 @@ typedef struct
     int detached;
 } ThreadInfo;
 
-extern ThreadInfo threads[PTHREAD_THREADS_MAX];
+extern ThreadInfo *threads[PTHREAD_THREADS_MAX];
+extern pthread_t threads_used;
 extern struct SignalSemaphore thread_sem;
 extern TLSKey tlskeys[PTHREAD_KEYS_MAX];
 extern struct SignalSemaphore tls_sem;
+extern volatile BOOL __pthread_exiting;
 
 /* .c */
 extern int SemaphoreIsInvalid(struct SignalSemaphore *sem);
 extern int SemaphoreIsMine(struct SignalSemaphore *sem);
 extern ThreadInfo *GetThreadInfo(pthread_t thread);
 extern pthread_t GetThreadId(struct Task *task);
+extern void **GetTLSValues(BOOL create);
 
 /* .c */
 extern int _pthread_cond_timedwait(pthread_cond_t *cond, pthread_mutex_t *mutex, const struct timespec *abstime, BOOL relative);
@@ -141,6 +145,11 @@ extern int _pthread_cond_broadcast(pthread_cond_t *cond, BOOL onlyfirst);
 
 /* .c */
 extern int _pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr, BOOL staticinit);
+
+/* pthread_affinity.c */
+extern int _pthread_cpuset_to_mask(size_t setsize, const cpu_set_t *set, APTR *maskptr);
+extern int _pthread_task_to_cpuset(struct Task *task, size_t setsize, cpu_set_t *set);
+extern void _pthread_free_affinity(APTR mask);
 
 /* .c */
 extern BOOL OpenTimerDevice(struct IORequest *io, struct MsgPort *mp, struct Task *task);

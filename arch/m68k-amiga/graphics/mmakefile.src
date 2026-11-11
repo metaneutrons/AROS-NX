@@ -1,8 +1,26 @@
+# Copyright (C) 2026, The AROS Development Team. All rights reserved.
 
 include $(SRCDIR)/config/aros.cfg
 
-CFILES  := bltclear changeextspritea movesprite setchiprev vbeampos
-AFILES  := attemptlocklayerrom locklayerrom unlocklayerrom waitblit
+#MM- test-graphics-amiga-m68k : test-graphics-spriteviewport
+#MM- test-graphics-amiga-m68k-quick : test-graphics-spriteviewport-quick
+#MM- test-graphics-amiga-m68k : test-graphics-blitterregisters
+#MM- test-graphics-amiga-m68k-quick : test-graphics-blitterregisters-quick
+#MM- test-graphics-amiga-m68k : test-graphics-gfxlookup
+#MM- test-graphics-amiga-m68k-quick : test-graphics-gfxlookup-quick
+#MM- test-graphics-amiga-m68k : test-graphics-planarand
+#MM- test-graphics-amiga-m68k-quick : test-graphics-planarand-quick
+#MM- test-graphics-amiga-m68k : test-graphics-axisline-native
+#MM- test-graphics-amiga-m68k-quick : test-graphics-axisline-native-quick
+#MM- test-graphics-amiga-m68k : test-graphics-interleavedblit
+#MM- test-graphics-amiga-m68k-quick : test-graphics-interleavedblit-quick
+#MM- test-graphics-amiga-m68k : test-graphics-regionpool
+#MM- test-graphics-amiga-m68k-quick : test-graphics-regionpool-quick
+#MM- test-graphics-amiga-m68k : test-graphics-loadviewinterrupts
+#MM- test-graphics-amiga-m68k-quick : test-graphics-loadviewinterrupts-quick
+
+CFILES  := bltclear blittercompat changeextspritea gfxlookup loadview movesprite rawblit setchiprev vbeampos
+AFILES  := attemptlocklayerrom blitterabi locklayerrom unlocklayerrom waitblit
 
 #MM kernel-graphics-amiga-m68k : kernel-hidd-includes kernel-graphics-includes includes-asm_h kernel-hidd-graphics-includes
 #MM kernel-graphics-amiga-m68k-linklib : kernel-amiga-m68k-amigavideo-includes

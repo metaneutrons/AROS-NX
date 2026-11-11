@@ -226,3 +226,9 @@
 [submodule "workbench/prefs/wifi/catalogs"]
 	path = workbench/prefs/wifi/catalogs
 	url = https://github.com/aros-translation-team/wifi-prefs.git
+[submodule "workbench/system/accounts/catalogs"]
+	path = workbench/system/accounts/catalogs
+	url = https://github.com/aros-translation-team/accounts.git
+[submodule "rom/filesys/odfs/source"]
+	path = rom/filesys/odfs/source
+	url = https://github.com/reinauer/ODFileSystem.git

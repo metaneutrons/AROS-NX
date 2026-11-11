@@ -782,6 +782,100 @@ static void writeresident(FILE *out, struct config *cfg)
     );
 }
 
+/* Register multiple filesystem variants from one readonly table. No handler
+ * state is stored here: allocation and publication still happen per entry. */
+static void writefsentries(FILE *out, struct config *cfg)
+{
+    struct handlerinfo *hl, *first = cfg->handlerlist;
+    int index, count = 0;
+    int stackvar = 0, priorityvar = 0, startupvar = 0;
+
+    for (hl = first; hl; hl = hl->next) {
+        stackvar |= hl->stacksize != first->stacksize;
+        priorityvar |= hl->priority != first->priority;
+        startupvar |= hl->startup != first->startup;
+        count++;
+    }
+    for (hl = first, index = 0; hl; hl = hl->next, index++) {
+        if (hl->name)
+            fprintf(out, "static BSTR GM_UNIQUENAME(HandlerName%d)(void)\n"
+                         "{\n    return AROS_CONST_BSTR(\"%s\");\n}\n\n",
+                    index, hl->name);
+    }
+    fprintf(out, "static const struct GM_UNIQUENAME(HandlerInfo) {\n"
+                 "    ULONG dos_type;\n"
+                 "    BSTR (*name)(void);\n"
+                 "    BYTE autodetect;\n");
+    if (stackvar) fprintf(out, "    ULONG stacksize;\n");
+    if (priorityvar) fprintf(out, "    LONG priority;\n");
+    if (startupvar) fprintf(out, "    LONG startup;\n");
+    fprintf(out, "} GM_UNIQUENAME(HandlerInfo)[%d] = {\n", count);
+    for (hl = first, index = 0; hl; hl = hl->next, index++) {
+        fprintf(out, "    { 0x%08x, ", hl->id);
+        if (hl->name) fprintf(out, "GM_UNIQUENAME(HandlerName%d)", index);
+        else fprintf(out, "NULL");
+        fprintf(out, ", %d", hl->autodetect);
+        if (stackvar) fprintf(out, ", %u", hl->stacksize);
+        if (priorityvar) fprintf(out, ", %d", hl->priority);
+        if (startupvar) fprintf(out, ", %d", hl->startup);
+        fprintf(out, " },\n");
+    }
+    fprintf(out, "};\n\n"
+                 "static inline BOOL GM_UNIQUENAME(InitHandler)(struct ExecBase *SysBase)\n"
+                 "{\n"
+                 "    struct FileSysResource *fsr;\n"
+                 "    BPTR seg;\n"
+                 "    unsigned int i;\n"
+                 "    fsr = (struct FileSysResource *)OpenResource(\"FileSystem.resource\");\n"
+                 "    if (!fsr) return FALSE;\n"
+                 "    seg = CreateSegList(GM_UNIQUENAME(Handler));\n"
+                 "    if (seg != BNULL) {\n"
+                 "        for (i = 0; i < %d; i++) {\n"
+                 "            const struct GM_UNIQUENAME(HandlerInfo) *info = &GM_UNIQUENAME(HandlerInfo)[i];\n"
+                 "            BSTR name = info->name ? info->name() : BNULL;\n"
+                 "            struct FileSysEntry *fse = AllocMem(sizeof(*fse), MEMF_CLEAR);\n"
+                 "            if (fse) {\n"
+                 "                fse->fse_Node.ln_Name = VERSION_STRING;\n"
+                 "                fse->fse_Node.ln_Pri = info->autodetect;\n"
+                 "                fse->fse_DosType = info->dos_type;\n"
+                 "                fse->fse_Version = (MAJOR_VERSION << 16) | MINOR_VERSION;\n"
+                 "                fse->fse_PatchFlags = FSEF_SEGLIST | FSEF_GLOBALVEC | FSEF_PRIORITY;\n", count);
+    if (stackvar)
+        fprintf(out, "                if (info->stacksize) {\n"
+                     "                    fse->fse_PatchFlags |= FSEF_STACKSIZE;\n"
+                     "                    fse->fse_StackSize = info->stacksize;\n"
+                     "                }\n");
+    else if (first->stacksize)
+        fprintf(out, "                fse->fse_PatchFlags |= FSEF_STACKSIZE;\n"
+                     "                fse->fse_StackSize = %u;\n", first->stacksize);
+    fprintf(out, "                if (name != BNULL) {\n"
+                 "                    fse->fse_PatchFlags |= FSEF_HANDLER;\n"
+                 "                    fse->fse_Handler = name;\n"
+                 "                }\n");
+    if (priorityvar) fprintf(out, "                fse->fse_Priority = info->priority;\n");
+    else fprintf(out, "                fse->fse_Priority = %d;\n", first->priority);
+    if (startupvar) fprintf(out, "                fse->fse_Startup = (BPTR)info->startup;\n");
+    else fprintf(out, "                fse->fse_Startup = (BPTR)%d;\n", first->startup);
+    fprintf(out, "                fse->fse_SegList = seg;\n"
+                 "                fse->fse_GlobalVec = (BPTR)(SIPTR)-1;\n"
+                 "                Forbid();\n"
+                 "                Enqueue(&fsr->fsr_FileSysEntries, (struct Node *)fse);\n"
+                 "                Permit();\n"
+                 "            }\n"
+                 "            /* Named segments remain published even if the entry allocation fails. */\n"
+                 "            if (name != BNULL) {\n"
+                 "                struct DosLibrary *DOSBase = (struct DosLibrary *)OpenLibrary(\"dos.library\", 0);\n"
+                 "                if (DOSBase) {\n"
+                 "                    AddSegment(AROS_BSTR_ADDR(name), seg, CMD_SYSTEM);\n"
+                 "                    CloseLibrary((struct Library *)DOSBase);\n"
+                 "                }\n"
+                 "            }\n"
+                 "        }\n"
+                 "    }\n"
+                 "    return TRUE;\n"
+                 "}\n\n");
+}
+
 static void writehandler(FILE *out, struct config *cfg)
 {
     int i, handlers=0;
@@ -832,6 +926,11 @@ static void writehandler(FILE *out, struct config *cfg)
            , cfg->handlerfunc
            , cfg->handlerfunc
     );
+
+    if (need_fse && !need_dos) {
+        writefsentries(out, cfg);
+        return;
+    }
 
     fprintf(out,
             "\n"
@@ -1006,10 +1105,19 @@ static void writeinitlib(FILE *out, struct config *cfg)
        return before ever using it, so do not emit an unused table for them. */
     if (cfg->modtype != HANDLER)
     {
-        fprintf(out,
-                "static const struct __aros_libinit_sets GM_UNIQUENAME(InitSets) =\n"
-                "{\n"
-        );
+        /* Libraries and devices wrap it in struct __aros_libfuncs_sets,
+           which adds the sets their vectors use. */
+        if (cfg->modtype == RESOURCE)
+            fprintf(out,
+                    "static const struct __aros_libinit_sets GM_UNIQUENAME(InitSets) =\n"
+                    "{\n"
+            );
+        else
+            fprintf(out,
+                    "static const struct __aros_libfuncs_sets GM_UNIQUENAME(FuncSets) =\n"
+                    "{\n"
+                    "  {\n"
+            );
         fprintf(out, "    %s,\n", (cfg->options & OPTION_NOAUTOLIB) ? "NULL" : "SETNAME(LIBS)");
         /* norootrellibs: no rellib is opened for the root base. InitLib
            runs in the task that loads the module, so for a pertaskbase
@@ -1031,7 +1139,34 @@ static void writeinitlib(FILE *out, struct config *cfg)
                 "    SETNAME(EXIT),\n"
         );
         fprintf(out, "    %s\n", (cfg->classlist != NULL) ? "SETNAME(CLASSESEXPUNGE)" : "NULL");
-        fprintf(out, "};\n\n");
+        if (cfg->modtype == RESOURCE)
+            fprintf(out,
+                    "};\n"
+                    "#define __GM_INITSETS (&GM_UNIQUENAME(InitSets))\n"
+                    "\n"
+            );
+        else
+        {
+            fprintf(out, "  },\n");
+            fprintf(out, "    %s,\n", (cfg->options & OPTION_NOOPENCLOSE) ? "NULL" : "SETNAME(OPENLIB)");
+            fprintf(out, "    %s,\n", (cfg->options & OPTION_NOOPENCLOSE) ? "NULL" : "SETNAME(CLOSELIB)");
+            fprintf(out, "    %s,\n", (cfg->modtype == DEVICE) ? "SETNAME(OPENDEV)" : "NULL");
+            fprintf(out, "    %s\n", (cfg->modtype == DEVICE) ? "SETNAME(CLOSEDEV)" : "NULL");
+            fprintf(out,
+                    "};\n"
+                    "#define __GM_INITSETS (&GM_UNIQUENAME(FuncSets).init)\n"
+                    "\n"
+            );
+        }
+        if (cfg->options & OPTION_RESAUTOINIT)
+            fprintf(out,
+                    "#ifdef GM_OOPBASE_FIELD\n"
+                    "#define __GM_OOPBASEPTR(lib) ((struct Library **)&GM_OOPBASE_FIELD(lib))\n"
+                    "#else\n"
+                    "#define __GM_OOPBASEPTR(lib) NULL\n"
+                    "#endif\n"
+                    "\n"
+            );
     }
 
     fprintf(out,
@@ -1058,6 +1193,69 @@ static void writeinitlib(FILE *out, struct config *cfg)
              "    AROS_USERFUNC_EXIT\n"
              "}\n"
              "\n"
+        );
+        return;
+    }
+
+    /* The plain auto-initialised case: the module-specific fields are
+       stored here, the checks, the OOP base open, the set sequence and the
+       rollback run in _set_libinitbase(). Storing the fields before the
+       checks is safe, nothing reads them until the base is returned. */
+    if ((cfg->options & OPTION_RESAUTOINIT)
+        && !(cfg->options & (OPTION_DUPBASE | OPTION_PERTASKBASE | OPTION_STACKCALL))
+        && !cfg->rellibs
+    )
+    {
+        fprintf(out,
+                "\n"
+                "    struct ExecBase *SysBase = sysBase;\n"
+                "\n"
+                "#ifdef GM_SYSBASE_FIELD\n"
+                "    GM_SYSBASE_FIELD(LIBBASE) = (APTR)SysBase;\n"
+                "#endif\n"
+                "#if defined(REVISION_NUMBER)\n"
+                "    ((struct Library *)LIBBASE)->lib_Revision = REVISION_NUMBER;\n"
+                "#endif\n"
+        );
+        if (!(cfg->options & OPTION_NOEXPUNGE) && cfg->modtype!=RESOURCE)
+            fprintf(out, "    GM_SEGLIST_FIELD(LIBBASE) = segList;\n");
+        fprintf(out,
+                "\n"
+                "    return (LIBBASETYPEPTR)_set_libinitbase(__GM_INITSETS, (struct Library *)LIBBASE,\n"
+                "                                            __aros_libreq_SysBase, __GM_OOPBASEPTR(LIBBASE), SysBase);\n"
+                "\n"
+                "    AROS_USERFUNC_EXIT\n"
+                "}\n"
+                "\n"
+        );
+        return;
+    }
+
+    /* The same for a resource that builds its own base */
+    if (!(cfg->options & (OPTION_RESAUTOINIT | OPTION_DUPBASE | OPTION_PERTASKBASE | OPTION_STACKCALL | OPTION_SELFINIT))
+        && !cfg->rellibs && (cfg->modtype == RESOURCE)
+    )
+    {
+        fprintf(out,
+                "\n"
+                "    struct ExecBase *SysBase = sysBase;\n"
+                "\n"
+                "    LIBBASE = (LIBBASETYPEPTR)_set_resalloc(FUNCTIONS_COUNT * LIB_VECTSIZE, sizeof(LIBBASETYPE),\n"
+                "                                            GM_UNIQUENAME(LibName), RESIDENTPRI, GM_UNIQUENAME(FuncTable),\n"
+                "                                            __aros_libreq_SysBase, SysBase);\n"
+                "    if (LIBBASE == NULL)\n"
+                "        return NULL;\n"
+                "\n"
+                "#ifdef GM_SYSBASE_FIELD\n"
+                "    GM_SYSBASE_FIELD(LIBBASE) = (APTR)SysBase;\n"
+                "#endif\n"
+                "\n"
+                "    return (LIBBASETYPEPTR)_set_resadd(__GM_INITSETS, LIBBASE, FUNCTIONS_COUNT * LIB_VECTSIZE,\n"
+                "                                       LIBBASESIZE, SysBase);\n"
+                "\n"
+                "    AROS_USERFUNC_EXIT\n"
+                "}\n"
+                "\n"
         );
         return;
     }
@@ -1180,7 +1378,7 @@ static void writeinitlib(FILE *out, struct config *cfg)
     /* The whole open/init/rollback sequence now lives in _set_libinit(),
        driven by the descriptor emitted above. */
     fprintf(out,
-            "    ok = set_libinit(&GM_UNIQUENAME(InitSets), LIBBASE);\n"
+            "    ok = set_libinit(__GM_INITSETS, LIBBASE);\n"
             "\n"
             "    if (!ok)\n"
             "    {\n"
@@ -1267,6 +1465,22 @@ static void writeopenlib(FILE *out, struct config *cfg)
                 ")\n",
                 cfg->basename
             );
+            if (!(cfg->options & OPTION_DUPBASE))
+            {
+                fprintf(out,
+                    "{\n"
+                    "    AROS_LIBFUNC_INIT\n"
+                    "\n"
+                    "    _set_devopen(&GM_UNIQUENAME(FuncSets), (struct Library *)LIBBASE, ioreq, unitnum, flags);\n"
+                    "\n"
+                    "    return;\n"
+                    "\n"
+                    "    AROS_LIBFUNC_EXIT\n"
+                    "}\n"
+                    "\n"
+                );
+                break;
+            }
             fprintf(out,
                 "{\n"
                 "    AROS_LIBFUNC_INIT\n"
@@ -1319,14 +1533,7 @@ static void writeopenlib(FILE *out, struct config *cfg)
         if (!(cfg->options & OPTION_DUPBASE))
         {
             fprintf(out,
-                    "    if ( set_call_libfuncs(SETNAME(OPENLIB), 1, 1, LIBBASE) )\n"
-                    "    {\n"
-                    "        ((struct Library *)LIBBASE)->lib_OpenCnt++;\n"
-                    "        ((struct Library *)LIBBASE)->lib_Flags &= ~LIBF_DELEXP;\n"
-                    "        return LIBBASE;\n"
-                    "    }\n"
-                    "\n"
-                    "    return NULL;\n"
+                    "    return (LIBBASETYPEPTR)_set_libopen(&GM_UNIQUENAME(FuncSets), (struct Library *)LIBBASE);\n"
                     "\n"
                     "    AROS_LIBFUNC_EXIT\n"
                     "}\n"
@@ -1477,6 +1684,35 @@ static void writecloselib(FILE *out, struct config *cfg)
             "    AROS_LIBFUNC_INIT\n"
             "\n"
     );
+    if (!(cfg->options & OPTION_DUPBASE))
+    {
+        if (cfg->options & OPTION_NOEXPUNGE)
+            fprintf(out,
+                    "    _set_libclose(&GM_UNIQUENAME(FuncSets), (struct Library *)LIBBASE, %s);\n",
+                    (cfg->modtype == DEVICE) ? "ioreq" : "NULL"
+            );
+        else
+            fprintf(out,
+                    "    if (_set_libclose(&GM_UNIQUENAME(FuncSets), (struct Library *)LIBBASE, %s))\n"
+                    "    {\n"
+                    "        return AROS_LC1(BPTR, GM_UNIQUENAME(ExpungeLib),\n"
+                    "                   AROS_LCA(LIBBASETYPEPTR, LIBBASE, D0),\n"
+                    "                   LIBBASETYPEPTR, LIBBASE, 3, %s\n"
+                    "        );\n"
+                    "    }\n",
+                    (cfg->modtype == DEVICE) ? "ioreq" : "NULL",
+                    cfg->basename
+            );
+        fprintf(out,
+                "\n"
+                "    return BNULL;\n"
+                "\n"
+                "    AROS_LIBFUNC_EXIT\n"
+                "}\n"
+                "\n"
+        );
+        return;
+    }
     if (cfg->modtype == DEVICE)
         fprintf(out,
                 "    if (!set_call_devfuncs(SETNAME(CLOSEDEV), -1, 1, LIBBASE, ioreq, 0, 0))\n"
@@ -1567,6 +1803,26 @@ static void writeexpungelib(FILE *out, struct config *cfg)
             "    AROS_LIBFUNC_INIT\n"
             "\n"
     );
+    if (!(cfg->options & OPTION_NOEXPUNGE)
+        && (cfg->options & OPTION_RESAUTOINIT)
+        && !(cfg->options & (OPTION_DUPBASE | OPTION_PERTASKBASE))
+    )
+    {
+        fprintf(out,
+                "#ifdef GM_SYSBASE_FIELD\n"
+                "    struct ExecBase *SysBase = (struct ExecBase *)GM_SYSBASE_FIELD(LIBBASE);\n"
+                "#endif\n"
+                "\n"
+                "    return _set_libexpungebase(&GM_UNIQUENAME(FuncSets), (struct Library *)LIBBASE,\n"
+                "                               GM_SEGLIST_FIELD(LIBBASE), %s, SysBase);\n"
+                "\n"
+                "    AROS_LIBFUNC_EXIT\n"
+                "}\n"
+                "\n",
+                (cfg->options & OPTION_NOAUTOLIB) ? "NULL" : "__GM_OOPBASEPTR(LIBBASE)"
+        );
+        return;
+    }
     if (!(cfg->options & OPTION_NOEXPUNGE))
     {
         if (cfg->options & OPTION_RESAUTOINIT) {
@@ -1592,7 +1848,7 @@ static void writeexpungelib(FILE *out, struct config *cfg)
                 "\n"
                 "        Remove((struct Node *)LIBBASE);\n"
                 "\n"
-                "        set_libexpunge(&GM_UNIQUENAME(InitSets), LIBBASE);\n"
+                "        set_libexpunge(__GM_INITSETS, LIBBASE);\n"
         );
         if (!(cfg->options & OPTION_NOAUTOLIB))
             fprintf(out, "#ifdef GM_OOPBASE_FIELD\n"

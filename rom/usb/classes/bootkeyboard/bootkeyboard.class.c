@@ -560,7 +560,8 @@ void nParseKeys(struct NepClassHid *nch, UBYTE *buf)
                             while(node->ln_Succ)
                             {
                                 KPRINTF(20, ("Kicking %s\n", node->ln_Name));
-                                Cause((struct Interrupt *) node);
+                                AROS_INTC1(((struct Interrupt *) node)->is_Code,
+                                           ((struct Interrupt *) node)->is_Data);
                                 node = node->ln_Succ;
                             }
                             KPRINTF(20, ("Done... awaiting doom\n"));
@@ -577,40 +578,6 @@ void nParseKeys(struct NepClassHid *nch, UBYTE *buf)
         }
         ColdReboot();
     }
-    if(qualifier != nch->nch_OldQualifier)
-    {
-        switch(qualifier^nch->nch_OldQualifier)
-        {
-            case IEQUALIFIER_LSHIFT:
-                qualcode = 0x60;
-                break;
-            case IEQUALIFIER_RSHIFT:
-                qualcode = 0x61;
-                break;
-            case IEQUALIFIER_CAPSLOCK:
-                qualcode = 0x62;
-                break;
-            case IEQUALIFIER_CONTROL:
-                qualcode = 0x63;
-                break;
-            case IEQUALIFIER_LALT:
-                qualcode = 0x64;
-                break;
-            case IEQUALIFIER_RALT:
-                qualcode = 0x65;
-                break;
-            case IEQUALIFIER_LCOMMAND:
-                qualcode = 0x66;
-                break;
-            case IEQUALIFIER_RCOMMAND:
-                qualcode = 0x67;
-                break;
-            default:
-                qualcode = 0xFF;
-                break;
-        }
-    }
-
     KPRINTF(1, ("Qualifier %08lx\n", qualifier));
     for(nkey = 2; nkey < 8; nkey++)
     {
@@ -793,15 +760,38 @@ void nParseKeys(struct NepClassHid *nch, UBYTE *buf)
     }
     if((!sentkey) && (nch->nch_OldQualifier != qualifier))
     {
-        nch->nch_FakeEvent.ie_Class = IECLASS_RAWKEY;
-        nch->nch_FakeEvent.ie_SubClass = 0;
-        nch->nch_FakeEvent.ie_Code = qualcode;
-        nch->nch_FakeEvent.ie_NextEvent = NULL;
-        nch->nch_FakeEvent.ie_Qualifier = qualifier;
-        nch->nch_InpIOReq->io_Data = &nch->nch_FakeEvent;
-        nch->nch_InpIOReq->io_Length = sizeof(struct InputEvent);
-        nch->nch_InpIOReq->io_Command = IND_WRITEEVENT;
-        DoIO((struct IORequest *) nch->nch_InpIOReq);
+        /* One event per modifier that changed, a released one as key up */
+        static const struct { ULONG qual; UWORD code; } quals[] =
+        {
+            { IEQUALIFIER_LSHIFT,   0x60 }, { IEQUALIFIER_RSHIFT,   0x61 },
+            { IEQUALIFIER_CAPSLOCK, 0x62 }, { IEQUALIFIER_CONTROL,  0x63 },
+            { IEQUALIFIER_LALT,     0x64 }, { IEQUALIFIER_RALT,     0x65 },
+            { IEQUALIFIER_LCOMMAND, 0x66 }, { IEQUALIFIER_RCOMMAND, 0x67 }
+        };
+        ULONG changed = qualifier ^ nch->nch_OldQualifier;
+        UWORD q;
+
+        for(q = 0; q < sizeof(quals) / sizeof(quals[0]); q++)
+        {
+            if(!(changed & quals[q].qual))
+            {
+                continue;
+            }
+            qualcode = quals[q].code;
+            if(!(qualifier & quals[q].qual))
+            {
+                qualcode |= IECODE_UP_PREFIX;
+            }
+            nch->nch_FakeEvent.ie_Class = IECLASS_RAWKEY;
+            nch->nch_FakeEvent.ie_SubClass = 0;
+            nch->nch_FakeEvent.ie_Code = qualcode;
+            nch->nch_FakeEvent.ie_NextEvent = NULL;
+            nch->nch_FakeEvent.ie_Qualifier = qualifier;
+            nch->nch_InpIOReq->io_Data = &nch->nch_FakeEvent;
+            nch->nch_InpIOReq->io_Length = sizeof(struct InputEvent);
+            nch->nch_InpIOReq->io_Command = IND_WRITEEVENT;
+            DoIO((struct IORequest *) nch->nch_InpIOReq);
+        }
     }
     nch->nch_OldQualifier = qualifier;
 

@@ -1,7 +1,7 @@
 /*
     Copyright (c) 2026, The AROS Development Team. All rights reserved.
 
-    Desc: CacheClearE() for 32bit RISC-V.
+    Desc: CacheClearE() for RISC-V.
 */
 
 #include <exec/types.h>
@@ -12,16 +12,16 @@
 /*
     See rom/exec/cachecleare.c for the documentation.
 
-    The generic version, needing no extension beyond the base ISA: it
-    orders what has already been written, and no more. That is all a
-    machine whose instruction fetch is coherent with its data side
-    requires.
+    A placeholder that every platform has to replace with its own flush.
+    It needs no extension beyond the base ISA: it orders what has already
+    been written, and no more, so it does nothing for the instruction
+    cache.
 
-    Where it is not coherent, something has to reconcile the two - RISC-V
-    keeps them apart on purpose, so a program just read from disk stays
-    data until told otherwise. What can do the telling differs per
-    machine, so the platform detects what it has at startup and replaces
-    this with it.
+    RISC-V keeps instruction fetch apart from the data side on purpose,
+    so a program just read from disk stays data until told otherwise.
+    What can do the telling differs per machine, so each platform detects
+    what it has at startup and replaces this function (and CacheClearU())
+    with it.
 */
 
 AROS_LH3(void, CacheClearE,

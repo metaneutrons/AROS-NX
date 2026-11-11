@@ -15,12 +15,12 @@ from locked_product_sources import export, load_contract, stage, verify_cache
 ROOT = Path(__file__).resolve().parents[2]
 PLAN = ROOT / "scripts/ci/product-sources.plan.json"
 STAGING = ROOT / "scripts/ci/product-sources.staging.json"
-MESA_ROLE = "product:mesa@26.0.0"
-MESA_FILENAME = "mesa-26.0.0.tar.xz"
-MESA_SHA256 = "2a44e98e64d5c36cec64633de2d0ec7eff64703ee25b35364ba8fcaa84f33f72"
+MESA_ROLE = "product:mesa@26.2.5"
+MESA_FILENAME = "mesa-26.2.5.tar.xz"
+MESA_SHA256 = "794b3d1729075dae7ebd47c7283b7ca0cdb5dec668f7f11cc0a5d82f6138a0a5"
 MESA_CANDIDATES = [
-    "https://archive.mesa3d.org/mesa-26.0.0.tar.xz",
-    "https://sources.buildroot.net/mesa3d/mesa-26.0.0.tar.xz",
+    "https://archive.mesa3d.org/mesa-26.2.5.tar.xz",
+    "https://sources.buildroot.net/mesa3d/mesa-26.2.5.tar.xz",
 ]
 MESA_SOURCE_GUARD = (
     "MESA_ARCHIVE_CHECKSUMS := "
@@ -72,17 +72,17 @@ class MesaSourceCacheTests(unittest.TestCase):
         self.assertEqual(mesa["normalization"], "exact-bytes-v1")
         self.assertEqual(
             mesa["integrity"],
-            {"kind": "locked", "sha256": MESA_SHA256, "size": 43776320},
+            {"kind": "locked", "sha256": MESA_SHA256, "size": 68652756},
         )
 
         mapping = mesa_staging[0]
-        self.assertEqual(mapping["destination"], "portssources/mesa-26.0.0.tar.xz")
+        self.assertEqual(mapping["destination"], "portssources/mesa-26.2.5.tar.xz")
         self.assertEqual(
             mapping["source_guard"],
             {"path": "workbench/libs/mesa/mesa.cfg", "line": MESA_SOURCE_GUARD},
         )
         mesa_cfg = (ROOT / "workbench/libs/mesa/mesa.cfg").read_text(encoding="utf-8")
-        self.assertIn("OPT_MESAGL=26.0.0", mesa_cfg.splitlines())
+        self.assertIn("OPT_MESAGL=26.2.5", mesa_cfg.splitlines())
         self.assertIn(MESA_SOURCE_GUARD, mesa_cfg.splitlines())
 
         # Pin the existing Zlib source contract so adding Mesa cannot silently
@@ -133,7 +133,7 @@ class MesaSourceCacheTests(unittest.TestCase):
     def test_repository_contract_rejects_misbound_mesa_destination(self) -> None:
         plan, staging = self.read_contract_data()
         next(entry for entry in staging["entries"] if entry["role"] == MESA_ROLE)["destination"] = (
-            "portssources/alternate/mesa-26.0.0.tar.xz"
+            "portssources/alternate/mesa-26.2.5.tar.xz"
         )
         plan_path, staging_path = self.write_contract_data(plan, staging)
         with self.assertRaises(AssertionError):
@@ -142,7 +142,7 @@ class MesaSourceCacheTests(unittest.TestCase):
     def test_repository_contract_rejects_wrong_mesa_source_guard(self) -> None:
         plan, staging = self.read_contract_data()
         next(entry for entry in staging["entries"] if entry["role"] == MESA_ROLE)["source_guard"]["line"] = (
-            "MESA_ARCHIVE_CHECKSUMS := mesa-26.0.0.tar.xz=sha256:" + "0" * 64
+            "MESA_ARCHIVE_CHECKSUMS := mesa-26.2.5.tar.xz=sha256:" + "0" * 64
         )
         plan_path, staging_path = self.write_contract_data(plan, staging)
         with self.assertRaisesRegex(ValueError, "source revision no longer matches"):
@@ -176,7 +176,7 @@ class MesaSourceCacheTests(unittest.TestCase):
     def test_repository_contract_rejects_unknown_mesa_mirror(self) -> None:
         plan, staging = self.read_contract_data()
         next(entry for entry in plan["entries"] if entry["role"] == MESA_ROLE)["candidates"][1] = {
-            "url": "https://mirror.example.invalid/mesa-26.0.0.tar.xz"
+            "url": "https://mirror.example.invalid/mesa-26.2.5.tar.xz"
         }
         plan_path, staging_path = self.write_contract_data(plan, staging)
         with self.assertRaises(AssertionError):
@@ -196,7 +196,7 @@ class MesaSourceCacheTests(unittest.TestCase):
         plan_entries = []
         staging_entries = []
         specs = [
-            (MESA_ROLE, MESA_FILENAME, "portssources/mesa-26.0.0.tar.xz", "mesa.cfg", "MESA_TEST_GUARD := mesa"),
+            (MESA_ROLE, MESA_FILENAME, "portssources/mesa-26.2.5.tar.xz", "mesa.cfg", "MESA_TEST_GUARD := mesa"),
             (ZLIB_ROLE, "zlib.tar.gz", "portssources/chromium-2b1b62fed03e8b8a64ea39a96d5cc74cd10e2429/zlib.tar.gz", "zlib.cfg", "ZLIB_TEST_GUARD := zlib"),
         ]
         for role, filename, destination, guard_path, guard_line in specs:

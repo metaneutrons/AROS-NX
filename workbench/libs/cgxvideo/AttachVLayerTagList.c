@@ -1,7 +1,8 @@
 /*
-    Copyright (C) 1995-2010, The AROS Development Team. All rights reserved.
+    Copyright (C) 1995-2026, The AROS Development Team. All rights reserved.
 */
 #include <aros/debug.h>
+#include <proto/exec.h>
 
 #include "cgxvideo_intern.h"
 
@@ -47,10 +48,20 @@
 
                 VOA_BottomIndent (ULONG) - additional offset from the bottom window border
 
+        The source is scaled to the window's inner rectangle minus the
+        indents. With VOA_UseColorKey the rectangle is filled with the
+        key colour, and with VOA_UseBackfill a layer backfill hook keeps
+        it filled.
+
+        Detach the layer before the window is closed. Should a window
+        close with a layer still attached, the library detaches it.
+
     EXAMPLE
 
     BUGS
-        This function is unimplemented.
+        Fails while the layer is locked or already attached, when the
+        window is not on the handle's screen, or when the screen is not
+        shown on its display.
 
     SEE ALSO
         DetachVLayer()
@@ -63,8 +74,21 @@
 {
     AROS_LIBFUNC_INIT
 
-    aros_print_not_implemented ("AttachVLayerTagList");
-    return TRUE;
+    struct IntCGXVBase *base = GetCGXVBase(CGXVideoBase);
+    struct VLayerHandle *vh = VLayerHandle;
+    ULONG result = TRUE;
+
+    if (!vh || !Window)
+        return result;
+
+    ObtainSemaphore(&base->handleLock);
+    ObtainSemaphore(&vh->lock);
+    if (!vh->locked && !(vh->flags & VHF_ATTACHED))
+        result = cgxv_Attach(vh, Window, TagItems);
+    ReleaseSemaphore(&vh->lock);
+    ReleaseSemaphore(&base->handleLock);
+
+    return result;
 
     AROS_LIBFUNC_EXIT
 } /* AttachVLayerTagList */

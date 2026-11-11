@@ -170,8 +170,8 @@ struct Object *CreateObject(struct Handler *handler, const TEXT *name,
 
    if(error == 0)
    {
-      object->block_count = MEMBLOCKS(sizeof(struct Object));
-      handler->block_count += MEMBLOCKS(sizeof(struct Object));
+      object->block_count = MemBlocks(sizeof(struct Object));
+      handler->block_count += MemBlocks(sizeof(struct Object));
 
       NewList((struct List *)&object->elements);
       ((struct Node *)object)->ln_Pri = type;
@@ -336,7 +336,8 @@ VOID DeleteObject(struct Handler *handler, struct Object *object)
 
       /* Delete a hard link */
 
-      if(object_type == ST_LINKFILE || object_type == ST_LINKDIR)
+      if((object_type == ST_LINKFILE || object_type == ST_LINKDIR)
+         && object->hard_link.mln_Pred != NULL)
       {
          node = real_object->hard_link.mln_Succ;
          master_link = HARDLINK(node);
@@ -387,7 +388,13 @@ VOID DeleteObject(struct Handler *handler, struct Object *object)
 
          /* Prepare to destroy "heir" link */
 
+         AdjustExaminations(handler, heir);
+         UnmatchNotifyRequests(handler, heir);
          Remove((APTR)heir);
+         if(object_type == ST_USERDIR)
+            RematchNotifyRequests(handler);
+         else
+            MatchNotifyRequests(handler);
          object = heir;
       }
 
@@ -410,8 +417,11 @@ VOID DeleteObject(struct Handler *handler, struct Object *object)
 
       SetString(handler, (TEXT **)&((struct Node *)object)->ln_Name, NULL);
       SetString(handler, &object->comment, NULL);
+      SetString(handler, &object->soft_link_target, NULL);
       handler->block_count -= object->block_count;
       FreePooled(handler->clear_pool, object, sizeof(struct Object));
+      if(object_type == ST_LINKDIR)
+         RematchNotifyRequests(handler);
    }
 
    return;
@@ -465,6 +475,72 @@ struct Object *GetHardObject(struct Handler *handler, struct Lock *lock,
    object = GetObject(handler, lock, name, parent, NULL);
    if(IoErr() == ERROR_IS_SOFT_LINK)
       object = NULL;
+
+   return object;
+}
+
+
+/****i* ram.handler/GetObjectNoFollow **************************************
+*
+*   NAME
+*	GetObjectNoFollow -- Find an object given a lock and path, taking a
+*	    soft link as the last part as the object itself.
+*
+*   SYNOPSIS
+*	object = GetObjectNoFollow(handler, lock, name,
+*	    parent)
+*
+*	struct Object *GetObjectNoFollow(struct Handler *, struct Lock *,
+*	    TEXT *, struct Object **);
+*
+*   FUNCTION
+*	Looks for the object corresponding to the specified lock and path
+*	combination. A soft link as the last part of the path is returned
+*	like any other object, so that calls acting on a name (rename, or a
+*	check for an existing name) can see it. If an earlier part of the
+*	path is a soft link, NULL is returned and ERROR_IS_SOFT_LINK is set,
+*	as for GetHardObject().
+*
+*   INPUTS
+*	lock - .
+*	name - .
+*	parent - parent directory will be returned here (will be NULL if
+*	    path is invalid or contains a soft link before its last part).
+*
+*   RESULT
+*	object - The located object, or NULL if not found.
+*
+*   EXAMPLE
+*
+*   NOTES
+*
+*   BUGS
+*
+*   SEE ALSO
+*	GetHardObject()
+*
+****************************************************************************
+*
+*/
+
+struct Object *GetObjectNoFollow(struct Handler *handler, struct Lock *lock,
+   const TEXT *name, struct Object **parent)
+{
+   struct Object *object;
+   LONG pos = -1;
+
+   object = GetObject(handler, lock, name, parent, &pos);
+   if(IoErr() == ERROR_IS_SOFT_LINK)
+   {
+      if(pos == -1)
+      {
+         if(parent != NULL)
+            *parent = object->parent;
+         SetIoErr(0);
+      }
+      else
+         object = NULL;
+   }
 
    return object;
 }
@@ -626,7 +702,7 @@ PINT ChangeFileSize(struct Handler *handler, struct Opening *opening,
 {
    PINT length, new_length, remainder, end_length, full_length;
    UPINT diff, old_pos, block_count;
-   struct Block *block, *end_block;
+   struct Block *block, *end_block, *old_end_block;
    struct Object *file;
    LONG error = 0;
    struct MinList *openings;
@@ -663,7 +739,7 @@ PINT ChangeFileSize(struct Handler *handler, struct Opening *opening,
    full_length = length;
    end_length = file->end_length;
 
-   block = GetLastBlock(file);
+   block = old_end_block = GetLastBlock(file);
    full_length += block->length - end_length;
 
    /* Change size */
@@ -673,7 +749,7 @@ PINT ChangeFileSize(struct Handler *handler, struct Opening *opening,
       /* Add the required number of data bytes */
 
       remainder = new_length - full_length;
-      end_length -= remainder;
+      end_length = block->length + remainder;
 
       while(remainder > 0)
       {
@@ -693,7 +769,11 @@ PINT ChangeFileSize(struct Handler *handler, struct Opening *opening,
       {
          new_length = -1;
          error = IoErr();
-         ChangeFileSize(handler, opening, length, OFFSET_BEGINNING);
+         while(GetLastBlock(file) != old_end_block)
+         {
+            block = (APTR)RemTail((APTR)&file->elements);
+            FreeDataBlock(handler, file, block);
+         }
       }
       else
          file->end_length = end_length;
@@ -701,6 +781,9 @@ PINT ChangeFileSize(struct Handler *handler, struct Opening *opening,
    else if(length != new_length)
    {
       /* Remove surplus blocks from the file */
+
+      UPINT resize_blocks, alloc_size;
+      PINT resize_result;
 
       block = NULL;
       while(full_length > new_length)
@@ -712,20 +795,43 @@ PINT ChangeFileSize(struct Handler *handler, struct Opening *opening,
       end_block = (APTR)file->elements.mlh_TailPred;
       file->end_length = end_length = end_block->length;
 
-      /* Allocate a suitably sized end block and copy old data to it */
+      /* Keep the last block if replacing it would save no memory. */
 
       diff = new_length - full_length;
-      file->length = full_length;
-      CmdSeek(handler, opening, 0, OFFSET_END);
-
-      if(ChangeFileSize(handler, opening, diff, OFFSET_END) != -1)
-      {
-         WriteData(handler, opening,
-            ((UBYTE *)block) + sizeof(struct Block), diff);
+      alloc_size = sizeof(struct Block) + diff;
+      if(alloc_size < handler->min_block_size)
+         alloc_size = handler->min_block_size;
+      if(diff == 0)
          FreeDataBlock(handler, file, block);
+      else if(MemBlocks(alloc_size)
+         == MemBlocks(sizeof(struct Block) + block->length))
+      {
+         AddTail((struct List *)&file->elements, (APTR)block);
+         file->end_length = diff;
       }
       else
-         AddTail((struct List *)&file->elements, (APTR)block);
+      {
+         /* Allocate a smaller end block and copy the retained data. */
+
+         file->length = full_length;
+         CmdSeek(handler, opening, 0, OFFSET_END);
+
+         resize_blocks = file->block_count;
+         resize_result = ChangeFileSize(handler, opening, diff, OFFSET_END);
+         /* The outer call accounts for the complete net change below. */
+         handler->block_count -= file->block_count - resize_blocks;
+         if(resize_result != -1)
+         {
+            WriteData(handler, opening,
+               ((UBYTE *)block) + sizeof(struct Block), diff);
+            FreeDataBlock(handler, file, block);
+         }
+         else
+         {
+            AddTail((struct List *)&file->elements, (APTR)block);
+            file->end_length = diff;
+         }
+      }
    }
 
    /* Store new file size */
@@ -733,6 +839,12 @@ PINT ChangeFileSize(struct Handler *handler, struct Opening *opening,
    if(new_length != -1)
       file->length = new_length;
    handler->block_count += file->block_count - block_count;
+   /* Growing or retaining the size leaves every existing cursor valid. */
+   if(new_length == -1 || new_length >= length)
+   {
+      SetIoErr(error);
+      return new_length;
+   }
 
    /* Re-establish old seek position */
 
@@ -897,24 +1009,25 @@ UPINT WriteData(struct Handler *handler, struct Opening *opening,
 
       if(block_length == 0)
       {
-         block = (struct Block *)((struct MinNode *)block)->mln_Succ;
-         block_pos = 0;
+         new_block = (struct Block *)((struct MinNode *)block)->mln_Succ;
 
          /* Add another block to the file if required */
 
-         if(((struct MinNode *)block)->mln_Succ == NULL)
+         if(((struct MinNode *)new_block)->mln_Succ == NULL)
          {
             new_block = AddDataBlock(handler, opening->file, remainder);
             if(new_block != NULL)
-            {
-               block = new_block;
                file->end_length = 0;
-            }
             else
                error = IoErr();
          }
 
-         block_length = block->length;
+         if(error == 0)
+         {
+            block = new_block;
+            block_pos = 0;
+            block_length = block->length;
+         }
       }
 
       /* Write as much as possible to the current block */
@@ -1011,7 +1124,7 @@ struct Lock *LockObject(struct Handler *handler, struct Object *object,
          NewList((struct List *)&lock->openings);
       }
       else
-         error = IoErr();
+         error = ERROR_NO_FREE_STORE;
    }
    else
    {
@@ -1095,7 +1208,7 @@ BOOL ExamineObject(struct Handler *handler, struct Object *object,
       info->fib_FileName[0] = StrSize(s) - 1;
       CopyMem(s, &info->fib_FileName[1], info->fib_FileName[0]);
       s = object->comment;
-      if(s != NULL && ((struct Node *)object)->ln_Pri != ST_SOFTLINK) {
+      if(s != NULL) {
          info->fib_Comment[0] = StrSize(s) - 1;
          CopyMem(s, &info->fib_Comment[1], info->fib_Comment[0]);
       } else
@@ -1303,7 +1416,7 @@ static struct Block *AddDataBlock(struct Handler *handler,
    block = NULL;
    while(block == NULL && alloc_size >= limit)
    {
-      alloc_size = ((alloc_size - 1) & (~MEM_BLOCKMASK)) + MEM_BLOCKSIZE;
+      alloc_size = ((alloc_size - 1) & (~RAM_BLOCKMASK)) + RAM_BLOCKSIZE;
       block = AllocPooled(handler->muddy_pool, alloc_size);
       if(block == NULL)
          alloc_size >>= 1;
@@ -1315,7 +1428,7 @@ static struct Block *AddDataBlock(struct Handler *handler,
    {
       AddTail((struct List *)&file->elements, (struct Node *)block);
       block->length = alloc_size - sizeof(struct Block);
-      file->block_count += alloc_size >> MEM_BLOCKSHIFT;
+      file->block_count += alloc_size / RAM_BLOCKSIZE;
    }
    else
       SetIoErr(ERROR_DISK_FULL);
@@ -1363,7 +1476,7 @@ static VOID FreeDataBlock(struct Handler *handler, struct Object *file,
    if(block != NULL)
    {
       alloc_size = sizeof(struct Block) + block->length;
-      file->block_count -= alloc_size >> MEM_BLOCKSHIFT;
+      file->block_count -= alloc_size / RAM_BLOCKSIZE;
       FreePooled(handler->muddy_pool, block, alloc_size);
    }
 

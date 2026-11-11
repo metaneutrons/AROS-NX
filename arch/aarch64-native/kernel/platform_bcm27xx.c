@@ -48,6 +48,8 @@ extern uint64_t mpcore_mair;
 extern spinlock_t startup_lock;
 
 extern void cpu_Register(void);
+extern struct Task *cpu_InitBootStrap(struct ExecBase *, cpuid_t);
+extern void cpu_DisposeBootStrap(struct Task *, struct ExecBase *);
 extern void aarch64_flush_cache(uintptr_t, uint32_t);
 #if defined(__AROSEXEC_SMP__)
 extern void handle_ipi(uint32_t, uint32_t);
@@ -376,8 +378,14 @@ void bcm27xx_init(APTR _kernelBase, APTR _sysBase)
         __tls = (tls_t *)AllocMem(sizeof(tls_t) + sizeof(struct cpu_ipidata), MEMF_CLEAR);
         __tls->SysBase = _sysBase;
         __tls->KernelBase = _kernelBase;
-        __tls->ThisTask = NULL;
         __tls->CPUNumber = cpu;     /* logical id - GetCPUNumber reads this */
+        /* The core itself must not allocate before it has a task */
+        if ((__tls->ThisTask = cpu_InitBootStrap(SysBase, cpu)) == NULL)
+        {
+            FreeMem(__tls, sizeof(tls_t) + sizeof(struct cpu_ipidata));
+            FreeMem(cpu_stack, AROS_STACKSIZE * sizeof(uint64_t));
+            continue;
+        }
         aarch64_flush_cache(((uintptr_t)__tls) & ~63, 512);
         ((uint64_t *)(trampoline_dst + trampoline_data_offset))[3] = (uint64_t)__tls;
 
@@ -402,6 +410,7 @@ void bcm27xx_init(APTR _kernelBase, APTR _sysBase)
             {
                 bug("[Kernel:BCM27xx] CPU #%02d: PSCI CPU_ON failed (%d)\n", cpu, (int)err);
                 KrnSpinUnLock(&startup_lock);
+                cpu_DisposeBootStrap(__tls->ThisTask, SysBase);
                 continue;
             }
         }
@@ -530,17 +539,15 @@ void bcm27xx_fiq_process()
             if (fiq & (0x10 << mbno))
             {
                 fiq_data = rd32le(BCM2836_MAILBOX0_CLR0 + 4 * mbno + (16 * cpunum));
-                (void)fiq_data;
                 DFIQ(bug("[Kernel:BCM27xx] %s: Mailbox%d: FIQ Data %08x\n", __PRETTY_FUNCTION__, mbno, fiq_data));
+                /* Ack before handling: an IPI sent meanwhile must raise a new FIQ */
+                wr32le(BCM2836_MAILBOX0_CLR0 + 4 * mbno + (16 * cpunum), fiq_data);
 #if defined(__AROSEXEC_SMP__)
                 /* Pairs with the sender's dsb. */
                 dsb();
                 if (bcm27xx_cpuipid[cpunum])
                     handle_ipi(fiq_data, bcm27xx_cpuipid[cpunum]->ipi_data[mbno]);
 #endif
-                /* Only the bits read: a bit set in between must stay
-                 * pending, or the IPI is lost. */
-                wr32le(BCM2836_MAILBOX0_CLR0 + 4 * mbno + (16 * cpunum), fiq_data);
             }
         }
     }
@@ -613,12 +620,36 @@ void bcm27xx_toggle_led(int LED, int state)
     wr32le((lit ? GPSET0 : GPCLR0) + 4 * (pin / 32), 1 << (pin % 32));
 }
 
+/* The debug UART the bootstrap printed through (KRN_DebugUartBase). On a
+   Pi 3 whose PL011 belongs to the Bluetooth radio that is the AUX mini-UART:
+   data at +0x00, line status at +0x14 (bit 0 data ready, bit 5 transmitter
+   empty). Everything else keeps using the PL011. */
+extern uintptr_t krn_dbg_uart;
+#define SER_MINI        ((krn_dbg_uart & 0xfff) == 0x040)
+#define MINI_IO         (krn_dbg_uart + 0x00)
+#define MINI_LSR        (krn_dbg_uart + 0x14)
+
 static inline void bcm27xx_ser_waitout()
 {
+    if (SER_MINI)
+    {
+        unsigned int timeout = 100000;
+        while (timeout-- && !(rd32le(MINI_LSR) & (1 << 5)))
+            ;
+        return;
+    }
     while (1)
     {
         if ((rd32le(PL011_0_BASE + PL011_FR) & PL011_FR_TXFF) == 0) break;
     }
+}
+
+static inline void bcm27xx_ser_write(uint8_t chr)
+{
+    if (SER_MINI)
+        wr32le(MINI_IO, chr);
+    else
+        wr32le(PL011_0_BASE + PL011_DR, chr);
 }
 
 void bcm27xx_ser_putc(uint8_t chr)
@@ -627,14 +658,16 @@ void bcm27xx_ser_putc(uint8_t chr)
 
     if (chr == '\n')
     {
-        wr32le(PL011_0_BASE + PL011_DR, '\r');
+        bcm27xx_ser_write('\r');
         bcm27xx_ser_waitout();
     }
-    wr32le(PL011_0_BASE + PL011_DR, chr);
+    bcm27xx_ser_write(chr);
 }
 
 int bcm27xx_ser_getc(void)
 {
+    if (SER_MINI)
+        return (rd32le(MINI_LSR) & 1) ? (int)(rd32le(MINI_IO) & 0xff) : -1;
     if ((rd32le(PL011_0_BASE + PL011_FR) & PL011_FR_RXFE) == 0)
         return (int)rd32le(PL011_0_BASE + PL011_DR);
 

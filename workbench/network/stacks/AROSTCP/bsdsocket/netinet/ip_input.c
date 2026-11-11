@@ -80,7 +80,7 @@
 #include <netinet/in_systm.h>
 #include <netinet/ip.h>
 #include <netinet/in_pcb.h>
-#include <netinet/in_var.h>
+#include "in_var.h"
 #include <netinet/ip_var.h>
 #include <netinet/ip_icmp.h>
 
@@ -92,6 +92,8 @@
 #include <kern/uipc_domain_protos.h>
 
 #include "ip_compat.h"
+#include <protos/kern/kern_random_protos.h>
+#include <protos/net/route_protos.h>
 
 #ifndef	IPFORWARDING
 #define	IPFORWARDING	0
@@ -168,17 +170,7 @@ ip_init()
                 pr->pr_protocol && pr->pr_protocol != IPPROTO_RAW)
             ip_protox[pr->pr_protocol] = pr - inetsw;
     ipq.next = ipq.prev = &ipq;
-    {
-        struct timeval time;
-        APTR task;
-        u_int32_t seed;
-        GetSysTime(&time);
-        task = FindTask(NULL);
-        seed = (u_int32_t)time.tv_sec ^ ((u_int32_t)time.tv_micro << 16)
-             ^ (u_int32_t)(IPTR)task;
-        if(seed == 0) seed = 1;
-        ip_id = seed & 0xffff;
-    }
+    kern_random(&ip_id, sizeof(ip_id));
     ipintrq.ifq_maxlen = ipqmaxlen;
 
 #if USE_IF_MATRIX
@@ -335,6 +327,23 @@ next:
                 goto ours;
         }
     }
+#ifdef ENABLE_MULTICAST
+    if(IN_MULTICAST(ntohl(ip->ip_dst.s_addr))) {
+        struct in_multi *inm;
+
+        /*
+         * A group is ours if a socket joined it on the interface the
+         * packet arrived on. This host does not forward multicast.
+         */
+        IN_LOOKUP_MULTI(ip->ip_dst, m->m_pkthdr.rcvif, inm);
+        if(inm == NULL) {
+            ipstat.ips_cantforward++;
+            m_freem(m);
+            goto next;
+        }
+        goto ours;
+    }
+#endif
     if(ip->ip_dst.s_addr == (u_long)INADDR_BROADCAST)
         goto ours;
     if(ip->ip_dst.s_addr == INADDR_ANY)
@@ -673,7 +682,10 @@ void
 ip_slowtimo()
 {
     register struct ipq *fp;
-    spl_t s = splnet();
+    spl_t s;
+
+    rt_pmtu_timer();            /* path MTUs whose time is up (route.c) */
+    s = splnet();
 
     fp = ipq.next;
     if(fp == 0) {

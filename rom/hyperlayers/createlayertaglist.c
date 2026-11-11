@@ -11,9 +11,38 @@
 #include <proto/utility.h>
 #include <proto/graphics.h>
 #include <proto/layers.h>
+#include <cybergraphx/cybergraphics.h>
 
 #include "basicfuncs.h"
 #include "layers_intern.h"
+
+/*
+ * The tags CreateLayerTagList() understands. Their values are collected in
+ * an array indexed by LATAG_xxx; latags[] maps each index to its tag.
+ */
+enum
+{
+  LATAG_BackfillHook, LATAG_SuperBitMap, LATAG_ChildOf, LATAG_InFrontOf, LATAG_Behind,
+  LATAG_Hidden, LATAG_ShapeRegion, LATAG_ShapeHook, LATAG_WindowPtr, LATAG_Composited,
+  LATAG_Opacity, LATAG_AlphaSurface, LATAG_InputShape, LATAG_COUNT
+};
+
+static const Tag latags[LATAG_COUNT] =
+{
+  [LATAG_BackfillHook] = LA_BackfillHook,
+  [LATAG_SuperBitMap]  = LA_SuperBitMap,
+  [LATAG_ChildOf]      = LA_ChildOf,
+  [LATAG_InFrontOf]    = LA_InFrontOf,
+  [LATAG_Behind]       = LA_Behind,
+  [LATAG_Hidden]       = LA_Hidden,
+  [LATAG_ShapeRegion]  = LA_ShapeRegion,
+  [LATAG_ShapeHook]    = LA_ShapeHook,
+  [LATAG_WindowPtr]    = LA_WindowPtr,
+  [LATAG_Composited]   = LA_Composited,
+  [LATAG_Opacity]      = LA_Opacity,
+  [LATAG_AlphaSurface] = LA_AlphaSurface,
+  [LATAG_InputShape]   = LA_InputShape
+};
 
 /*
  * LA_InFrontOf and LA_Behind are intentionally left
@@ -23,61 +52,75 @@ struct Layer *CreateLayerTagList(struct Layer_Info *li, struct BitMap *bm, LONG 
                                  LONG x1, LONG y1, LONG flags, int priority, struct TagItem *tagList,
                                  struct LayersBase *LayersBase)
 {
-  struct BitMap * superbitmap = NULL;
-  struct Hook * hook = NULL, *shapehook = NULL;
-  APTR win = 0;
-  int visible = TRUE;
-  struct Layer * behind = NULL, * infrontof = NULL, * parent = NULL;
+  struct BitMap * superbitmap;
+  struct Hook * hook, *shapehook;
+  APTR win;
+  int visible;
+  int composited, alphasurface;
+  ULONG alphaformat = (ULONG)-1;
+  ULONG opacity;
+  struct Layer * behind, * infrontof, * parent;
   struct Layer * l;
-  struct Region * layershape = NULL, *shape;
+  struct Region * layershape, *shape;
+  struct Region * inputshape;
   struct TagItem *tag, *tstate = tagList;
-  
+  IPTR tv[LATAG_COUNT];
+  int i;
+
+  for (i = 0; i < LATAG_COUNT; i++)
+    tv[i] = 0;
+  tv[LATAG_Opacity] = 0xFF;
+
   while((tag = NextTagItem(&tstate)))
   {
-    switch (tag->ti_Tag)
+    for (i = 0; i < LATAG_COUNT; i++)
     {
-    case LA_BackfillHook:
-        hook = (struct Hook *)tag->ti_Data;
+      if (tag->ti_Tag == latags[i])
+      {
+        tv[i] = tag->ti_Data;
         break;
-
-    case LA_SuperBitMap:
-        superbitmap = (struct BitMap *)tag->ti_Data;
-        break;
-
-    case LA_ChildOf:
-        parent = (struct Layer *)tag->ti_Data;
-        break;
-
-    case LA_InFrontOf:
-        infrontof = (struct Layer *)tag->ti_Data;
-        break;
-
-    case LA_Behind:
-        behind = (struct Layer *)tag->ti_Data;
-        break;
-
-    case LA_Hidden:
-        visible = !tag->ti_Data;
-        break;
-
-    case LA_ShapeRegion:
-        layershape = (struct Region *)tag->ti_Data;
-        break;
-
-    case LA_ShapeHook:
-        shapehook = (struct Hook *)tag->ti_Data;
-        break;
-
-    case LA_WindowPtr:
-        win = (APTR)tag->ti_Data;
-        break;
-
+      }
     }
-
   } /* while((tag = NextTagItem(&tstate))) */
-  
+
+  hook         = (struct Hook *)tv[LATAG_BackfillHook];
+  superbitmap  = (struct BitMap *)tv[LATAG_SuperBitMap];
+  parent       = (struct Layer *)tv[LATAG_ChildOf];
+  infrontof    = (struct Layer *)tv[LATAG_InFrontOf];
+  behind       = (struct Layer *)tv[LATAG_Behind];
+  visible      = !tv[LATAG_Hidden];
+  layershape   = (struct Region *)tv[LATAG_ShapeRegion];
+  shapehook    = (struct Hook *)tv[LATAG_ShapeHook];
+  win          = (APTR)tv[LATAG_WindowPtr];
+  composited   = tv[LATAG_Composited] ? TRUE : FALSE;
+  opacity      = (tv[LATAG_Opacity] > 0xFF) ? 0xFF : tv[LATAG_Opacity];
+  alphasurface = tv[LATAG_AlphaSurface] ? TRUE : FALSE;
+  inputshape   = (struct Region *)tv[LATAG_InputShape];
+
   if ((flags & LAYERSUPER) && (NULL == superbitmap))
     return NULL;
+
+  /*
+   * A composited layer renders into a surface of its own that the screen's
+   * display composes; it needs a display that can do that and a
+   * LayerInfo_extra to keep the screen's surface list in (Intuition
+   * screens get theirs here). Otherwise it is an ordinary smart refresh
+   * layer, as a composited one behaves like one.
+   */
+  if (composited)
+  {
+    if (NULL == li->LayerInfo_extra && !_AllocExtLayerInfo(li, LayersBase))
+      composited = FALSE;
+    else if (!CompositeLayersSupported(bm, &alphaformat))
+      composited = FALSE;
+  }
+  if (composited)
+  {
+    flags = (flags & ~(LAYERSIMPLE | LAYERSUPER)) | LAYERSMART | LAYERCOMPOSITED;
+    superbitmap = NULL;
+  }
+  else
+    flags &= ~LAYERCOMPOSITED;
 
   if (!parent)
   {
@@ -94,12 +137,14 @@ struct Layer *CreateLayerTagList(struct Layer_Info *li, struct BitMap *bm, LONG 
          * InstallLayerInfoHook() may already have set before any layer
          * existed (Intuition installs SA_BackFill right after InitLayers()).
          */
-        struct TagItem tags[] =
-        {
-            {LA_Hidden      , TRUE                  },
-            {LA_BackfillHook, (IPTR)li->BlankHook   },
-            {TAG_DONE                               }
-        };
+        struct TagItem tags[3];
+
+        tags[0].ti_Tag  = LA_Hidden;
+        tags[0].ti_Data = TRUE;
+        tags[1].ti_Tag  = LA_BackfillHook;
+        tags[1].ti_Data = (IPTR)li->BlankHook;
+        tags[2].ti_Tag  = TAG_DONE;
+        tags[2].ti_Data = 0;
 
         if (!(CreateLayerTagList(li,
                                  bm,
@@ -211,7 +256,69 @@ struct Layer *CreateLayerTagList(struct Layer_Info *li, struct BitMap *bm, LONG 
     l->bounds.MaxY = y1;
     l->Width  = x1 - x0 + 1;
     l->Height = y1 - y0 + 1;
+    IL(l)->opacity = 0xFF;
+    IL(l)->alphaformat = alphaformat;
+    if (inputshape)
+    {
+      /* A copy: the caller's region may go away with the call */
+      if (NULL == (IL(l)->inputshape = NewRegion()) ||
+          !OrRegionRegion(inputshape, IL(l)->inputshape))
+        goto failexit;
+    }
+    if (IS_COMPOSITED(l))
+    {
+      ULONG bytes;
 
+      /*
+       * The surface: the screen's format or, for per pixel alpha, the
+       * screen's pixel layout with an alpha byte (cleared, i.e. fully
+       * transparent; pens and blits without alpha render opaque, see
+       * <graphics/layersext.h>). A screen whose layout has no room for alpha
+       * gets a constant opacity surface instead.
+       *
+       * Memory: the screen's composited surfaces together stay within
+       * LAYERS_SURFACE_BUDGET_FACTOR screen bitmaps and leave
+       * LAYERS_SURFACE_MINFREE of memory alone. A layer that does not fit,
+       * or whose surface cannot be allocated, is an ordinary smart refresh
+       * layer, exactly as if LA_Composited had not been given.
+       */
+      if (alphasurface && (ULONG)-1 == alphaformat)
+        alphasurface = FALSE;
+
+      bytes = _SurfaceBytes(bm, l->Width, l->Height, alphasurface, LayersBase);
+      if (!_SurfaceBudgetAllows(li, bm, bytes, 0, LayersBase))
+        l->Flags &= ~LAYERCOMPOSITED;
+      else
+      {
+        if (alphasurface)
+          IL(l)->surface = AllocBitMap(l->Width, l->Height, 32,
+                                       BMF_SPECIALFMT | SHIFT_PIXFMT(alphaformat) | BMF_CLEAR, bm);
+        else
+          IL(l)->surface = AllocBitMap(l->Width, l->Height, bm->Depth, 0, bm);
+
+        if (NULL != IL(l)->surface)
+        {
+          IL(l)->surfw = l->Width;
+          IL(l)->surfh = l->Height;
+          IL(l)->opacity = opacity;
+          IL(l)->alphasurface = alphasurface;
+          _AccountSurface(l, bytes, LayersBase);
+          if (!LAYERS_COMPOSITED_OCCLUDES || 0xFF != opacity || alphasurface)
+            IL(l)->intflags |= INTFLAG_TRANSLUCENT;
+        }
+        else
+          l->Flags &= ~LAYERCOMPOSITED;
+      }
+    }
+#if LAYERS_BACKING_SURFACE
+    if (!IS_COMPOSITED(l) && IS_SMARTREFRESH(l) && NULL == IL(l)->surface)
+    {
+      /* no surface (out of memory) means per ClipRect bitmaps as before */
+      IL(l)->surface = AllocBitMap(l->Width, l->Height, bm->Depth, 0, bm);
+      IL(l)->surfw = l->Width;
+      IL(l)->surfh = l->Height;
+    }
+#endif
     LockLayer(0, l);
     
     if (NULL == (l->DamageList = NewRegion()))
@@ -220,6 +327,14 @@ struct Layer *CreateLayerTagList(struct Layer_Info *li, struct BitMap *bm, LONG 
       goto failexit;
     if (NULL == (l->visibleshape = NewRegion()))
       goto failexit;
+    /* what the layer hides from those behind: its visible shape, or nothing when blended */
+    if (IS_TRANSLUCENT(l))
+    {
+      if (NULL == (IL(l)->occludeshape = NewRegion()))
+        goto failexit;
+    }
+    else
+      IL(l)->occludeshape = l->visibleshape;
     
     l->visible = visible;
 
@@ -326,8 +441,6 @@ struct Layer *CreateLayerTagList(struct Layer_Info *li, struct BitMap *bm, LONG 
       /*
        * layer is to be visible
        */
-      struct Layer * _l = l->back;
-      struct Layer * lparent = l->parent;
 
       /*
        * Does this layer have a layer in front of it?
@@ -338,7 +451,7 @@ struct Layer *CreateLayerTagList(struct Layer_Info *li, struct BitMap *bm, LONG 
       if (l->front)
       {
         SetRegion(l->front->VisibleRegion, l->VisibleRegion);
-        ClearRegionRegion(l->front->visibleshape, l->VisibleRegion);
+        ClearRegionRegion(OCCLUDESHAPE(l->front), l->VisibleRegion);
       }
       else
         SetRegion(li->check_lp->shape, l->VisibleRegion);
@@ -349,22 +462,7 @@ struct Layer *CreateLayerTagList(struct Layer_Info *li, struct BitMap *bm, LONG 
        * back up their parts that the new layer will
        * be hiding.
        */
-      while (1)
-      {
-        if (IS_VISIBLE(_l) && DO_OVERLAP(&l->shape->bounds, &_l->shape->bounds))
-          _BackupPartsOfLayer(_l, l->visibleshape, 0, FALSE, LayersBase);
-        else
-          ClearRegionRegion(l->visibleshape, _l->VisibleRegion);
-        
-        if (_l == lparent)
-        {
-          if (IS_VISIBLE(_l) || (NULL == lparent->parent))
-            break;
-          else
-            lparent = lparent->parent;
-        }
-        _l = _l->back;
-      }
+      _HideLayersBehind(l, OCCLUDESHAPE(l), &l->shape->bounds, LayersBase);
 
     }
     /*
@@ -376,6 +474,13 @@ struct Layer *CreateLayerTagList(struct Layer_Info *li, struct BitMap *bm, LONG 
      */
     if (!IS_ROOTLAYER(l))
       _ShowLayer(l, LayersBase);
+
+    if (IS_COMPOSITED(l))
+    {
+      LIE(li)->lie_NumComposited++;
+      LIE(li)->lie_ScreenBM = bm;
+    }
+    UPDATE_SURFACES(li);
   }
   else
     goto failexit;
@@ -387,6 +492,15 @@ struct Layer *CreateLayerTagList(struct Layer_Info *li, struct BitMap *bm, LONG 
 failexit:
   if (l)
   {
+    if (IL(l)->inputshape)
+      DisposeRegion(IL(l)->inputshape);
+    if (IL(l)->surface)
+    {
+      _AccountSurface(l, 0, LayersBase);
+      FreeBitMap(IL(l)->surface);
+    }
+    if (IL(l)->occludeshape && IL(l)->occludeshape != l->visibleshape)
+      DisposeRegion(IL(l)->occludeshape);
     if (l->VisibleRegion)
       DisposeRegion(l->VisibleRegion);
     if (l->DamageList)

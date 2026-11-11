@@ -9,16 +9,29 @@
  *   - Public-key auth (ENVARC:SSH/authorized_keys, OpenSSH format)
  *   - Password auth (SHA-256 hash in ENVARC:SSH/password)
  *   - Concurrent sessions via CreateNewProc
- *   - Shell bridge via PIPE: handler
+ *   - Interactive shell: the session task is the new CLI's console
+ *   - Commands (ssh host cmd): output through a T: file, exit status kept
  *   - CTRL-C signal to shutdown
  */
+
+/* bsdsocket bases are per task: the main task and every session task open
+ * their own, and all socket calls (ours and libssh's) resolve the base
+ * through __libssh_SocketBase() below */
+struct Library;
+struct Library *__libssh_SocketBase(void);
+#define SocketBase (__libssh_SocketBase())
 
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/socket.h>
+#include <proto/netservice.h>
+#include <libraries/bsdsocket.h>
 #include <exec/types.h>
 #include <dos/dostags.h>
+#include <dos/cliinit.h>     /* CLI_NEWCLI */
 #include <dos/dos.h>
+#include <libraries/netservice.h>
+#include <utility/tagitem.h>
 
 #include <libssh/libssh.h>
 #include <libssh/server.h>
@@ -47,7 +60,20 @@ static const char __attribute__((used)) verstag[] = "\0$VER: sshd 0.1 (19.8.2026
 #define MAX_LINE            1024
 #define BUF_SIZE            4096
 
-struct Library *SocketBase;
+/* The main task's base; a session task keeps its own in tc_UserData
+ * (CreateNewProc's NP_UserData slot, unused by anything else here). */
+static struct Task *DaemonTask;
+static struct Library *DaemonSocketBase;
+
+struct Library *__libssh_SocketBase(void)
+{
+    struct Task *me = FindTask(NULL);
+
+    if (me == DaemonTask)
+        return DaemonSocketBase;
+    return (struct Library *)me->tc_UserData;
+}
+struct Library *NetServicesBase;        /* optional: set when run as a managed service */
 static volatile BOOL g_shutdown = FALSE;
 
 /* --- Utility: SHA-256 hex digest --- */
@@ -133,12 +159,32 @@ static BOOL ensure_host_key(void)
     return generate_host_key();
 }
 
+/* Per-session state handed to the libssh callbacks as userdata; libssh has
+ * no server-side "is authenticated" query.
+ *
+ * Once a session has server callbacks (ssh_set_server_callbacks()), libssh
+ * answers every message that no callback takes with ssh_message_reply_default()
+ * and never queues it for ssh_message_get(): a channel open would be refused
+ * ("administratively prohibited"). So the channel and its requests are taken
+ * by callbacks too, and recorded here. */
+struct SessionCtx {
+    int authenticated;
+    ssh_channel channel;                /* the session channel, one per connection */
+    struct ssh_channel_callbacks_struct chan_cb;
+    int got_shell;                      /* a shell or exec request was accepted */
+    char *exec_cmd;                     /* exec: the command, strdup()ed */
+    int pty;                            /* a pty was asked for: a terminal is at the other end */
+    int cols, rows;                     /* the terminal's size, from pty-req and window-change */
+};
+
 /* --- Public key authentication callback --- */
 static int auth_pubkey_cb(ssh_session session, const char *user,
                           struct ssh_key_struct *pubkey,
                           char signature_state, void *userdata)
 {
-    (void)session; (void)userdata;
+    struct SessionCtx *ctx = userdata;
+
+    (void)session;
 
     if (strcmp(user, "root") != 0)
         return SSH_AUTH_DENIED;
@@ -198,6 +244,8 @@ static int auth_pubkey_cb(ssh_session session, const char *user,
     }
 
     Close(fh);
+    if (found)
+        ctx->authenticated = 1;
     return found ? SSH_AUTH_SUCCESS : SSH_AUTH_DENIED;
 }
 
@@ -205,7 +253,9 @@ static int auth_pubkey_cb(ssh_session session, const char *user,
 static int auth_password_cb(ssh_session session, const char *user,
                             const char *password, void *userdata)
 {
-    (void)session; (void)userdata;
+    struct SessionCtx *ctx = userdata;
+
+    (void)session;
 
     if (strcmp(user, "root") != 0)
         return SSH_AUTH_DENIED;
@@ -230,169 +280,461 @@ static int auth_password_cb(ssh_session session, const char *user,
     sha256_hex(password, computed_hash);
 
     if (strcmp(computed_hash, stored_hash) == 0)
+    {
+        ctx->authenticated = 1;
         return SSH_AUTH_SUCCESS;
+    }
 
     return SSH_AUTH_DENIED;
 }
 
-/* --- Shell session context --- */
-struct ShellBridge {
-    ssh_channel channel;
-    BPTR        shell_in;   /* our write end -> shell reads from this pipe */
-    BPTR        shell_out;  /* our read end  <- shell writes to this pipe */
-    int         cols;
-    int         rows;
+/* --- Channel callbacks: pty-req, shell, exec, window-change --- */
+static int chan_pty_cb(ssh_session session, ssh_channel channel, const char *term,
+                       int width, int height, int pxwidth, int pxheight, void *userdata)
+{
+    struct SessionCtx *ctx = userdata;
+
+    (void)session; (void)channel; (void)term; (void)pxwidth; (void)pxheight;
+    ctx->pty = 1;
+    ctx->cols = width;
+    ctx->rows = height;
+    return 0;
+}
+
+static int chan_shell_cb(ssh_session session, ssh_channel channel, void *userdata)
+{
+    struct SessionCtx *ctx = userdata;
+
+    (void)session; (void)channel;
+    if (ctx->got_shell)
+        return -1;
+    ctx->got_shell = 1;
+    return 0;
+}
+
+static int chan_exec_cb(ssh_session session, ssh_channel channel, const char *command,
+                        void *userdata)
+{
+    struct SessionCtx *ctx = userdata;
+
+    (void)session; (void)channel;
+    if (ctx->got_shell || command == NULL || (ctx->exec_cmd = strdup(command)) == NULL)
+        return -1;
+    ctx->got_shell = 1;
+    return 0;
+}
+
+static int chan_winch_cb(ssh_session session, ssh_channel channel,
+                         int width, int height, int pxwidth, int pxheight, void *userdata)
+{
+    struct SessionCtx *ctx = userdata;
+
+    (void)session; (void)channel; (void)pxwidth; (void)pxheight;
+    ctx->cols = width;
+    ctx->rows = height;
+    return 0;
+}
+
+/* A session channel, once the client is authenticated: one per connection. */
+static ssh_channel chan_open_cb(ssh_session session, void *userdata)
+{
+    struct SessionCtx *ctx = userdata;
+
+    if (!ctx->authenticated || ctx->channel != NULL)
+        return NULL;
+    if ((ctx->channel = ssh_channel_new(session)) == NULL)
+        return NULL;
+    memset(&ctx->chan_cb, 0, sizeof(ctx->chan_cb));
+    ctx->chan_cb.userdata = ctx;
+    ctx->chan_cb.channel_pty_request_function = chan_pty_cb;
+    ctx->chan_cb.channel_shell_request_function = chan_shell_cb;
+    ctx->chan_cb.channel_exec_request_function = chan_exec_cb;
+    ctx->chan_cb.channel_pty_window_change_function = chan_winch_cb;
+    ssh_callbacks_init(&ctx->chan_cb);
+    ssh_set_channel_callbacks(ctx->channel, &ctx->chan_cb);
+    return ctx->channel;
+}
+
+/* --- The interactive shell's console ---
+ * The shell's input and output are file handles whose handler is this
+ * session task: their packets come to con->port, and are answered from the
+ * SSH channel. A pipe would not do: a read from PIPE: returns only when it
+ * has filled its whole buffer (or at the end), and the shell reads its
+ * commands through a buffer of 208 bytes at least, so it would see no line
+ * until the client closed its input. Here a read is answered with what has
+ * been typed, the handles are interactive (the shell prompts), and ^C
+ * breaks the shell's command. */
+static ULONG g_pipe_seq = 0;            /* names the exec output files */
+
+#define CON_INMAX   2048
+#define CON_READQ   8
+
+struct ShellCon {
+    struct MsgPort   *port;             /* the handler port of both handles */
+    ssh_channel       channel;
+    struct SessionCtx *ctx;
+    char              in[CON_INMAX];    /* typed, not yet read by the shell */
+    int               ilen;
+    struct DosPacket *readq[CON_READQ]; /* reads waiting for input */
+    int               nread;
+    int               opens;            /* handles of ours still open */
+    BOOL              eof;              /* no more input */
+    struct Task      *breaktask;        /* gets ^C: the console's last reader */
+    /* the line discipline, for a client that asked for a pty */
+    char              line[512];
+    int               len;
+    int               esc;              /* 1 after ESC, 2 inside ESC [ ... */
+    BOOL              last_cr;
 };
 
-/* --- Unique pipe name generator --- */
-static ULONG g_pipe_seq = 0;
-
-static void make_pipe_name(char *buf, size_t len, const char *tag)
+/* Answer the waiting reads from what has been typed, or with the end. */
+static void con_serve_reads(struct ShellCon *con)
 {
-    snprintf(buf, len, "PIPE:sshd_%s_%p_%lx/32768/rw", tag, (void *)FindTask(NULL), (unsigned long)++g_pipe_seq);
+    while (con->nread > 0 && (con->ilen > 0 || con->eof))
+    {
+        struct DosPacket *dp = con->readq[0];
+        LONG n = con->ilen < dp->dp_Arg3 ? con->ilen : dp->dp_Arg3;
+
+        memcpy((APTR)dp->dp_Arg2, con->in, n);
+        memmove(con->in, con->in + n, con->ilen - n);
+        con->ilen -= n;
+        memmove(con->readq, con->readq + 1, --con->nread * sizeof(con->readq[0]));
+        ReplyPkt(dp, n, 0);
+    }
 }
 
-/* --- Launch shell with pipe I/O --- */
-static BOOL launch_shell(struct ShellBridge *sb)
+static void con_queue_input(struct ShellCon *con, const char *s, int n)
 {
-    char in_name[64], out_name[64];
+    if (n > CON_INMAX - con->ilen)
+        n = CON_INMAX - con->ilen;
+    memcpy(con->in + con->ilen, s, n);
+    con->ilen += n;
+}
 
-    make_pipe_name(in_name, sizeof(in_name), "in");
-    make_pipe_name(out_name, sizeof(out_name), "out");
+/* What the client types. With a pty there is nothing at the other end to
+ * echo or edit a line, so it is done here, and a line goes to the shell
+ * when Return ends it. */
+static void con_input(struct ShellCon *con, const char *in, int n)
+{
+    int i;
 
-    /* Open write end of stdin pipe (we write, shell reads) */
-    sb->shell_in = Open(in_name, MODE_NEWFILE);
-    if (!sb->shell_in)
-        return FALSE;
-
-    /* Open read end of stdout pipe (shell writes, we read) */
-    sb->shell_out = Open(out_name, MODE_NEWFILE);
-    if (!sb->shell_out)
+    if (!con->ctx->pty)
     {
-        Close(sb->shell_in);
-        sb->shell_in = BNULL;
-        return FALSE;
+        con_queue_input(con, in, n);
+        con_serve_reads(con);
+        return;
     }
-
-    /* Open the other ends for the shell process */
-    BPTR shell_stdin = Open(in_name, MODE_OLDFILE);
-    BPTR shell_stdout = Open(out_name, MODE_OLDFILE);
-
-    if (!shell_stdin || !shell_stdout)
+    for (i = 0; i < n; i++)
     {
-        if (shell_stdin) Close(shell_stdin);
-        if (shell_stdout) Close(shell_stdout);
-        Close(sb->shell_in);
-        Close(sb->shell_out);
-        sb->shell_in = BNULL;
-        sb->shell_out = BNULL;
-        return FALSE;
-    }
+        unsigned char c = in[i];
 
-    /* Launch C:Shell asynchronously */
-    LONG rc = SystemTags("C:Shell",
-        SYS_Input,      (IPTR)shell_stdin,
-        SYS_Output,     (IPTR)shell_stdout,
-        SYS_Asynch,     TRUE,
+        if (con->esc == 1) { con->esc = (c == '[' || c == 'O') ? 2 : 0; continue; }
+        if (con->esc == 2) { if (c >= 0x40 && c <= 0x7e) con->esc = 0; continue; }
+        if (c == 0x1b) { con->esc = 1; continue; }  /* cursor keys and the like: dropped */
+
+        if (c == '\n' && con->last_cr) { con->last_cr = FALSE; continue; }
+        con->last_cr = (c == '\r');
+        if (c == '\r' || c == '\n')
+        {
+            ssh_channel_write(con->channel, "\r\n", 2);
+            con->line[con->len++] = '\n';
+            con_queue_input(con, con->line, con->len);
+            con->len = 0;
+        }
+        else if (c == 0x7f || c == 0x08)
+        {
+            if (con->len > 0) { con->len--; ssh_channel_write(con->channel, "\b \b", 3); }
+        }
+        else if (c == 0x03)                         /* ^C: break the shell's command */
+        {
+            ssh_channel_write(con->channel, "^C\r\n", 4);
+            con->len = 0;
+            if (con->breaktask)
+                Signal(con->breaktask, SIGBREAKF_CTRL_C);
+        }
+        else if (c == 0x04)                         /* ^D on an empty line: the end */
+        {
+            if (con->len == 0)
+                con->eof = TRUE;
+        }
+        else if (c >= 0x20 && con->len < (int)sizeof(con->line) - 1)
+        {
+            con->line[con->len++] = c;
+            ssh_channel_write(con->channel, (char *)&c, 1);
+        }
+    }
+    con_serve_reads(con);
+}
+
+/* The shell's output: LF as CRLF for a terminal. */
+static void con_output(struct ShellCon *con, const char *s, LONG n)
+{
+    LONG i, start = 0;
+
+    if (!con->ctx->pty)
+    {
+        ssh_channel_write(con->channel, s, n);
+        return;
+    }
+    for (i = 0; i < n; i++)
+        if (s[i] == '\n')
+        {
+            if (i > start)
+                ssh_channel_write(con->channel, s + start, i - start);
+            ssh_channel_write(con->channel, "\r\n", 2);
+            start = i + 1;
+        }
+    if (n > start)
+        ssh_channel_write(con->channel, s + start, n - start);
+}
+
+/* The packets the shell and its commands send to their console. */
+static void con_packets(struct ShellCon *con)
+{
+    struct Message *m;
+
+    while ((m = GetMsg(con->port)) != NULL)
+    {
+        struct DosPacket *dp = (struct DosPacket *)m->mn_Node.ln_Name;
+
+        switch (dp->dp_Type)
+        {
+        case ACTION_READ:
+            /* ^C goes to whoever reads the console: the shell, and so
+             * the command it runs (as con-handler does) */
+            if (dp->dp_Port && dp->dp_Port->mp_SigTask)
+                con->breaktask = dp->dp_Port->mp_SigTask;
+            if (con->nread < CON_READQ)
+            {
+                con->readq[con->nread++] = dp;
+                con_serve_reads(con);
+            }
+            else
+                ReplyPkt(dp, -1, ERROR_OBJECT_IN_USE);
+            break;
+        case ACTION_WRITE:
+            con_output(con, (const char *)dp->dp_Arg2, dp->dp_Arg3);
+            ReplyPkt(dp, dp->dp_Arg3, 0);
+            break;
+        case ACTION_WAIT_CHAR:
+            ReplyPkt(dp, con->ilen > 0 ? DOSTRUE : DOSFALSE, 0);
+            break;
+        case ACTION_FINDINPUT:                      /* Open("*") and the like */
+        case ACTION_FINDOUTPUT:
+        case ACTION_FINDUPDATE:
+        {
+            struct FileHandle *fh = BADDR(dp->dp_Arg1);
+
+            fh->fh_Arg1 = (SIPTR)con;
+            fh->fh_Interactive = DOSTRUE;
+            con->opens++;
+            ReplyPkt(dp, DOSTRUE, 0);
+            break;
+        }
+        case ACTION_END:
+            con->opens--;
+            ReplyPkt(dp, DOSTRUE, 0);
+            break;
+        case ACTION_SCREEN_MODE:                    /* raw or cooked: always cooked here */
+            ReplyPkt(dp, DOSTRUE, 0);
+            break;
+        case ACTION_CHANGE_SIGNAL:
+            /* Callers pass a port or a task, and later restore the old
+             * value from Res2: acknowledged, and ^C keeps going to the
+             * console's reader. */
+            ReplyPkt(dp, DOSTRUE, 0);
+            break;
+        default:
+            ReplyPkt(dp, DOSFALSE, ERROR_ACTION_NOT_KNOWN);
+            break;
+        }
+    }
+}
+
+/* One of the console's handles. */
+static BPTR con_handle(struct ShellCon *con)
+{
+    struct FileHandle *fh = AllocDosObject(DOS_FILEHANDLE, NULL);
+
+    if (fh == NULL)
+        return BNULL;
+    fh->fh_Type = con->port;
+    fh->fh_Arg1 = (SIPTR)con;
+    fh->fh_Interactive = DOSTRUE;
+    con->opens++;
+    return MKBADDR(fh);
+}
+
+/* The shell is started by a process of its own: SystemTags() waits for
+ * the new CLI to take its start-up packet, and the CLI may first talk to
+ * its console - this session task, which must be free to answer. */
+struct ShellStart {
+    struct Message msg;
+    BPTR           in, out;
+    LONG           rc;
+};
+
+static void shell_starter_entry(void)
+{
+    struct Process *me = (struct Process *)FindTask(NULL);
+    struct ShellStart *ss;
+
+    WaitPort(&me->pr_MsgPort);
+    ss = (struct ShellStart *)GetMsg(&me->pr_MsgPort);
+    /* A new interactive CLI (CLI_NEWCLI) that takes its commands from its
+     * input until that ends - a SYSTEM one would run one line and stop.
+     * The handles are its, and it closes them when it ends. */
+    ss->rc = SystemTags("",
+        SYS_Input,      (IPTR)ss->in,
+        SYS_Output,     (IPTR)ss->out,
+        SYS_CliType,    CLI_NEWCLI,
         SYS_UserShell,  TRUE,
-        NP_CloseInput,  TRUE,
-        NP_CloseOutput, TRUE,
         TAG_DONE);
-
-    if (rc == -1)
-    {
-        Close(shell_stdin);
-        Close(shell_stdout);
-        Close(sb->shell_in);
-        Close(sb->shell_out);
-        sb->shell_in = BNULL;
-        sb->shell_out = BNULL;
-        return FALSE;
-    }
-
-    return TRUE;
+    ReplyMsg(&ss->msg);
 }
 
-/* --- Process window-change requests from channel messages --- */
-static void check_window_change(ssh_session session, struct ShellBridge *sb)
+/* --- Interactive shell over the channel ---
+ * Window changes arrive through chan_winch_cb() while the channel is read,
+ * and land in ctx. */
+static void handle_shell(ssh_session session, ssh_channel channel, struct SessionCtx *ctx)
 {
-    ssh_message msg;
+    struct ShellCon *con;
+    BPTR in, out;
+    char buf[BUF_SIZE];
+    int fd = ssh_get_fd(session);
+    BOOL in_eof_seen = FALSE, started = FALSE;
+    struct MsgPort *starter_reply = NULL;
+    struct Process *starter = NULL;
+    struct ShellStart start = {0};
 
-    while ((msg = ssh_message_get(session)) != NULL)
-    {
-        if (ssh_message_type(msg) == SSH_REQUEST_CHANNEL &&
-            ssh_message_subtype(msg) == SSH_CHANNEL_REQUEST_WINDOW_CHANGE)
-        {
-            sb->cols = ssh_message_channel_request_pty_width(msg);
-            sb->rows = ssh_message_channel_request_pty_height(msg);
-            ssh_message_channel_request_reply_success(msg);
-        }
-        else
-        {
-            ssh_message_reply_default(msg);
-        }
-        ssh_message_free(msg);
-    }
-}
-
-/* --- Bidirectional shell bridge with PTY emulation --- */
-static void handle_shell(ssh_session session, ssh_channel channel, int cols, int rows)
-{
-    struct ShellBridge sb = {0};
-    sb.channel = channel;
-    sb.cols = cols;
-    sb.rows = rows;
-
-    if (!launch_shell(&sb))
+    if ((con = AllocVec(sizeof(*con), MEMF_ANY | MEMF_CLEAR)) == NULL ||
+        (con->port = CreateMsgPort()) == NULL)
     {
         ssh_channel_write(channel, "Error: cannot start shell\r\n", 27);
+        FreeVec(con);
+        return;
+    }
+    con->channel = channel;
+    con->ctx = ctx;
+    in = con_handle(con);
+    out = con_handle(con);
+    starter_reply = CreateMsgPort();
+    if (in && out && starter_reply)
+        starter = CreateNewProcTags(
+            NP_Entry,     (IPTR)shell_starter_entry,
+            NP_Name,      (IPTR)"sshd_shell_start",
+            NP_StackSize, 16384,
+            TAG_DONE);
+    if (starter == NULL)
+    {
+        ssh_channel_write(channel, "Error: cannot start shell\r\n", 27);
+        if (in) FreeDosObject(DOS_FILEHANDLE, BADDR(in));
+        if (out) FreeDosObject(DOS_FILEHANDLE, BADDR(out));
+        if (starter_reply) DeleteMsgPort(starter_reply);
+        DeleteMsgPort(con->port);
+        FreeVec(con);
+        return;
+    }
+    start.msg.mn_ReplyPort = starter_reply;
+    start.msg.mn_Length = sizeof(start);
+    start.in = in;
+    start.out = out;
+    PutMsg(&starter->pr_MsgPort, &start.msg);
+
+    /* Serve the console while the shell starts */
+    while (!started)
+    {
+        con_packets(con);
+        if (GetMsg(starter_reply))
+            started = TRUE;
+        else
+            Wait((1UL << con->port->mp_SigBit) | (1UL << starter_reply->mp_SigBit));
+    }
+    DeleteMsgPort(starter_reply);
+    if (start.rc == -1)
+    {
+        /* no shell: the handles were not taken */
+        ssh_channel_write(channel, "Error: cannot start shell\r\n", 27);
+        FreeDosObject(DOS_FILEHANDLE, BADDR(in));
+        FreeDosObject(DOS_FILEHANDLE, BADDR(out));
+        DeleteMsgPort(con->port);
+        FreeVec(con);
         return;
     }
 
-    char buf[BUF_SIZE];
-
-    /* Main poll loop: bridge SSH channel <-> shell pipes */
-    while (ssh_channel_is_open(channel) && !ssh_channel_is_eof(channel))
+    /* Until the shell has closed its console */
+    while (con->opens > 0)
     {
-        /* Shell stdout -> SSH channel (ANSI passthrough, no filtering) */
-        if (WaitForChar(sb.shell_out, 20000)) /* 20ms poll */
-        {
-            LONG n = Read(sb.shell_out, buf, sizeof(buf));
-            if (n > 0)
-                ssh_channel_write(channel, buf, n);
-            else if (n < 0)
-                break; /* Shell closed its output */
-        }
+        fd_set rfds;
+        struct timeval tv = { 0, 200000 };
+        ULONG sigs = (1UL << con->port->mp_SigBit) | SIGBREAKF_CTRL_C;
 
-        /* SSH channel -> shell stdin */
-        int nbytes = ssh_channel_read_nonblocking(channel, buf, sizeof(buf), 0);
-        if (nbytes > 0)
-        {
-            Write(sb.shell_in, buf, nbytes);
-        }
-        else if (nbytes == SSH_ERROR)
+        con_packets(con);
+        if (con->opens <= 0)
             break;
 
-        /* Handle out-of-band channel requests (window-change) */
-        check_window_change(session, &sb);
+        if (ssh_channel_is_open(channel))
+        {
+            int nbytes = ssh_channel_read_nonblocking(channel, buf, sizeof(buf), 0);
 
-        /* Check for server CTRL-C shutdown */
-        if (SetSignal(0L, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
+            if (nbytes > 0)
+                con_input(con, buf, nbytes);
+            if (nbytes == SSH_ERROR || !ssh_channel_is_open(channel) ||
+                (ssh_channel_is_eof(channel) && !in_eof_seen))
+            {
+                /* No more input: the shell sees the end of its own, and
+                 * what it writes until it ends still goes out. */
+                in_eof_seen = TRUE;
+                con->eof = TRUE;
+                con_serve_reads(con);
+            }
+        }
+        else if (!con->eof)
+        {
+            con->eof = TRUE;
+            con_serve_reads(con);
+        }
+
+        FD_ZERO(&rfds);
+        FD_SET(fd, &rfds);
+        if (WaitSelect(fd + 1, &rfds, NULL, NULL, &tv, &sigs) < 0)
             break;
+        if (sigs & SIGBREAKF_CTRL_C)
+        {
+            /* the daemon is stopping: end the shell's input */
+            con->eof = TRUE;
+            con_serve_reads(con);
+            if (con->breaktask)
+                Signal(con->breaktask, SIGBREAKF_CTRL_C);
+        }
     }
 
-    /* Graceful shutdown: close our pipe ends, which signals EOF to shell */
-    Close(sb.shell_in);
-    Close(sb.shell_out);
+    if (con->opens > 0)
+    {
+        /* The shell still has its console: the port must stay for it. */
+        Printf("sshd: the shell did not end; its console is left open\n");
+        return;
+    }
+    ssh_channel_request_send_exit_status(channel, 0);
+    DeleteMsgPort(con->port);
+    FreeVec(con);
 }
 
 /* --- Per-connection session handler --- */
 static void handle_session(ssh_session session)
 {
     struct ssh_server_callbacks_struct cb = {0};
+    struct SessionCtx ctx = {0};
+
+    ssh_channel channel;
+    const char *exec_cmd;
+
+    ctx.cols = 80;
+    ctx.rows = 24;
     cb.auth_pubkey_function = auth_pubkey_cb;
     cb.auth_password_function = auth_password_cb;
-    cb.userdata = NULL;
+    cb.channel_open_request_session_function = chan_open_cb;
+    cb.userdata = &ctx;
 
     ssh_callbacks_init(&cb);
     ssh_set_server_callbacks(session, &cb);
@@ -404,207 +746,200 @@ static void handle_session(ssh_session session)
         goto done;
     }
 
-    /* Authentication loop */
+    /* Authentication, the session channel and its pty/shell/exec requests
+     * all arrive through the callbacks: run the session until a shell or a
+     * command is asked for, for a minute at most. */
     ssh_event event = ssh_event_new();
     ssh_event_add_session(event, session);
 
-    int n_auth = 0;
-    while (!ssh_is_authenticated(session) && n_auth < 20)
+    int polls = 0;
+    while (!ctx.got_shell && polls++ < 60)
     {
         if (ssh_event_dopoll(event, 1000) == SSH_ERROR)
             break;
-        n_auth++;
     }
 
     ssh_event_free(event);
 
-    if (!ssh_is_authenticated(session))
+    if (!ctx.authenticated)
     {
         Printf("sshd: authentication failed\n");
-        goto done;
+        goto cleanup_channel;
     }
 
-    /* Wait for channel open request */
-    ssh_channel channel = NULL;
-    ssh_message msg;
-    int timeout = 30;
-
-    while (timeout-- > 0)
-    {
-        msg = ssh_message_get(session);
-        if (!msg) { Delay(25); continue; }
-
-        if (ssh_message_type(msg) == SSH_REQUEST_CHANNEL_OPEN &&
-            ssh_message_subtype(msg) == SSH_CHANNEL_SESSION)
-        {
-            channel = ssh_message_channel_request_open_reply_accept(msg);
-            ssh_message_free(msg);
-            break;
-        }
-        ssh_message_reply_default(msg);
-        ssh_message_free(msg);
-    }
-
-    if (!channel) goto done;
-
-    /* Wait for shell/exec/pty request, track terminal dimensions */
-    BOOL got_shell = FALSE;
-    const char *exec_cmd = NULL;
-    int pty_cols = 80, pty_rows = 24;
-    timeout = 30;
-
-    while (timeout-- > 0 && !got_shell)
-    {
-        msg = ssh_message_get(session);
-        if (!msg) { Delay(25); continue; }
-
-        if (ssh_message_type(msg) == SSH_REQUEST_CHANNEL)
-        {
-            int subtype = ssh_message_subtype(msg);
-            switch (subtype)
-            {
-                case SSH_CHANNEL_REQUEST_PTY:
-                    pty_cols = ssh_message_channel_request_pty_width(msg);
-                    pty_rows = ssh_message_channel_request_pty_height(msg);
-                    ssh_message_channel_request_reply_success(msg);
-                    break;
-                case SSH_CHANNEL_REQUEST_SHELL:
-                    ssh_message_channel_request_reply_success(msg);
-                    got_shell = TRUE;
-                    break;
-                case SSH_CHANNEL_REQUEST_EXEC:
-                    exec_cmd = ssh_message_channel_request_command(msg);
-                    if (exec_cmd) exec_cmd = strdup(exec_cmd);
-                    ssh_message_channel_request_reply_success(msg);
-                    got_shell = TRUE;
-                    break;
-                default:
-                    ssh_message_reply_default(msg);
-                    break;
-            }
-        }
-        else
-        {
-            ssh_message_reply_default(msg);
-        }
-        ssh_message_free(msg);
-    }
-
-    if (!got_shell) goto cleanup_channel;
+    channel = ctx.channel;
+    exec_cmd = ctx.exec_cmd;
+    if (!channel || !ctx.got_shell) goto cleanup_channel;
 
     if (exec_cmd)
     {
-        /* Single command execution */
+        /* Single command execution. The command runs to its end with its
+         * output in a file, which is then sent: a synchronous SystemTags()
+         * does not close the handles it is given, so a pipe read after it
+         * would never see EOF - and a command that wrote more than the pipe
+         * holds would wait for a reader that is not reading yet. */
         char out_name[64];
-        make_pipe_name(out_name, sizeof(out_name), "exec");
+        snprintf(out_name, sizeof(out_name), "T:sshd_exec_%p_%lx",
+                 (void *)FindTask(NULL), (unsigned long)++g_pipe_seq);
 
         BPTR out_w = Open(out_name, MODE_NEWFILE);
-        BPTR out_r = Open(out_name, MODE_OLDFILE);
+        BPTR nil_in = Open("NIL:", MODE_OLDFILE);
 
-        if (out_w && out_r)
+        if (out_w && nil_in)
         {
-            BPTR nil_in = Open("NIL:", MODE_OLDFILE);
             LONG rc = SystemTags(exec_cmd,
                 SYS_Input,      (IPTR)nil_in,
                 SYS_Output,     (IPTR)out_w,
-                NP_CloseInput,  TRUE,
-                NP_CloseOutput, TRUE,
                 TAG_DONE);
+            BPTR out_r;
 
-            char buf[BUF_SIZE];
-            LONG n;
-            while ((n = Read(out_r, buf, sizeof(buf))) > 0)
-                ssh_channel_write(channel, buf, n);
+            Close(out_w);
+            Close(nil_in);
+            if ((out_r = Open(out_name, MODE_OLDFILE)))
+            {
+                char buf[BUF_SIZE];
+                LONG n;
 
-            Close(out_r);
+                while ((n = Read(out_r, buf, sizeof(buf))) > 0)
+                    ssh_channel_write(channel, buf, n);
+                Close(out_r);
+            }
+            DeleteFile(out_name);
             ssh_channel_request_send_exit_status(channel, rc);
         }
         else
         {
-            if (out_w) Close(out_w);
-            if (out_r) Close(out_r);
+            if (out_w) { Close(out_w); DeleteFile(out_name); }
+            if (nil_in) Close(nil_in);
             ssh_channel_write(channel, "Error: cannot execute command\r\n", 30);
         }
-        free((void *)exec_cmd);
     }
     else
     {
-        /* Interactive shell with PTY bridge */
-        handle_shell(session, channel, pty_cols, pty_rows);
+        /* Interactive shell, the session task its console */
+        handle_shell(session, channel, &ctx);
     }
 
 cleanup_channel:
-    if (channel)
+    if (ctx.channel)
     {
-        ssh_channel_send_eof(channel);
-        ssh_channel_close(channel);
-        ssh_channel_free(channel);
+        ssh_channel_send_eof(ctx.channel);
+        ssh_channel_close(ctx.channel);
+        ssh_channel_free(ctx.channel);
     }
+    free(ctx.exec_cmd);
 
 done:
     ssh_disconnect(session);
     ssh_free(session);
 }
 
-/* --- Child process entry point for concurrent sessions --- */
+/* --- Session tasks ---
+ * Every session runs in its own process with its own bsdsocket base. The
+ * main task accepts the connection and parks the socket in the stack with
+ * ReleaseSocket(); the session task adopts it with ObtainSocket() on its
+ * own base and wraps it with ssh_bind_accept_fd(), which only reads the
+ * bind object (listening, host keys already imported). */
 struct SessionMsg {
     struct Message msg;
-    ssh_session    session;
+    ssh_bind       sshbind;
+    LONG           socket_id;   /* ReleaseSocket() unique id */
 };
 
-static void session_proc_entry(void)
+/* Serve an accepted socket owned by the calling task's base. */
+static void serve_socket(ssh_bind sshbind, LONG fd)
 {
-    struct Process *me = (struct Process *)FindTask(NULL);
-    struct MsgPort *port = &me->pr_MsgPort;
+    ssh_session session = ssh_new();
 
-    WaitPort(port);
-    struct SessionMsg *sm = (struct SessionMsg *)GetMsg(port);
-    ssh_session session = sm->session;
-    ReplyMsg(&sm->msg);
-
-    SocketBase = OpenLibrary("bsdsocket.library", 4);
-    if (!SocketBase)
+    if (session == NULL)
     {
-        ssh_disconnect(session);
+        CloseSocket(fd);
+        return;
+    }
+
+    if (ssh_bind_accept_fd(sshbind, session, fd) != SSH_OK)
+    {
+        Printf("sshd: accept failed: %s\n", (IPTR)ssh_get_error(sshbind));
+        CloseSocket(fd);
         ssh_free(session);
         return;
     }
 
     handle_session(session);
-
-    CloseLibrary(SocketBase);
 }
 
-static void spawn_session(ssh_session session)
+static void session_proc_entry(void)
 {
-    struct MsgPort *reply_port = CreateMsgPort();
-    if (!reply_port)
+    struct Process *me = (struct Process *)FindTask(NULL);
+    struct MsgPort *port = &me->pr_MsgPort;
+    struct SessionMsg *sm;
+    ssh_bind sshbind;
+    LONG socket_id, fd;
+
+    WaitPort(port);
+    sm = (struct SessionMsg *)GetMsg(port);
+    sshbind = sm->sshbind;
+    socket_id = sm->socket_id;
+    ReplyMsg(&sm->msg);
+
+    /* our own base; __libssh_SocketBase() finds it here from now on */
+    me->pr_Task.tc_UserData = OpenLibrary("bsdsocket.library", 4);
+    if (me->pr_Task.tc_UserData == NULL)
     {
-        handle_session(session);
+        Printf("sshd: session cannot open bsdsocket.library\n");
         return;
     }
 
-    struct Process *proc = CreateNewProcTags(
-        NP_Entry,   (IPTR)session_proc_entry,
-        NP_Name,    (IPTR)"sshd_session",
-        NP_Priority, 0,
-        NP_StackSize, 65536,
-        TAG_DONE);
+    fd = ObtainSocket(socket_id, 0, 0, 0);
+    if (fd >= 0)
+        serve_socket(sshbind, fd);
+    else
+        Printf("sshd: ObtainSocket failed (%ld)\n", (long)Errno());
 
-    if (!proc)
-    {
-        DeleteMsgPort(reply_port);
-        handle_session(session);
-        return;
-    }
+    CloseLibrary((struct Library *)me->pr_Task.tc_UserData);
+    me->pr_Task.tc_UserData = NULL;
+}
 
-    /* Send session pointer to child via message */
+static void spawn_session(ssh_bind sshbind, LONG fd)
+{
+    struct MsgPort *reply_port;
+    struct Process *proc = NULL;
     struct SessionMsg sm = {0};
+    LONG socket_id;
+
+    socket_id = ReleaseSocket(fd, UNIQUE_ID);
+    if (socket_id < 0)
+    {
+        CloseSocket(fd);
+        return;
+    }
+
+    reply_port = CreateMsgPort();
+    if (reply_port != NULL)
+        proc = CreateNewProcTags(
+            NP_Entry,   (IPTR)session_proc_entry,
+            NP_Name,    (IPTR)"sshd_session",
+            NP_Priority, 0,
+            NP_StackSize, 65536,
+            TAG_DONE);
+
+    if (proc == NULL)
+    {
+        /* no session task: take the socket back and serve it here */
+        if (reply_port != NULL)
+            DeleteMsgPort(reply_port);
+        fd = ObtainSocket(socket_id, 0, 0, 0);
+        if (fd >= 0)
+            serve_socket(sshbind, fd);
+        return;
+    }
+
     sm.msg.mn_ReplyPort = reply_port;
     sm.msg.mn_Length = sizeof(sm);
-    sm.session = session;
+    sm.sshbind = sshbind;
+    sm.socket_id = socket_id;
 
-    PutMsg(&((struct Process *)proc)->pr_MsgPort, &sm.msg);
+    PutMsg(&proc->pr_MsgPort, &sm.msg);
     WaitPort(reply_port);
     GetMsg(reply_port);
     DeleteMsgPort(reply_port);
@@ -634,8 +969,9 @@ int main(int argc, char **argv)
         }
     }
 
-    SocketBase = OpenLibrary("bsdsocket.library", 4);
-    if (!SocketBase)
+    DaemonTask = FindTask(NULL);
+    DaemonSocketBase = OpenLibrary("bsdsocket.library", 4);
+    if (!DaemonSocketBase)
     {
         Printf("sshd: Cannot open bsdsocket.library v4\n");
         return RETURN_FAIL;
@@ -644,7 +980,7 @@ int main(int argc, char **argv)
     /* Ensure host key exists */
     if (!ensure_host_key())
     {
-        CloseLibrary(SocketBase);
+        CloseLibrary(DaemonSocketBase);
         return RETURN_FAIL;
     }
 
@@ -655,7 +991,7 @@ int main(int argc, char **argv)
     {
         Printf("sshd: Cannot create SSH bind\n");
         ssh_finalize();
-        CloseLibrary(SocketBase);
+        CloseLibrary(DaemonSocketBase);
         return RETURN_FAIL;
     }
 
@@ -671,55 +1007,107 @@ int main(int argc, char **argv)
         Printf("sshd: Listen failed: %s\n", (IPTR)ssh_get_error(sshbind));
         ssh_bind_free(sshbind);
         ssh_finalize();
-        CloseLibrary(SocketBase);
+        CloseLibrary(DaemonSocketBase);
         return RETURN_FAIL;
     }
 
     Printf("sshd: " SSHD_BANNER " listening on port %ld\n", (long)port);
-    Printf("sshd: Press CTRL-C to shutdown\n");
 
-    /* Accept loop */
+    /*
+     * Register with netservices.library when it is present, so the stack's
+     * service manager can run us from db/services.d/sshd and drive us across a
+     * configuration reload and a clean shutdown.  Started from a plain CLI
+     * (no stack service manager) this simply doesn't register and CTRL-C still
+     * works.  We ask for the reconfigure-begin/end and stop signals; on begin
+     * we only pause accepting (we must NOT call into the stack while it holds
+     * its reload fence), on end we resume, on stop we exit.
+     */
+    BYTE  sStop  = AllocSignal(-1);
+    BYTE  sBegin = AllocSignal(-1);
+    BYTE  sEnd   = AllocSignal(-1);
+    ULONG mStop  = (sStop  >= 0) ? (1UL << sStop)  : 0;
+    ULONG mBegin = (sBegin >= 0) ? (1UL << sBegin) : 0;
+    ULONG mEnd   = (sEnd   >= 0) ? (1UL << sEnd)   : 0;
+    APTR  nshandle = NULL;
+    BOOL  paused = FALSE;
+
+    NetServicesBase = OpenLibrary(NETSERVICESNAME, 0);
+    if (NetServicesBase)
+    {
+        struct TagItem nstags[] = {
+            { NETSERVICE_Name,             (IPTR)"sshd" },
+            { NETSERVICE_Order,            (IPTR)NSPRI_RCDAEMONS },
+            { NETSERVICE_ReconfigBeginSig, (IPTR)sBegin },
+            { NETSERVICE_ReconfigEndSig,   (IPTR)sEnd },
+            { NETSERVICE_StopSig,          (IPTR)sStop },
+            { TAG_DONE, 0 }
+        };
+        nshandle = RegisterNetService(nstags);
+    }
+    if (nshandle)
+        Printf("sshd: registered as a network service\n");
+    else
+        Printf("sshd: Press CTRL-C to shutdown\n");
+
+    /* Accept loop.  Existing sessions run in their own processes, unaffected. */
     while (!g_shutdown)
     {
-        /* Check for CTRL-C */
-        if (SetSignal(0L, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C)
-        {
-            Printf("sshd: Shutdown requested\n");
-            break;
-        }
+        ULONG sigs;
 
-        /* Use WaitSelect with 1-second timeout to allow periodic signal checks */
+        if (paused)
+        {
+            /* Quiesced during a stack reconfigure: wait only on signals. */
+            sigs = Wait(mStop | mBegin | mEnd | SIGBREAKF_CTRL_C);
+        }
+        else
         {
             int bind_fd = ssh_bind_get_fd(sshbind);
             fd_set rfds;
             struct timeval tv;
+            ULONG sigmask = mStop | mBegin | mEnd | SIGBREAKF_CTRL_C;
+            int sel;
 
             FD_ZERO(&rfds);
             FD_SET(bind_fd, &rfds);
             tv.tv_sec = 1;
             tv.tv_usec = 0;
 
-            int sel = WaitSelect(bind_fd + 1, &rfds, NULL, NULL, &tv, NULL);
-            if (sel <= 0)
-                continue; /* timeout or error — loop back to check CTRL-C */
+            /* WaitSelect also returns when one of the requested signals fires;
+             * sigmask comes back holding the signals that were received. */
+            sel = WaitSelect(bind_fd + 1, &rfds, NULL, NULL, &tv, &sigmask);
+            sigs = sigmask;
+
+            if (sel > 0 && FD_ISSET(bind_fd, &rfds))
+            {
+                LONG fd = accept(bind_fd, NULL, NULL);
+
+                if (fd >= 0)
+                    spawn_session(sshbind, fd);
+            }
         }
 
-        ssh_session session = ssh_new();
-        if (!session) continue;
-
-        if (ssh_bind_accept(sshbind, session) == SSH_OK)
+        if (sigs & (mStop | SIGBREAKF_CTRL_C))
         {
-            spawn_session(session);
+            Printf("sshd: Shutdown requested\n");
+            break;
         }
-        else
-        {
-            ssh_free(session);
-        }
+        if (sigs & mBegin)
+            paused = TRUE;      /* reconfigure beginning - stop touching the stack */
+        if (sigs & mEnd)
+            paused = FALSE;     /* reconfigure done - resume accepting */
     }
+
+    if (nshandle)
+        UnregisterNetService(nshandle);
+    if (NetServicesBase)
+        CloseLibrary(NetServicesBase);
+    if (sStop  >= 0) FreeSignal(sStop);
+    if (sBegin >= 0) FreeSignal(sBegin);
+    if (sEnd   >= 0) FreeSignal(sEnd);
 
     ssh_bind_free(sshbind);
     ssh_finalize();
-    CloseLibrary(SocketBase);
+    CloseLibrary(DaemonSocketBase);
 
     Printf("sshd: Stopped\n");
     return RETURN_OK;

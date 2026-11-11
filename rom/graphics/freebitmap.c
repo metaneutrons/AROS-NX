@@ -70,6 +70,14 @@
             FreeVec(HIDD_BM_PIXTAB(bm));
         }
 
+        /* Colours derived from a friend's colormap: no more updates (alphapixtab.c) */
+        if(HIDD_BM_FLAGS(bm) & HIDD_BMF_OWN_PIXTAB)
+            gfx_ForgetAlphaPixTab(bm, GfxBase);
+
+        /* A screen bitmap freed with composited layer surfaces still installed */
+        if(HIDD_BM_FLAGS(bm) & HIDD_BMF_LAYERSURFACES)
+            gfx_ForgetLayerSurfaces(bm, GfxBase);
+
         if(bmobj)
             OOP_DisposeObject(bmobj);
 

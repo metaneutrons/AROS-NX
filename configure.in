@@ -67,18 +67,24 @@ else
 fi
 AC_MSG_RESULT($target)
 
+# Record the build and source directories by their real paths, symlinks
+# resolved: TOP prefixes every target in the .d dependency files, and make
+# matches targets as strings, so a directory configured once through a
+# symlink and once directly would leave the old rules matching nothing.
 if test "$host_os" = "mingw32" ; then
     PWDCMD="pwd -W"
+else
+    PWDCMD="pwd -P"
 fi
 
 # Don't know where else to put this...
 AC_MSG_CHECKING([building AROS in])
-AROS_BUILDDIR=`${PWDCMD-pwd}`
-AROS_BUILDDIR_UNIX=${PWD}
+AROS_BUILDDIR=`${PWDCMD}`
+AROS_BUILDDIR_UNIX=`pwd -P`
 AC_MSG_RESULT($AROS_BUILDDIR)
 
 AC_MSG_CHECKING([AROS source in])
-srcpwd=`cd ${srcdir} ; ${PWDCMD-pwd}`
+srcpwd=`cd -P ${srcdir} ; ${PWDCMD}`
 SRCDIR=${srcpwd}
 AC_MSG_RESULT($SRCDIR)
 
@@ -1837,11 +1843,6 @@ case "$target_os" in
                 dnl which the AROS-targeted compiler does not define by itself.
                 aros_config_cflags="$aros_config_cflags $""(CFLAGS_NO_OMIT_FP) -D__arm64__"
                 aros_config_cxxflags="$aros_config_cxxflags $""(CFLAGS_NO_OMIT_FP) -D__arm64__"
-                dnl The hosted kickstart links like a regular target binary; bind
-                dnl the compiler-emitted mem/str libcalls to the freestanding
-                dnl static C runtime instead of the weak stdc.library stubs,
-                dnl which would dereference a NULL StdCBase at early boot.
-                aros_config_ldflags="$aros_config_ldflags -lstdc.static"
                 default_llvm_version="20.1.0"
                 aros_kernel_isa_flags="-arch arm64"
                 aros_kernel_ldflags="-arch arm64"
@@ -2239,6 +2240,11 @@ case "$target_os" in
                 PLATFORM_EXECSMP="#define __AROSPLATFORM_SMP__"
                 aros_target_cpu="riscv64"
                 aros_object_format="riscv64elf_aros"
+                case "$aros_target_variant" in
+                    smp)
+                        ENABLE_EXECSMP="#define __AROSEXEC_SMP__"
+                    ;;
+                esac
                 ;;
             *riscv*)
                 aros_target_cpu="riscv"
@@ -3202,7 +3208,7 @@ fi
 AC_MSG_RESULT($aros_target_guitheme)
 
 AC_MSG_CHECKING([which version of mesa to build ...])
-AC_ARG_WITH(mesagl,AS_HELP_STRING([--with-mesagl=family],[Which version of MesaGL to build (defaults to 26.0.0)]),aros_mesagl="$withval",aros_mesagl="26.0.0")
+AC_ARG_WITH(mesagl,AS_HELP_STRING([--with-mesagl=family],[Which version of MesaGL to build (defaults to 26.2.5)]),aros_mesagl="$withval",aros_mesagl="26.2.5")
 AC_MSG_RESULT($aros_mesagl)
 aros_target_options+="$export_newline""# Enable MesaGL$export_newline""OPT_MESAGL                    := $aros_mesagl$export_newline"
 
@@ -4326,12 +4332,23 @@ aros_kernel_cflags="$aros_kernel_cflags $aros_kernel_export_cflags"
 if test "$aros_target_variant" = ""; then
     aros_target_platform="$aros_target_arch-$aros_target_cpu"
 else
-    case "$target_os" in
-        pc)
+    case "$aros_target_variant" in
+        smp)
+            # SMP is a build flavour of the platform, not a platform of its
+            # own: keep the real platform name so that distfiles-$(platform)
+            # and AROS_ARCHITECTURE resolve exactly as for the non-SMP build
+            # (e.g. raspi-aarch64, not smp-aarch64).
             aros_target_platform="$aros_target_arch-$aros_target_cpu"
             ;;
         *)
-            aros_target_platform="$aros_target_variant-$aros_target_cpu"
+            case "$target_os" in
+                pc)
+                    aros_target_platform="$aros_target_arch-$aros_target_cpu"
+                    ;;
+                *)
+                    aros_target_platform="$aros_target_variant-$aros_target_cpu"
+                    ;;
+            esac
             ;;
     esac
 fi

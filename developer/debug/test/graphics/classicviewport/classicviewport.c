@@ -12,6 +12,7 @@
 #include <proto/graphics.h>
 #include <intuition/screens.h>
 #include <graphics/copper.h>
+#include <exec/memory.h>
 #include <string.h>
 
 static ULONG failures;
@@ -25,7 +26,6 @@ static void check(BOOL okay, CONST_STRPTR what)
     }
 }
 
-#ifdef __mc68000__
 static LONG coppermove(struct ViewPort *vp, UWORD reg)
 {
     struct CopList *cl = vp->DspIns;
@@ -44,12 +44,10 @@ static LONG coppermove(struct ViewPort *vp, UWORD reg)
     }
     return -1;
 }
-#endif
 
 static void rebuild(struct Screen *screen, struct BitMap *bitmap)
 {
     check(MakeScreen(screen) == 0 && RethinkDisplay() == 0, "rebuild classic bitmap");
-#ifdef __mc68000__
     {
         LONG con0 = coppermove(&screen->ViewPort, 0x100);
         LONG hi = coppermove(&screen->ViewPort, 0xe0);
@@ -61,7 +59,40 @@ static void rebuild(struct Screen *screen, struct BitMap *bitmap)
               (((ULONG)hi << 16) | lo) == (ULONG)bitmap->Planes[0],
               "copper uses current plane address");
     }
-#endif
+}
+
+static void lazy_user_copper(struct Screen *screen)
+{
+    struct UCopList *ucl = AllocMem(sizeof(*ucl), MEMF_PUBLIC | MEMF_CLEAR);
+
+    check(ucl != NULL, "allocate user copper header");
+    if (!ucl)
+        return;
+    CWait(ucl, 0, 0);
+    check(ucl->FirstCopList && ucl->CopList && ucl->CopList->CopIns,
+          "initialize user copper without CINIT");
+    if (!ucl->FirstCopList || !ucl->CopList || !ucl->CopList->CopIns)
+    {
+        FreeCopList(ucl->FirstCopList);
+        FreeMem(ucl, sizeof(*ucl));
+        return;
+    }
+    CBump(ucl);
+    CWait(ucl, screen->Height / 2, 0);
+    CBump(ucl);
+    CMove(ucl, (APTR)0x00dff09c, 0x8010);
+    CBump(ucl);
+    CWait(ucl, 10000, 0xff);
+    CBump(ucl);
+
+    Forbid();
+    screen->ViewPort.UCopIns = ucl;
+    Permit();
+    check(MakeScreen(screen) == 0 && RethinkDisplay() == 0,
+          "rebuild display with lazily initialized user copper");
+    check(coppermove(&screen->ViewPort, 0x9c) == 0x8010,
+          "display copper retains the requested interrupt");
+    /* FreeVPortCopLists during CloseScreen owns the attached header/lists. */
 }
 
 int main(void)
@@ -101,8 +132,19 @@ int main(void)
     display = &screen->BitMap_OBSOLETE;
     check(screen->ViewPort.RasInfo->BitMap == display,
           "raw custom screen displays its embedded bitmap header");
-    check(screen->RastPort.BitMap == &bitmap,
-          "drawing retains the caller's bitmap header");
+    check(screen->RastPort.BitMap == display,
+          "raw custom drawing uses the embedded bitmap header");
+    rebuild(screen, display);
+    lazy_user_copper(screen);
+
+    /* Legacy drawing code may replace plane pointers through RastPort.
+     * That must change the displayed bitmap without changing the caller's
+     * original header, as on Kickstart. */
+    screen->RastPort.BitMap->Planes[0] = planes[6];
+    rebuild(screen, screen->RastPort.BitMap);
+    check(display->Planes[0] == planes[6],
+          "drawing plane changes reach the display header");
+    screen->RastPort.BitMap->Planes[0] = planes[0];
     rebuild(screen, display);
     display->Depth = 5;
     rebuild(screen, display);
@@ -116,7 +158,7 @@ int main(void)
     display->Planes[0] = planes[0];
     rebuild(screen, display);
     check(memcmp(&bitmap, &drawing_before, sizeof(bitmap)) == 0,
-          "legacy display changes preserve the caller's drawing bitmap");
+          "legacy display changes preserve the caller's original bitmap");
 
     /* Explicit pointer swaps select the display header. Later embedded
      * edits must not override that choice or alias the drawing buffers. */

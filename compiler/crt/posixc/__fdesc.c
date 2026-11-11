@@ -177,6 +177,9 @@ void __setfdesc(register int fd, fdesc *desc)
         (struct PosixCIntBase *)__aros_getbase_PosixCBase();
 
     /* FIXME: Check if fd is in valid range... */
+    if (fd < 0)
+        return;
+
     /* Publish the slot pointer under the table guard so a concurrent grow
        (which reallocates the array) cannot write into a stale array. */
     FD_LOCK(PosixCBase);
@@ -236,6 +239,9 @@ int __getfdslot(int wanted_fd)
        recursive SignalSemaphore permits. */
     FD_LOCK(PosixCBase);
 
+    if (wanted_fd == __FD_FIRSTFREE)
+        wanted_fd = __getfirstfd(0);
+
     if (wanted_fd>=FD_SLOTS(PosixCBase))
     {
         void *tmp;
@@ -247,7 +253,11 @@ int __getfdslot(int wanted_fd)
            before stdc.library's relbase is available. */
         tmp = AllocPooled(FD_POOL(PosixCBase), (wanted_fd+1)*sizeof(fdesc *));
 
-        if (!tmp) { FD_UNLOCK(PosixCBase); return -1; }
+        if (!tmp) {
+            FD_UNLOCK(PosixCBase);
+            __set_errno(PosixCBase, ENOMEM);
+            return -1;
+        }
 
         if (FD_ARRAY(PosixCBase))
         {
@@ -278,7 +288,8 @@ int __getfdslot(int wanted_fd)
         close(wanted_fd);
     }
 
-    FD_UNLOCK(PosixCBase);
+    /* Still under the lock: until the number is reserved, __getfirstfd() in
+       another Task would pick it too. */
 
     /* Standard streams (0..2) stay process-local; do not reserve their
        numbers in the system-wide fd.library table (see __setfdesc()). */
@@ -292,12 +303,14 @@ int __getfdslot(int wanted_fd)
         if (FD_GetOwner(wanted_fd) != FD_OWNER_POSIXC) {
             error = FD_Reserve(wanted_fd, FD_OWNER_POSIXC, NULL);
             if (error) {
+                FD_UNLOCK(PosixCBase);
                 __set_errno(PosixCBase, error);
                 return -1;
             }
         }
     }
 
+    FD_UNLOCK(PosixCBase);
     return wanted_fd;
 }
 
@@ -769,8 +782,11 @@ int __init_fd(struct PosixCIntBase *PosixCBase)
         /* VFORK_PARENT use case - child manipulates file descriptors prior to calling exec* */
         int res = __copy_fdarray(pPosixCBase->fd_array, pPosixCBase->fd_slots);
 
-        if (pPosixCBase->flags & EXEC_PARENT)
-            /* EXEC_PARENT called through RunCommand which injected parameters to Input() */
+        if (res && (pPosixCBase->flags & EXEC_PARENT) &&
+            FD_SLOTS(PosixCBase) > STDIN_FILENO &&
+            FD_ARRAY(PosixCBase)[STDIN_FILENO] != NULL)
+            /* RunCommand injected parameters into Input(). An intentionally
+               closed stdin has no fcb to mark and must remain closed. */
             FD_ARRAY(PosixCBase)[STDIN_FILENO]->fcb->privflags |= _FCB_FLUSHONREAD;
 
         return res;

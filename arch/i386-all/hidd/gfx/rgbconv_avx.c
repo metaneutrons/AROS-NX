@@ -61,10 +61,10 @@ ARCHCONVERTFUNCH(AVX,XRGB32,BGRA32)
             _mm256_storeu_si256((__m256i*)&dst[x + 8],  bgra1);
         }
 
-        // handle remaining pixels
+        // handle remaining pixels: the source has no alpha, the result is opaque
         for (; x < width; ++x) {
             ULONG s = src[x];
-            dst[x] = SHUFFLE24(s, ARGB32, BGRA32);
+            dst[x] = SHUFFLE24(s, ARGB32, BGRA32) | BGRA32_AMASK;
         }
 
         src = (ULONG *)(((UBYTE *)src) + srcMod);
@@ -137,7 +137,7 @@ ARCHCONVERTFUNCH(AVX,BGRA32,XRGB32)
             0xFF, 0x0B, 0x0A, 0x09, \
             0xFF, 0x08, 0x07, 0x06, \
             0xFF, 0x05, 0x04, 0x03, \
-            0xFF, 0x02, 0x01, 0x01
+            0xFF, 0x02, 0x01, 0x00
 
 ARCHCONVERTFUNCH(AVX,RGB24,XRGB32)
 {
@@ -152,7 +152,7 @@ ARCHCONVERTFUNCH(AVX,RGB24,XRGB32)
 
     for (y = 0; y < height; y++) {
         ULONG x = 0;
-        for (; x + 4 <= width; x += 4) {
+        for (; x + 10 <= width; x += 8) {
             __m128i hi = _mm_loadu_si128((__m128i *)&src[x * 3 + 12]);
             __m128i lo = _mm_loadu_si128((__m128i *)&src[x * 3]);
 #if !defined(_mm256_set_m128i)
@@ -174,7 +174,7 @@ ARCHCONVERTFUNCH(AVX,RGB24,XRGB32)
         // Handle remaining pixels
         for (; x < width; ++x) {
             ULONG s = GET24;
-            dst[x] = s;
+            dst[x] = s | ARGB32_AMASK;
         }
 
         src = (UBYTE *)(((UBYTE *)src) + srcMod);
@@ -209,7 +209,7 @@ ARCHCONVERTFUNCH(AVX,BGR24,XRGB32)
 
     for (; y < height; y++) {
         ULONG x = 0;
-        for (; x + 8 <= width; x += 8) {
+        for (; x + 10 <= width; x += 8) {
             __m128i hi = _mm_loadu_si128((__m128i *)&src[x * 3 + 12]);
             __m128i lo = _mm_loadu_si128((__m128i *)&src[x * 3]);
 #if !defined(_mm256_set_m128i)
@@ -231,7 +231,7 @@ ARCHCONVERTFUNCH(AVX,BGR24,XRGB32)
         // Handle remaining pixels
         for (; x < width; ++x) {
             ULONG s = GET24_INV;
-            dst[x] = s;
+            dst[x] = s | ARGB32_AMASK;
         }
 
         src = (UBYTE *)(((UBYTE *)src) + srcMod);
@@ -242,6 +242,13 @@ ARCHCONVERTFUNCH(AVX,BGR24,XRGB32)
 
     CONVERTFUNC_EXIT
 }
+
+/*
+ * The two 24bit->32bit routines above convert 8 pixels (24 bytes) per block
+ * from two 16 byte loads (bytes 0..27), so a block is only done while the
+ * loads stay inside the row (x + 10 <= width). They also serve as the
+ * 24bit->ARGB32 converters, so the scalar loops set the alpha byte as well.
+ */
 
 /*
  * 32bit <->15bit ops
@@ -540,7 +547,7 @@ ARCHCONVERTFUNCH(AVX,BGR15,ARGB32)
         for (; x < width; ++x) {
             ULONG s = src[x];
 
-            dst[x] = UPSHIFT16(s, BGR15, ARGB32);
+            dst[x] = UPSHIFT16(s, BGR15, ARGB32) | ARGB32_AMASK;
         }
 
         src = (UWORD *)(((UBYTE *)src) + srcMod);
@@ -597,7 +604,7 @@ ARCHCONVERTFUNCH(AVX,RGB15,ARGB32)
         for (; x < width; ++x) {
             ULONG s = src[x];
 
-            dst[x] = UPSHIFT16(s, RGB15, ARGB32);
+            dst[x] = UPSHIFT16(s, RGB15, ARGB32) | ARGB32_AMASK;
         }
 
         src = (UWORD *)(((UBYTE *)src) + srcMod);
@@ -630,13 +637,13 @@ ARCHCONVERTFUNCH(AVX,ARGB32,RGB24)
             __m128i lo = _mm256_castsi256_si128(pixels);               // pixels 0-3
             __m128i hi = _mm256_extracti128_si256(pixels, 1);          // pixels 4-7
 
-            // Shuffle to get packed RGB from ARGB
-            const __m128i rgb_shuffle = _mm_set_epi8(
-                13,14,15,   // R3, G3, B3
-                9, 10, 11,   // R2, G2, B2
-                 5, 6, 7,   // R1, G1, B1
-                 1, 2, 3,    // R0, G0, B0
-                 -1, -1, -1, -1 // Padding bytes -> 0x80 (zero fill)
+            // Pack B, G, R of each pixel (memory order B, G, R, A) into bytes 0..11
+            const __m128i rgb_shuffle = _mm_setr_epi8(
+                 0,  1,  2,     // pixel 0
+                 4,  5,  6,     // pixel 1
+                 8,  9, 10,     // pixel 2
+                12, 13, 14,     // pixel 3
+                -1, -1, -1, -1  // zero fill
             );
             __m128i rgb0 = _mm_shuffle_epi8(lo, rgb_shuffle);
             __m128i rgb1 = _mm_shuffle_epi8(hi, rgb_shuffle);
@@ -686,13 +693,13 @@ ARCHCONVERTFUNCH(AVX,BGRA32,RGB24)
             __m128i lo = _mm256_castsi256_si128(pixels);               // pixels 0-3
             __m128i hi = _mm256_extracti128_si256(pixels, 1);          // pixels 4-7
 
-            // Shuffle to get packed RGB from BGRA
-            const __m128i rgb_shuffle = _mm_set_epi8(
-                14,13,12,   // R3, G3, B3
-                10, 9, 8,   // R2, G2, B2
-                 6, 5, 4,   // R1, G1, B1
-                 2, 1, 0,    // R0, G0, B0
-                 -1, -1, -1, -1 // Padding bytes -> 0x80 (zero fill)
+            // Pack B, G, R of each pixel (memory order A, R, G, B) into bytes 0..11
+            const __m128i rgb_shuffle = _mm_setr_epi8(
+                 3,  2,  1,     // pixel 0
+                 7,  6,  5,     // pixel 1
+                11, 10,  9,     // pixel 2
+                15, 14, 13,     // pixel 3
+                -1, -1, -1, -1  // zero fill
             );
             __m128i rgb0 = _mm_shuffle_epi8(lo, rgb_shuffle);
             __m128i rgb1 = _mm_shuffle_epi8(hi, rgb_shuffle);

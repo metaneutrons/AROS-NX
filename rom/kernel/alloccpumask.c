@@ -22,21 +22,29 @@
         struct KernelBase *, KernelBase, 42, Kernel)
 
 /*  FUNCTION
-        Allocate storage for a CPU mask
+        Allocate a zero-initialized CPU affinity mask.
 
     INPUTS
 
     RESULT
-        CPU affinity mask storage
+        Pointer to the allocated mask, or NULL if allocation fails (or the
+        platform has no CPU masks, as on uniprocessor builds).
 
     NOTES
+        Masks are a fixed size for the lifetime of the boot, large enough
+        for every CPU the platform can number, so a mask stays valid as
+        CPUs come online.
+        A NULL mask is not valid: no CPU is ever selected by it. The
+        TASKAFFINITY_ANY and TASKAFFINITY_ALL_BUT_SELF values are sentinels
+        rather than mask storage.
 
     EXAMPLE
 
     BUGS
 
     SEE ALSO
-        KrnGetCPUNumber(), KrnClearCPUMask(), KrnGetCPUMask(), KrnCPUInMask()
+        KrnFreeCPUMask(), KrnGetCPUNumber(), KrnClearCPUMask(),
+        KrnGetCPUMask(), KrnCPUInMask()
 
     INTERNALS
 

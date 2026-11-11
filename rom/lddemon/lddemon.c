@@ -84,6 +84,43 @@ static const char ldDemonName[] = "Lib & Dev Loader Daemon";
 /*
     overridable LoadSeg
 */
+/*****************************************************************************
+    NAME
+        BPTR LDLoadSeg(
+
+    SYNOPSIS
+        CONST_STRPTR name)
+
+    FUNCTION
+        Load an executable through the loader daemon's replaceable
+        loading vector. The default implementation calls
+        dos.library/LoadSeg() with the supplied name.
+
+    INPUTS
+        name - NUL-terminated filename. Keep the string valid until
+               the call returns.
+
+    RESULT
+        A BPTR segment list, or BNULL if loading fails. On failure,
+        call IoErr() in the calling process for the DOS error code.
+
+    NOTES
+        Call from a DOS process after the loader daemon has been
+        initialized. The default implementation runs synchronously
+        and may wait for file I/O. Relative names use the calling
+        process's current directory.
+
+        This call does not perform the loader daemon's library or
+        device search, initialize a resident, or start the executable.
+
+        Release the returned segment list with UnLoadSeg() when it is
+        no longer in use. Do not unload segments still used by code
+        or initialized objects.
+
+    SEE ALSO
+        dos.library/LoadSeg(), dos.library/UnLoadSeg(), dos.library/IoErr()
+
+*****************************************************************************/
 AROS_LH1(BPTR, LDLoadSeg,
         AROS_LHA(CONST_STRPTR, name, D1),
         struct IntLDDemonBase *, ldBase, 1, Lddemon)
@@ -148,6 +185,12 @@ static BPTR LDLoad(struct IntLDDemonBase *ldBase, struct Process *caller, STRPTR
         }
         if (caller->pr_Task.tc_Node.ln_Type == NT_PROCESS)
         {
+            /* Borrow the caller's directories only for this lookup: the
+               caller may unlock them once it has its reply, and a later
+               load made from LDDemon's own context (a library opened
+               while another one initialises) would use a freed lock. */
+            BPTR oldCurrentDir = me->pr_CurrentDir;
+
             /* Try the current directory of the caller */
 
             D(bug("[LDLoad] Process\n"));
@@ -166,6 +209,7 @@ static BPTR LDLoad(struct IntLDDemonBase *ldBase, struct Process *caller, STRPTR
                 if ((!seglist) && path)
                     seglist = LDLoadSeg(path);
             }
+            me->pr_CurrentDir = oldCurrentDir;
         }
 
         if (path) {

@@ -9,6 +9,13 @@
 #define INSTALL_BL_GRUB
 #define INSTALL_BL_GRUB2
 #define GRUBARCHDIR "i386-pc"
+#define INSTALL_BL_EFI
+#define INSTALL_BL_PC_EFI
+#if defined(__x86_64__)
+#define EFI_STUB_FILE "BOOTX64.EFI"
+#else
+#define EFI_STUB_FILE "BOOTIA32.EFI"
+#endif
 #endif
 /*
 // Not yet supported/used
@@ -17,6 +24,13 @@
 #define GRUBARCHDIR "arm-xx"
 #endif
 */
+
+#if defined(__riscv) && (__riscv_xlen == 64)
+/* The firmware reads the stub, and the stub reads the package and the
+   command line, from the ESP - none of it can live on the AROS filesystem */
+#define INSTALL_BL_EFI
+#define EFI_STUB_FILE   "BOOTRISCV64.EFI"
+#endif
 
 struct InstallStage_DATA;
 
@@ -28,6 +42,9 @@ enum BootLoaderTypes
 #endif
 #if defined(INSTALL_BL_GRUB2)
     BOOTLOADER_GRUB2,
+#endif
+#if defined(INSTALL_BL_EFI)
+    BOOTLOADER_EFI,
 #endif
     BOOTLOADER_cnt
 };
@@ -43,10 +60,16 @@ struct BootLoaderInfo
 
 extern struct BootLoaderInfo BootLoaderData[];
 extern LONG BootLoaderType;
+#ifdef INSTALL_BL_PC_EFI
+extern LONG BIOSBootLoaderType;
+#endif
 
 extern void BOOTLOADER_InitSupport(void);
 extern BOOL BOOTLOADER_PartFixUp(struct InstallStage_DATA *data, IPTR systype);
 extern void BOOTLOADER_DoInstall(Class * CLASS, Object * self);
 extern void BOOTLOADER_AddCoreSkipPaths(struct List *SkipList);
+#if defined(INSTALL_BL_EFI)
+extern BOOL BOOTLOADER_ESPInfo(STRPTR buf, ULONG bufLen, BOOL *formatted);
+#endif
 
 #endif /* IA_BOOTLOADER_H */

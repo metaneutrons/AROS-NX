@@ -1,4 +1,6 @@
 
+# Copyright (C) 2026, The AROS Development Team. All rights reserved.
+
 include $(SRCDIR)/config/aros.cfg
 
 %get_archincludes modname=dos \
@@ -23,6 +25,13 @@ USER_LDFLAGS := -static
 ifeq ($(AROS_TARGET_CPU),m68k)
 DOS_CPPFLAGS   += -D__DOS_NOLIBINLINE__ 
 endif
+# The amiga-m68k ROM link defines SysBase as the absolute address 4. Tell
+# the assembler as well, so that the module's objects reach it with a short
+# absolute reference instead of a relocated 32-bit one. dos_CFLAGS is only
+# used for the module's own objects, not for the link libraries built here.
+ifeq ($(AROS_TARGET_ARCH)-$(AROS_TARGET_CPU),amiga-m68k)
+dos_CFLAGS     += -Wa,--defsym,SysBase=4
+endif
 ifneq ($(ROM_OPTIMIZATION_CFLAGS),)
 OPTIMIZATION_CFLAGS := $(ROM_OPTIMIZATION_CFLAGS)
 endif
@@ -32,7 +41,7 @@ DOS_CPPFLAGS += -DDOCACHECLEAR
 IMAGE_TYPES := aos elf
 
 FILES	  := bstr_helper errorlist \
-             boot banner isbootable \
+             boot bootconsole banner isbootable \
 	     match_misc newcliproc rootnode fs_driver \
 	     patternmatching internalseek internalflush \
 	     packethelper namefrom internalloadseg_support \
@@ -72,12 +81,13 @@ FUNCTIONS := abortpkt addbuffers adddosentry addpart addsegment \
 	     vprintf waitforchar waitpkt write writechars runhandler
 
 #MM kernel-dos-linklib : workbench-libs-dos-catalogs
-#MM kernel-dos-kobj : workbench-libs-dos-catalogs
-#MM kernel-dos : workbench-libs-dos-catalogs
+# dos.library calls security.library (setuid executables, per-user assigns):
+# its objects need security.library's current includes
+#MM kernel-dos-kobj : workbench-libs-dos-catalogs kernel-security-includes
+#MM kernel-dos : workbench-libs-dos-catalogs kernel-security-includes
 
 #MM kernel-dos-includes : \
 #MM     kernel-utility-includes \
-#MM     kernel-security-includes \
 #MM     kernel-exec-includes \
 #MM     kernel-timer-includes \
 #MM     kernel-intuition-includes \

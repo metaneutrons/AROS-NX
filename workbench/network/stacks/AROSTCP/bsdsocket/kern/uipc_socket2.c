@@ -98,6 +98,8 @@
 
 #include <kern/uipc_socket2_protos.h>
 #include <kern/amiga_select_protos.h>
+#include <proto/timer.h>
+#include <time.h>               /* timespec_get() */
 
 /*
  * Primitive routines for operating on sockets and socket buffers
@@ -229,6 +231,8 @@ int connstatus;
     so->so_pgid = head->so_pgid;
     so->so_eventmask = head->so_eventmask;
     (void) soreserve(so, head->so_snd.sb_hiwat, head->so_rcv.sb_hiwat);
+    so->so_snd.sb_flags |= head->so_snd.sb_flags & SB_AUTOSIZE;
+    so->so_rcv.sb_flags |= head->so_rcv.sb_flags & SB_AUTOSIZE;
     soqinsque(head, so, soqueue);
     if((*so->so_proto->pr_usrreq)(so, PRU_ATTACH,
                                   (struct mbuf *)0, (struct mbuf *)0, (struct mbuf *)0)) {
@@ -336,11 +340,11 @@ struct socket *so;
  * Queue a process for a select on a socket buffer.
  */
 void
-sbselqueue(sb, cp)
+sbselqueue(sb, w)
 struct sockbuf *sb;
-struct SocketBase *cp;
+struct SocketWaiter *w;
 {
-    selenter(cp, &sb->sb_sel);
+    selenter(w, &sb->sb_sel);
     sb->sb_flags |= SB_SEL; /* notify us if something happens */
 }
 
@@ -402,8 +406,9 @@ register struct sockbuf *sb;
     }
     if(so->so_state & SS_ASYNC) {
 #ifdef AMITCP
-        if(so->so_pgid)
-            Signal(so->so_pgid->thisTask, so->so_pgid->sigIOMask);
+        /* a shared base has no task to signal until one sets the mask */
+        if(so->so_pgid && so->so_pgid->sigIOMask)
+            Signal(so->so_pgid->sigIOTask, so->so_pgid->sigIOMask);
 #else
         if(so->so_pgid < 0)
             gsignal(-so->so_pgid, SIGIO);
@@ -457,7 +462,7 @@ void soevent(struct socket *so, u_long event)
                 }
                 if(se) {
                     se->events = event;
-                    Signal(so->so_pgid->thisTask, so->so_pgid->sigEventMask);
+                    Signal(so->so_pgid->sigEventTask, so->so_pgid->sigEventMask);
                 } else
                     __log(LOG_CRIT, "Unable to send socket event, out of memory");
                 ReleaseSemaphore(&so->so_pgid->EventLock);
@@ -531,8 +536,22 @@ sbreserve(sb, cc)
 struct sockbuf *sb;
 u_long cc;
 {
+    return (sbreserve_max(sb, cc, sb_max));
+}
 
-    if(cc > sb_max * mbconf.mclbytes / (MSIZE + mbconf.mclbytes))
+/*
+ * sbreserve() under max in place of sb_max: TCP's buffer autosizing has
+ * its own bound (tcp_autobuf_grow()), so that sb_max, which SO_SNDBUF and
+ * SO_RCVBUF are checked against, need not be raised for every socket.
+ */
+int
+sbreserve_max(sb, cc, max)
+struct sockbuf *sb;
+u_long cc;
+u_long max;
+{
+
+    if(cc > max * mbconf.mclbytes / (MSIZE + mbconf.mclbytes))
         return (0);
     /*
      * Guard against a zero or absurdly small request. A misconfigured (or
@@ -544,7 +563,7 @@ u_long cc;
     if(cc < 2 * mbconf.mclbytes)
         cc = 2 * mbconf.mclbytes;
     sb->sb_hiwat = cc;
-    sb->sb_mbmax = MIN(cc * 2, sb_max);
+    sb->sb_mbmax = MIN(cc * 2, max);
     if(sb->sb_lowat > sb->sb_hiwat)
         sb->sb_lowat = sb->sb_hiwat;
     return (1);
@@ -802,6 +821,70 @@ struct mbuf *control, *m0;
     } else
         sb->sb_mb = control;
     return (1);
+}
+
+/*
+ * Create a control mbuf holding one control message - a cmsghdr of the given
+ * level and type followed by size bytes from p - for a protocol to hand to
+ * sbappendaddr() with a datagram. The data starts at CMSG_DATA(), which on
+ * an LP64 target lies past padding after the header, so cmsg_len is
+ * CMSG_LEN(size), and the mbuf holds CMSG_SPACE(size) so the next message in
+ * a chain starts aligned, as 4.4BSD-Lite's sbcreatecontrol(). Returns NULL
+ * when no mbuf is free or the message does not fit in one.
+ */
+struct mbuf *
+sbcreatecontrol(caddr_t p, int size, int type, int level)
+{
+    struct cmsghdr *cp;
+    struct mbuf *m;
+
+    if(CMSG_SPACE((u_int)size) > MLEN)
+        return ((struct mbuf *)NULL);
+    if((m = m_get(M_DONTWAIT, MT_CONTROL)) == NULL)
+        return ((struct mbuf *)NULL);
+    cp = mtod(m, struct cmsghdr *);
+    bzero(cp, CMSG_SPACE((u_int)size));
+    if(size)
+        bcopy(p, CMSG_DATA(cp), size);
+    m->m_len = CMSG_SPACE((u_int)size);
+    cp->cmsg_len = CMSG_LEN((u_int)size);
+    cp->cmsg_level = level;
+    cp->cmsg_type = type;
+    return (m);
+}
+
+/*
+ * The receive time of a datagram for a socket that asked with SO_TIMESTAMP,
+ * as a control mbuf, or NULL (FreeBSD's SO_TIMESTAMP and SO_TS_CLOCK).
+ * Called as the datagram is handed to the socket, before it waits in the
+ * buffer; the clock is read once, of the kind so_ts_clock names:
+ * - SO_TS_REALTIME_MICRO: SCM_TIMESTAMP, a struct timeval - the C
+ *   runtime's timespec_get(TIME_UTC), which is the time posixc's
+ *   gettimeofday() gives (the system time from 1970, in UTC by the
+ *   locale's offset at that moment), so the stack keeps no conversion of
+ *   its own;
+ * - SO_TS_MONOTONIC: SCM_MONOTONIC, a struct timespec - timer.device's
+ *   GetUpTime(), which is posixc's CLOCK_MONOTONIC.
+ */
+struct mbuf *
+sbcreatetimestamp(struct socket *so)
+{
+    struct timespec ts;
+    struct timeval tv;
+
+    if(!(so->so_options & SO_TIMESTAMP))
+        return NULL;
+    if(so->so_ts_clock == SO_TS_MONOTONIC) {
+        GetUpTime(&tv);
+        ts.tv_sec = tv.tv_sec;
+        ts.tv_nsec = (long)tv.tv_usec * 1000;
+        return sbcreatecontrol((caddr_t)&ts, sizeof(ts), SCM_MONOTONIC, SOL_SOCKET);
+    }
+    if(timespec_get(&ts, TIME_UTC) != TIME_UTC)
+        return NULL;
+    tv.tv_sec = ts.tv_sec;
+    tv.tv_usec = ts.tv_nsec / 1000;
+    return sbcreatecontrol((caddr_t)&tv, sizeof(tv), SCM_TIMESTAMP, SOL_SOCKET);
 }
 
 /*

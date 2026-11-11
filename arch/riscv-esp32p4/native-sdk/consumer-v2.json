@@ -20,7 +20,7 @@
   "inputs": [
     {
       "path": "Makefile.in",
-      "sha256": "c51fb4b6dd57126574f823119f880bfa0d05ccf85afe33c03f12ebde45e0e5ca"
+      "sha256": "03c3f140b5a259883ab5bebe1d11f5b85e6209cbde1dee33d9cc3ef19ee8270e"
     },
     {
       "path": "arch/riscv-all/binutils_def",
@@ -72,7 +72,7 @@
     },
     {
       "path": "arch/riscv-esp32p4/native-sdk/metamake-v1.json",
-      "sha256": "8b272f174be9ca09388474523f9e1578c77665d4962e2746f01caabeed572073"
+      "sha256": "e16de2e3fbf412297b7bc6197e6f98d5f792367a187fb5d61fa8389aec5f35d7"
     },
     {
       "path": "arch/riscv-esp32p4/native-sdk/probes/application.c",
@@ -84,11 +84,11 @@
     },
     {
       "path": "aros-targets.toml",
-      "sha256": "6151204a2b21f05c11440b85bc2d88c441d87605f9222dfc8462affd81286505"
+      "sha256": "16e856f40a28ae7a7195f3c3ba205b255af48f93c90597d7c92261df814d570d"
     },
     {
       "path": "compiler/crt/stdc/mmakefile.src",
-      "sha256": "528207cdba02ce8ebd49d3ac999420c90f4abe9de4d82d2ee974f9edee797cf0"
+      "sha256": "fe940f65b9298b191737bdf11b1095b22ed5c3fde82c9cd8723f175a352a17a1"
     },
     {
       "path": "compiler/include/geninc.cfg.in",
@@ -148,7 +148,7 @@
     },
     {
       "path": "config/make.tmpl",
-      "sha256": "8661d2bf16e94d6fdb5b89f26663bb813766afb02209e6e0368b94858812ec75"
+      "sha256": "039045bc96fe315d52dc93b1de211e512a78a7a4887d0e8b9cc64a7731043314"
     },
     {
       "path": "config/target.cfg.in",
@@ -156,7 +156,7 @@
     },
     {
       "path": "configure.in",
-      "sha256": "87444bb0ef9a8166f44cf60ec6a2538c35f9f3fd7aa7f2f96bccb50a34f9b75a"
+      "sha256": "02a0e1a0bcdb66f93967299beeec7339fa23a58c1978f51cbd7f92b02de14dc0"
     },
     {
       "path": "mmake.config.in",
@@ -168,7 +168,7 @@
     },
     {
       "path": "tools/MetaMake/cache.c",
-      "sha256": "c9a80fec85c0bb2d269578acedf01e9a53c468d404966ec453d6967c042f2f61"
+      "sha256": "469e0cae3559e7a174dcc6abd618275728384c2e935de842ed3581f70dda5d51"
     },
     {
       "path": "tools/MetaMake/dirnode.c",
@@ -176,7 +176,7 @@
     },
     {
       "path": "tools/MetaMake/project.c",
-      "sha256": "655a2bfc2a500d02ae5ad4a4201b5568d54ee3312cd831c6b2d98f468354ca77"
+      "sha256": "6b1afbbbf3c1a4d0f8b57f76ab42475121352134c303f1c06c0e3ef81277187d"
     },
     {
       "path": "tools/MetaMake/var.c",

@@ -22,7 +22,8 @@ ARM_BSP := aros-$(AROS_TARGET_CPU)-bsp.rom
 #MM kernel-package-raspi-aarch64 \
 #MM workbench-devs-networks-bwfm \
 #MM distfiles-raspi-aarch64-fw \
-#MM distfiles-raspi-aarch64-wifi-fw
+#MM distfiles-raspi-aarch64-wifi-fw \
+#MM distfiles-raspi-aarch64-bt-fw
 
 #MM kernel-package-raspi-aarch64-quick: \
 #MM linklibs-stdc-static-quick \
@@ -62,6 +63,7 @@ ARM_BSP := aros-$(AROS_TARGET_CPU)-bsp.rom
 #MM kernel-fs-cdvdfs-quick \
 #MM kernel-fs-fat-quick \
 #MM kernel-fs-sfs-quick \
+#MM kernel-fs-pfs3-quick \
 #MM kernel-fs-ram-quick \
 #MM kernel-processor-quick \
 #MM kernel-battclock-quick \
@@ -93,6 +95,7 @@ ARM_BSP := aros-$(AROS_TARGET_CPU)-bsp.rom
 #MM kernel-pcie-bcm2712-quick \
 #MM kernel-rp1-bcm2712-quick \
 #MM kernel-rp1pci-bcm2712-quick \
+#MM kernel-pwrbutton-bcm2712-quick \
 #MM kernel-usb-pcixhci-quick \
 #MM kernel-usb-classes-hubss-quick
 
@@ -134,6 +137,7 @@ ARM_BSP := aros-$(AROS_TARGET_CPU)-bsp.rom
 #MM kernel-fs-cdvdfs \
 #MM kernel-fs-fat \
 #MM kernel-fs-sfs \
+#MM kernel-fs-pfs3 \
 #MM kernel-fs-ram \
 #MM kernel-processor \
 #MM kernel-battclock \
@@ -165,6 +169,7 @@ ARM_BSP := aros-$(AROS_TARGET_CPU)-bsp.rom
 #MM kernel-pcie-bcm2712 \
 #MM kernel-rp1-bcm2712 \
 #MM kernel-rp1pci-bcm2712 \
+#MM kernel-pwrbutton-bcm2712 \
 #MM kernel-usb-pcixhci \
 #MM kernel-usb-classes-hubss
 
@@ -214,11 +219,11 @@ RASPIWIFIFW_FILES  := brcm/brcmfmac43455-sdio.bin brcm/brcmfmac43455-sdio.txt \
 
 PKG_LIBS      := aros partition utility oop graphics layers intuition keymap dos dos64 poseidon cgxbootpic gadtools lowlevel fd
 PKG_LIBS_ARCH := expansion
-PKG_RSRC      := openfirmware misc bootloader dosboot lddemon usbromstartup FileSystem shell shellcommands entropy gpio mbox dma sdio bwfm pl011bt rp1
+PKG_RSRC      := openfirmware misc bootloader dosboot lddemon usbromstartup FileSystem shell shellcommands entropy gpio mbox dma sdio bwfm pl011bt rp1 pwrbutton
 PKG_RSRC_ARCH := processor battclock
 PKG_DEVS      := input gameport keyboard console sdcard nvme USBHardware/usb2otg USBHardware/pcixhci
 PKG_DEVS_ARCH := timer
-PKG_HANDLERS  := con ram cdrom sfs fat afs
+PKG_HANDLERS  := con ram cdrom sfs fat afs pfs3
 # vcgfx drives the BCM283x VideoCore directly; on BCM2711 and BCM2712 only
 # its mailbox half runs, since each carries a different compositor. fbgfx is
 # the fallback, painting into the framebuffer the bootstrap set up, and takes
@@ -226,7 +231,7 @@ PKG_HANDLERS  := con ram cdrom sfs fat afs
 # The PCIe bridge and its xHCI controller only exist on BCM2711; both drivers
 # find nothing on a Pi 2/3 and stay out of the way.
 PKG_HIDDS     := hiddclass inputclass gfx keyboard mouse bus storage i2c i2c-bcm2708 vcgfx fbgfx pci pcibcm2711 pcibcm2712 pcirp1
-PKG_CLASSES   := USB/hub USB/hubss USB/massstorage
+PKG_CLASSES   := USB/hub USB/hubss USB/massstorage USB/bootkeyboard USB/bootmouse
 
 %make_package mmake=kernel-package-raspi-aarch64 file=$(AROSDIR)/$(ARM_BSP) \
     libs=$(PKG_LIBS) arch_libs=$(PKG_LIBS_ARCH) res=$(PKG_RSRC) \
@@ -240,6 +245,25 @@ distfiles-raspi-aarch64-fw:
 	@for f in $(RASPIFW_OVERLAYS) ; do \
 	    wget -4 -t 5 -T 15 -c "$(RASPIFW_URI)/overlays/$$f" -O "$(AROSDIR)/overlays/$$f" \
 	        || $(ECHO) "WARNING: could not fetch overlay $$f" ; \
+	done
+
+# The on-board Bluetooth radios run from ROM until brcmbt.fwl sends them a
+# patchram from DEVS:Firmware/brcm/: without one a BCM43430A1 answers
+# HCI_Reset but reports the placeholder address AA:AA:AA:AA:AA:AA, which
+# pairing cannot use. BCM43430A1 is the Pi 3 and Zero W part, BCM4345C0 the
+# Pi 3B+, and BCM4345C5 the Pi 400 / CM4 (brcmbt picks the file by the
+# controller's LMP subversion). LICENSE.cypress carries the redistribution
+# terms for these firmware files and is installed beside them.
+RASPIBTFW_BRANCH := bookworm
+RASPIBTFW_URI    := https://github.com/RPi-Distro/bluez-firmware/raw/$(RASPIBTFW_BRANCH)/debian/firmware/broadcom
+RASPIBTFW_FILES  := BCM43430A1.hcd BCM4345C0.hcd BCM4345C5.hcd LICENSE.cypress
+
+#MM
+distfiles-raspi-aarch64-bt-fw:
+	@$(MKDIR) $(AROSDIR)/Devs/Firmware/brcm
+	@for f in $(RASPIBTFW_FILES) ; do \
+	    wget -4 -t 5 -T 15 -c "$(RASPIBTFW_URI)/$$f" -O "$(AROSDIR)/Devs/Firmware/brcm/$$f" \
+	        || $(ECHO) "WARNING: could not fetch Bluetooth firmware $$f" ; \
 	done
 
 #MM
@@ -256,13 +280,21 @@ distfiles-raspi-aarch64le-bootimg: $(AROSDIR)/aros-$(AROS_TARGET_CPU)-raspi.img
 #MM
 distfiles-raspi-aarch64le-bootimg-quick: $(AROSDIR)/aros-$(AROS_TARGET_CPU)-raspi.img
 
-# gpu_mem: the vc4 GL stack needs headroom in VideoCore RAM (full-res
-# framebuffer + overlay page ring + BO pools); 64 (the firmware default)
-# runs out during a full-screen GL session. 128 is the bare minimum, but a
-# game's texture working set alone reaches ~90 MB, so 256 is the usable
-# size. All 64-bit Pis have at least 1 GB. (Pi 5 ignores this entirely.)
-$(AROSDIR)/config.txt: $(AROSDIR)/$(ARM_BSP)
-	@printf "kernel=aros-$(AROS_TARGET_CPU)-raspi.img\nkernel_address=0x80000\ninitramfs $(ARM_BSP) 0x00800000\narm_64bit=1\ngpu_mem=256\nenable_uart=1\nframebuffer_depth=32\nframebuffer_ignore_alpha=1\n[pi5]\nenable_rp1_uart=1\npciex4_reset=0\ndtparam=nvme\nframebuffer_swap=0\n" > $@
+# gpu_mem: GL takes its memory from ARM RAM (vc4gallium, v3d), and screens
+# are HVS planes in ARM RAM with only a token framebuffer for the firmware.
+# The VideoCore codecs behind vchiq.library (H.264 decode for FFmpeg's
+# h264_mmal, JPEG) work in the VideoCore partition, and 32 is too little
+# for them: MMAL answers ENOSPC. 128 decodes 720p H.264. Not 16:
+# that selects start_cd.elf or start4cd.elf, which are not shipped.
+# (Pi 5 ignores this.)
+# max_framebuffer: the Pi 4 firmware caps its framebuffer at 1920x1280 by
+# default and scales it onto a larger display, so a 1440p monitor gave AROS
+# a 3:2 framebuffer and no native mode.
+# disable_overscan: otherwise a CEA mode gets a 48 pixel border.
+# hdmi_drive=2: HDMI rather than DVI signalling, which carries no audio. The
+# Pi 3 firmware picks DVI for some sinks, and only it sets that mode there.
+$(AROSDIR)/config.txt: $(AROSDIR)/$(ARM_BSP) $(SRCDIR)/$(CURDIR)/mmakefile.src
+	@printf "kernel=aros-$(AROS_TARGET_CPU)-raspi.img\nkernel_address=0x80000\ninitramfs $(ARM_BSP) 0x00800000\narm_64bit=1\nenable_uart=1\nframebuffer_depth=32\nframebuffer_ignore_alpha=1\ndisable_overscan=1\ngpu_mem=128\n[pi3]\nhdmi_drive=2\n[pi4]\nmax_framebuffer_width=3840\nmax_framebuffer_height=2160\n[pi5]\nenable_rp1_uart=1\npciex4_reset=0\ndtparam=nvme\nframebuffer_swap=0\n" > $@
 
 # .d depfiles are only generated for C sources, not startup64.S
 $(AROSDIR)/aros-aarch64-raspi.img: $(TARGETDIR)/core.bin.o $(foreach f, $(FILES), $(TARGETDIR)/$(f).o) $(foreach f, $(filter-out startup64,$(FILES)), $(TARGETDIR)/$(f).d)

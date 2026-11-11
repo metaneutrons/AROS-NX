@@ -67,13 +67,13 @@ extern struct Library *FDBase;      /* opened in amiga_fdhooks.c */
 #include <kern/uipc_socket2_protos.h>
 
 /* Local protos */
-static int selscan(struct SocketBase *p,
+static int selscan(struct SocketBase *p, struct SocketWaiter *w,
                    fd_set *in, fd_set *ou, fd_set *ex, fd_mask *obits,
                    int nfd, int *retval, int *selitemcount_p);
-void selenter(struct SocketBase *p, struct newselitem **hdr);
+void selenter(struct SocketWaiter *w, struct newselitem **hdr);
 static void unselect(register struct newselbuf *sb);
 void selwakeup(struct newselitem **hdr);
-static int soo_select(struct socket *so, int which, struct SocketBase *p);
+static int soo_select(struct socket *so, int which, struct SocketWaiter *w);
 static int countSockets(struct SocketBase *libPtr, struct socket *so);
 
 /*
@@ -122,6 +122,7 @@ LONG __IoctlSocket(LONG fdes, ULONG cmd, caddr_t data, struct SocketBase *libPtr
     register int error;
     register u_int size;
     struct socket *so;
+    spl_t s;
 
     /*
      * Note: Syscall semaphore is essential here if two processes can access
@@ -175,7 +176,15 @@ LONG __IoctlSocket(LONG fdes, ULONG cmd, caddr_t data, struct SocketBase *libPtr
         /*
          * data is a struct Task **, find corresponding SocketBase * and set owner
          */
-        so->so_pgid = FindSocketBase(*(struct Task **)data);
+        {
+            struct SocketBase *owner = FindSocketBase(*(struct Task **)data);
+
+            /* A closing base is past its owner sweep; a hook base is
+               freed when its call returns */
+            if(owner && (owner->closing || owner->hookBase))
+                owner = NULL;
+            setSocketOwner(so, owner);
+        }
         goto Return;
 
     case FIOGETOWN:
@@ -187,13 +196,16 @@ LONG __IoctlSocket(LONG fdes, ULONG cmd, caddr_t data, struct SocketBase *libPtr
         goto Return;
 
     case FIONBIO:
+        s = splnet();
         if(*(int *)data)
             so->so_state |= SS_NBIO;
         else
             so->so_state &= ~SS_NBIO;
+        splx(s);
         goto Return;
 
     case FIOASYNC:
+        s = splnet();
         if(*(int *)data) {
             so->so_state |= SS_ASYNC;
             so->so_rcv.sb_flags |= SB_ASYNC;
@@ -203,6 +215,7 @@ LONG __IoctlSocket(LONG fdes, ULONG cmd, caddr_t data, struct SocketBase *libPtr
             so->so_rcv.sb_flags &= ~SB_ASYNC;
             so->so_snd.sb_flags &= ~SB_ASYNC;
         }
+        splx(s);
         goto Return;
 
     case FIONREAD:
@@ -392,8 +405,20 @@ LONG __WaitSelect(ULONG nfds, fd_set *readfds, fd_set *writefds, fd_set *exeptfd
     ULONG sigmask = sigmp ? *sigmp : 0;
 
     struct newselbuf *newselbuf;
+    struct SocketWaiter *w;
 
     CHECK_TASK();
+
+    if(libPtr->closing) {
+        writeErrnoValue(libPtr, EBADF);
+        return -1;
+    }
+
+    /* the opener's waiter, or one lent to this thread of a shared base */
+    if((w = waiter_obtain(libPtr)) == NULL) {
+        writeErrnoValue(libPtr, ENOMEM);
+        return -1;
+    }
 
     if(nfds > libPtr->dTableSize)
         nfds = libPtr->dTableSize;	/* forgiving; slightly wrong */
@@ -419,11 +444,11 @@ LONG __WaitSelect(ULONG nfds, fd_set *readfds, fd_set *writefds, fd_set *exeptfd
      */
 
     obitsize = howmany(nfds, NFDBITS) * sizeof(fd_mask);
-    if(allocDataBuffer(&libPtr->selitems, 3 * obitsize) == FALSE) {
+    if(allocDataBuffer(&w->selitems, 3 * obitsize) == FALSE) {
         error = ENOMEM;
         goto Return;
     }
-    obits = (fd_mask *)libPtr->selitems.db_Addr;
+    obits = (fd_mask *)w->selitems.db_Addr;
 
     aligned_bzero((caddr_t)obits, 3 * obitsize);
 
@@ -432,9 +457,11 @@ LONG __WaitSelect(ULONG nfds, fd_set *readfds, fd_set *writefds, fd_set *exeptfd
      *	which are already true.  Clearing uu_sb
      *	will keep selenter from doing anything.
      */
-    libPtr->p_sb = 0;
-    error = selscan(libPtr, readfds, writefds, exeptfds,
+    w->sb = 0;
+    ObtainSyscallSemaphore(libPtr);
+    error = selscan(libPtr, w, readfds, writefds, exeptfds,
                     obits, nfds, &retval, &selitemcount);
+    ReleaseSyscallSemaphore(libPtr);
 
     /*
      *	Check if the 'real' loop should be entered.
@@ -446,12 +473,12 @@ LONG __WaitSelect(ULONG nfds, fd_set *readfds, fd_set *writefds, fd_set *exeptfd
              * Send timeout if there is any.
              */
             if(timeout)
-                tsleep_send_timeout(libPtr, timeout);
+                tsleep_send_timeout(w, timeout);
 
             /*
              * Now, make sure there is room for all the selitems...
              */
-            if(allocDataBuffer(&libPtr->selitems,
+            if(allocDataBuffer(&w->selitems,
                                3 * obitsize + sizeof(struct newselbuf) +
                                selitemcount * sizeof(struct newselitem)) == FALSE) {
                 error = ENOMEM;
@@ -461,8 +488,8 @@ LONG __WaitSelect(ULONG nfds, fd_set *readfds, fd_set *writefds, fd_set *exeptfd
              * We need to clear obits again _if_ the memory area for it has
              * changed.
              */
-            if((fd_mask *)libPtr->selitems.db_Addr != obits) {
-                obits = (fd_mask *)libPtr->selitems.db_Addr;
+            if((fd_mask *)w->selitems.db_Addr != obits) {
+                obits = (fd_mask *)w->selitems.db_Addr;
                 aligned_bzero((caddr_t)obits, 3 * obitsize);
             }
             newselbuf = (struct newselbuf *)((caddr_t)obits + (3 * obitsize));
@@ -478,10 +505,12 @@ LONG __WaitSelect(ULONG nfds, fd_set *readfds, fd_set *writefds, fd_set *exeptfd
 
                 newselbuf->s_state = SB_WILLWAIT;
                 newselbuf->s_count = 0;
-                libPtr->p_sb = newselbuf;
+                w->sb = newselbuf;
 
-                error = selscan(libPtr, readfds, writefds, exeptfds,
+                ObtainSyscallSemaphore(libPtr);
+                error = selscan(libPtr, w, readfds, writefds, exeptfds,
                                 obits, nfds, &retval, &selitemcount);
+                ReleaseSyscallSemaphore(libPtr);
                 if(error || retval) {
                     ObtainSemaphore(&select_semaphore);
                     unselect(newselbuf);
@@ -500,16 +529,22 @@ LONG __WaitSelect(ULONG nfds, fd_set *readfds, fd_set *writefds, fd_set *exeptfd
                     ReleaseSemaphore(&select_semaphore);
                 } else {
                     newselbuf->s_state = SB_WAITING;
-                    tsleep_enter(libPtr, (caddr_t)newselbuf, "select");
+                    tsleep_enter(w, (caddr_t)newselbuf, "select");
                     ReleaseSemaphore(&select_semaphore);
                     /* ReleaseSemaphore(&syscall_semaphore); don't have this */
 
-                    error = tsleep_main(libPtr, sigmask);
+                    error = tsleep_main(libPtr, w, sigmask);
 
                     /* ObtainSemaphore(&syscall_semaphore); see above */
                     ObtainSemaphore(&select_semaphore);
                     unselect(newselbuf);
                     ReleaseSemaphore(&select_semaphore);
+
+                    /* woken because the shared base is being closed */
+                    if(libPtr->closing) {
+                        error = EBADF;
+                        break;
+                    }
 
                     if(error != 0) {
                         /*
@@ -532,20 +567,22 @@ LONG __WaitSelect(ULONG nfds, fd_set *readfds, fd_set *writefds, fd_set *exeptfd
                  *	Scan for true conditions. Clearing uu_sb
                  *	will keep selenter from doing anything.
                  */
-                libPtr->p_sb = 0;
-                error = selscan(libPtr, readfds, writefds, exeptfds,
+                w->sb = 0;
+                ObtainSyscallSemaphore(libPtr);
+                error = selscan(libPtr, w, readfds, writefds, exeptfds,
                                 obits, nfds, &retval, &selitemcount);
+                ReleaseSyscallSemaphore(libPtr);
                 if(error || retval)
                     break;
             } /* while (TRUE) */
 
             if(timeout)		/* abort the timeout if any */
-                tsleep_abort_timeout(libPtr, timeout);
+                tsleep_abort_timeout(w, timeout);
         }
     }
 
 Return:
-    libPtr->p_sb = 0;
+    w->sb = 0;
 
 #define	putbits(name, x) \
   if (name) { \
@@ -567,7 +604,12 @@ Return:
     }
 #undef putbits
 
-    API_STD_RETURN(error, retval);
+    /* errno first: once its waiter is back, a closing base may go */
+    if(error != 0)
+        writeErrnoValue(libPtr, error);
+    waiter_release(libPtr, w);
+
+    return error == 0 ? retval : -1;
 }
 
 AROS_LH6(LONG, WaitSelect,
@@ -593,7 +635,7 @@ AROS_LH1(LONG, GetSocketEvents,
     AROS_LIBFUNC_INIT
     struct soevent *se;
     struct socket *so;
-    int i;
+    int i, fd = -1;
 
     ObtainSemaphore(&libPtr->EventLock);
     se = (struct soevent *)RemHead((struct List *)&libPtr->EventList);
@@ -604,9 +646,16 @@ AROS_LH1(LONG, GetSocketEvents,
                     libPtr);)
         so = se->socket;
         bsd_free(se, NULL);
+        /* another task's dup can swap the table under the semaphore */
+        ObtainSyscallSemaphore(libPtr);
         for(i = 0; i < libPtr->dTableSize; i++)
-            if(libPtr->dTable[i] == so)
-                return i;
+            if(libPtr->dTable[i] == so) {
+                fd = i;
+                break;
+            }
+        ReleaseSyscallSemaphore(libPtr);
+        if(fd >= 0)
+            return fd;
         DEVENTS(log(LOG_CRIT, "GetSocketEvents(): unreferenced socket 0x%p libPtr = 0x%p", so, libPtr);)
     }
     DEVENTS(else log(LOG_DEBUG, "GetSocketEvents(): no events pending libPtr = 0x%p", libPtr);)
@@ -620,6 +669,7 @@ AROS_LH1(LONG, GetSocketEvents,
  */
 static int
 selscan(struct SocketBase *p,
+        struct SocketWaiter *w,
         fd_set *in,
         fd_set *ou,
         fd_set *ex,
@@ -636,6 +686,15 @@ selscan(struct SocketBase *p,
     int n = 0;
     int error = 0;
     u_int obitsize = howmany(nfd, NFDBITS); /* in longwords */
+
+    /* a closed base has no table any more */
+    if(p->dTable == NULL) {
+        *retval = 0;
+        *selitemcount_p = 0;
+        return (EBADF);
+    }
+    if(nfd > p->dTableSize)
+        nfd = p->dTableSize;
 
     for(which = 0; which < 3; which++) {
         switch(which) {
@@ -664,7 +723,7 @@ selscan(struct SocketBase *p,
                         break;
                     }
                     selitemcount++;
-                    if(soo_select(so, flag, p)) {
+                    if(soo_select(so, flag, w)) {
                         FD_SET(i + j, (fd_set *)
                                (obits + (which * obitsize)));
                         n++;
@@ -683,10 +742,10 @@ selscan(struct SocketBase *p,
  * Chain all select buffers that are waiting for
  * the same event.
  */
-void selenter(struct SocketBase 	*p,
+void selenter(struct SocketWaiter	*w,
               struct newselitem 	**hdr)
 {
-    register struct newselbuf *sb = p->p_sb;
+    register struct newselbuf *sb = w->sb;
 
     if(sb) {
         register struct newselitem **sip = hdr;
@@ -764,7 +823,7 @@ void selwakeup(struct newselitem **hdr)
 static int
 soo_select(struct socket *so,
            int which,
-           struct SocketBase *p)
+           struct SocketWaiter *w)
 {
     register spl_t s = splnet();
 
@@ -775,7 +834,7 @@ soo_select(struct socket *so,
             splx(s);
             return (1);
         }
-        sbselqueue(&so->so_rcv, p);
+        sbselqueue(&so->so_rcv, w);
         break;
 
     case FWRITE:
@@ -783,7 +842,7 @@ soo_select(struct socket *so,
             splx(s);
             return (1);
         }
-        sbselqueue(&so->so_snd, p);
+        sbselqueue(&so->so_snd, w);
         break;
 
     case 0:
@@ -792,7 +851,7 @@ soo_select(struct socket *so,
             splx(s);
             return (1);
         }
-        sbselqueue(&so->so_rcv, p);
+        sbselqueue(&so->so_rcv, w);
         break;
     }
     splx(s);
@@ -816,16 +875,62 @@ countSockets(struct SocketBase *libPtr, struct socket *so)
     return count;
 }
 
-LONG __CloseSocket(LONG fd, struct SocketBase *libPtr)
+/*
+ * Make owner the base that gets so's signals and events. soevent() queues
+ * on the owner's list only, so the old owner's events for so go with it:
+ * none is left behind to outlive the socket. Caller holds syscall_semaphore.
+ */
+void setSocketOwner(struct socket *so, struct SocketBase *owner)
+{
+    struct SocketBase *old;
+    struct soevent *se, *nextse;
+    spl_t s;
+
+    /* sowakeup() tests and uses so_pgid at splnet */
+    s = splnet();
+    old = so->so_pgid;
+    so->so_pgid = owner;
+    splx(s);
+
+    if(old == NULL || old == owner)
+        return;
+    ObtainSemaphore(&old->EventLock);
+    for(se = (struct soevent *)old->EventList.mlh_Head;
+            se->node.mln_Succ;
+            se = nextse) {
+        /* Save the successor before a possible free (avoid UAF) */
+        nextse = (struct soevent *)se->node.mln_Succ;
+        if(se->socket == so) {
+            Remove((struct Node *)se);
+            bsd_free(se, NULL);
+        }
+    }
+    ReleaseSemaphore(&old->EventLock);
+}
+
+/*
+ * Drop a reference (AmiTCP addition); the last one closes the socket.
+ * Caller holds syscall_semaphore.
+ */
+LONG releaseSocketRef(struct socket *so)
+{
+    if(--so->so_refcnt > 0)
+        return 0;
+    /* No owner: nothing queues events for it while soclose() lingers */
+    setSocketOwner(so, NULL);
+    return soclose(so);
+}
+
+/*
+ * Close fd in libPtr's table. The caller holds syscall_semaphore; it need
+ * not be libPtr's task (fd.library hooks close for other threads).
+ */
+LONG closeSocketLocked(LONG fd, struct SocketBase *libPtr)
 {
     register int error;
     struct socket *so;
-    struct soevent *se;
 
-    CHECK_TASK();
-    ObtainSyscallSemaphore(libPtr);
-
-    if(fd < 0) {
+    if((ULONG)fd >= (ULONG)libPtr->dTableSize) {
         error = EBADF;
         goto Return;
     }
@@ -849,48 +954,38 @@ LONG __CloseSocket(LONG fd, struct SocketBase *libPtr)
 
     FD_CLR(fd, (fd_set *)(libPtr->dTable + libPtr->dTableSize));
 
-    if(error = getSock(libPtr, fd, &so)) {
-//    error = ENOTSOCK;	/* well, bit set, but socket == NULL */
-        error = 0; /* ignore silently */
-        goto Return;
-    }
-    if(so->so_pgid == libPtr && countSockets(libPtr, so) == 1)
-        so->so_pgid = NULL;		/* not ours any more */
-
     /*
-     * Decrease the reference count of a socket (AmiTCP addition) and return if
-     * not zero.
+     * Clear the descriptor before soclose(): a linger drops the semaphore,
+     * and fd must not lead a hook to the socket meanwhile. The socket may
+     * be NULL, a number Dup2Socket(-1, fd) marked used; it is freed too.
      */
-    if(--so->so_refcnt <= 0) {
-        struct soevent *nextse;
-        error = soclose(so);
-        /* Remove all events associated with this socket */
-        ObtainSemaphore(&libPtr->EventLock);
-        for(se = (struct soevent *)libPtr->EventList.mlh_Head;
-                se->node.mln_Succ;
-                se = nextse) {
-            /* Save the successor before a possible free (avoid UAF) */
-            nextse = (struct soevent *)se->node.mln_Succ;
-            if(se->socket == so) {
-                Remove((struct Node *)se);
-                bsd_free(se, NULL);
-            }
-        }
-        ReleaseSemaphore(&libPtr->EventLock);
-    }
-
-    /*
-     * now clear socket from descriptor table. Socket usage bitmask has been
-     * cleared earlier
-     */
+    so = libPtr->dTable[fd];
     libPtr->dTable[fd] = NULL;
 #if defined(ENABLE_FDLIBRARY)
     /* Release the system-wide descriptor-number reservation. */
     if(FDBase != NULL)
         FD_Free(fd, FD_OWNER_BSDSOCKET);
 #endif
+    error = 0;
+    if(so == NULL)
+        goto Return;
+
+    if(so->so_pgid == libPtr && countSockets(libPtr, so) == 0)
+        setSocketOwner(so, NULL);	/* not ours any more */
+
+    error = releaseSocketRef(so);
 
 Return:
+    return error;
+}
+
+LONG __CloseSocket(LONG fd, struct SocketBase *libPtr)
+{
+    LONG error;
+
+    CHECK_TASK();
+    ObtainSyscallSemaphore(libPtr);
+    error = closeSocketLocked(fd, libPtr);
     ReleaseSyscallSemaphore(libPtr);
     API_STD_RETURN(error, 0);
 }
@@ -905,28 +1000,19 @@ AROS_LH1(LONG, CloseSocket,
     AROS_LIBFUNC_EXIT
 }
 
-struct SocketNode {
-    struct MinNode	sn_Node;
-    LONG			sn_Id;
-    struct socket 	*sn_Socket;
-};
-
 /*
  * checkId() checks that there are no released sockets w/ given id.
- * used from function makeId().
+ * used from function makeId(). releasedSocketList, and makeId()'s
+ * uniqueId, are guarded by syscall_semaphore.
  */
 
 static LONG checkId(int id)
 {
     struct Node *sn;
 
-    Forbid();
     for(sn = releasedSocketList.lh_Head; sn->ln_Succ; sn = sn->ln_Succ)
-        if(((struct SocketNode *)sn)->sn_Id == id) {
-            Permit();
+        if(((struct SocketNode *)sn)->sn_Id == id)
             return EINVAL;
-        }
-    Permit();
     return 0;
 }
 
@@ -973,6 +1059,7 @@ AROS_LH2(LONG, ReleaseSocket,
 
     CHECK_TASK();
     DSYSCALLS(log(LOG_DEBUG, "ReleaseSocket(%ld, %ld) called", fd, id);)
+    ObtainSyscallSemaphore(libPtr);
     if((ULONG)id >= FIRSTUNIQUEID && (id = makeId(id)) == -1) {
         error = EINVAL;
         goto Return;
@@ -996,18 +1083,18 @@ AROS_LH2(LONG, ReleaseSocket,
             goto Return;
         }
 
-    /*if (so->so_pgid == libPtr && countSockets(libPtr, so) == 1)
-        so->so_pgid = NULL;*/	  /* not ours any more */
+    if(so->so_pgid == libPtr && countSockets(libPtr, so) == 1)
+        setSocketOwner(so, NULL);	/* nobody's until obtained */
     sn->sn_Id = id;
     sn->sn_Socket = so;
     libPtr->dTable[fd] = NULL;
     FD_CLR(fd, (fd_set *)(libPtr->dTable + libPtr->dTableSize));
+    sdFree(fd);
 
-    Forbid();
     AddTail(&releasedSocketList, (struct Node *)sn);
-    Permit();
 
 Return:
+    ReleaseSyscallSemaphore(libPtr);
     API_STD_RETURN(error, id);
     AROS_LIBFUNC_EXIT
 }
@@ -1028,6 +1115,7 @@ AROS_LH2(LONG, ReleaseCopyOfSocket,
 
     CHECK_TASK();
     DSYSCALLS(log(LOG_DEBUG, "ReleaseCopyOfSocket(%ld, %ld) called", fd, id);)
+    ObtainSyscallSemaphore(libPtr);
     if((ULONG)id >= FIRSTUNIQUEID && (id = makeId(id)) == -1) {
         error = EINVAL;
         goto Return;
@@ -1044,11 +1132,10 @@ AROS_LH2(LONG, ReleaseCopyOfSocket,
     sn->sn_Id = id;
     sn->sn_Socket = so;
     so->so_refcnt++;
-    Forbid();
     AddTail(&releasedSocketList, (struct Node *)sn);
-    Permit();
 
 Return:
+    ReleaseSyscallSemaphore(libPtr);
     API_STD_RETURN(error, id);
     AROS_LIBFUNC_EXIT
 }
@@ -1074,6 +1161,7 @@ AROS_LH4(LONG, ObtainSocket,
 
     CHECK_TASK();
     DSYSCALLS(log(LOG_DEBUG, "ObtainSocket(%ld, %ld, %ld, %ld) called", id, domain, type, protocol);)
+    ObtainSyscallSemaphore(libPtr);
     if(domain == 0) {
         if(id < FIRSTUNIQUEID) {
             error = EPFNOSUPPORT;
@@ -1103,24 +1191,30 @@ AROS_LH4(LONG, ObtainSocket,
     if(libPtr->fdCallback)
         if(error = AROS_UFC2(int, libPtr->fdCallback,
                              AROS_UFCA(int, fd, D0),
-                             AROS_UFCA(int, FDCB_ALLOC, D1)))
+                             AROS_UFCA(int, FDCB_ALLOC, D1))) {
+            sdFree(fd);
             goto Return;
+        }
 
-    Forbid();
     for(sn = releasedSocketList.lh_Head; sn->ln_Succ; sn = sn->ln_Succ)
         if(((struct SocketNode *)sn)->sn_Id == id) {
-            if(prp != ((struct SocketNode *)sn)->sn_Socket->so_proto)
+            /* domain 0 (unique ids only) takes any protocol */
+            if(prp != NULL && prp != ((struct SocketNode *)sn)->sn_Socket->so_proto)
                 continue;
             Remove(sn);
-            Permit();
             libPtr->dTable[fd] = ((struct SocketNode *)sn)->sn_Socket;
-//    ((struct SocketNode *)sn)->sn_Socket->so_pgid = libPtr;
+            /* events and signals go to the new owner */
+            setSocketOwner(libPtr->dTable[fd], libPtr);
             FD_SET(fd, (fd_set *)(libPtr->dTable + libPtr->dTableSize));
+#if defined(ENABLE_FDLIBRARY)
+            /* posixc's read()/write()/close() hooks take the socket from here */
+            if(FDBase != NULL)
+                FD_SetData(fd, FD_OWNER_BSDSOCKET, libPtr->dTable[fd]);
+#endif
             FreeMem(sn, sizeof(struct SocketNode));
             goto Return;
         }
     /* here if sdFind succeeded but search of socket failed */
-    Permit();
 
     /*
      * Free the just allocated fd
@@ -1129,10 +1223,12 @@ AROS_LH4(LONG, ObtainSocket,
         AROS_UFC2(int, libPtr->fdCallback,
                   AROS_UFCA(int, fd, D0),
                   AROS_UFCA(int, FDCB_FREE, D1));
+    sdFree(fd);
 
     error = EWOULDBLOCK;
 
 Return:
+    ReleaseSyscallSemaphore(libPtr);
     API_STD_RETURN(error, fd);
     AROS_LIBFUNC_EXIT
 }
@@ -1147,7 +1243,7 @@ AROS_LH2(LONG, Dup2Socket,
          struct SocketBase *, libPtr, 44, UL)
 {
     AROS_LIBFUNC_INIT
-    LONG newfd;
+    LONG newfd = -1;
     int error = 0;
     struct socket *so;
 
@@ -1160,18 +1256,28 @@ AROS_LH2(LONG, Dup2Socket,
     else if((error = getSock(libPtr, fd1, &so)))
         goto Return;
 
+    /* Closing fd2 first could free the socket */
+    if(fd1 == fd2 && so != NULL)
+        goto Return;
+
     if(fd2 == -1)
         if((error = sdFind(libPtr, &newfd)))
             goto Return;
         else
             fd2 = newfd;
     else {
+        /* Numbers are system-wide: grow the table as sdFind() does */
+        if((ULONG)fd2 >= libPtr->dTableSize && fd2 < 0xFFC0)
+            setdtablesize(libPtr, (fd2 / 64 + 1) * 64);
         if((ULONG)fd2 >= libPtr->dTableSize) {
             error = EBADF;
             goto Return;
         }
-        if(libPtr->dTable[fd2] != NULL)
-            __CloseSocket(fd2, libPtr);
+        /* Not __CloseSocket(): a nested ObtainSyscallSemaphore() leaves
+           the task at the raised priority. The bit, not the socket: a
+           number marked used without one is released as well */
+        if(FD_ISSET(fd2, (fd_set *)(libPtr->dTable + libPtr->dTableSize)))
+            closeSocketLocked(fd2, libPtr);
         /*
          * Check if the fd is free on the link library
          */
@@ -1180,7 +1286,13 @@ AROS_LH2(LONG, Dup2Socket,
                                  AROS_UFCA(int, fd2, D0),
                                  AROS_UFCA(int, FDCB_CHECK, D1)))
                 goto Return;
-
+#if defined(ENABLE_FDLIBRARY)
+        /* Claim the number; a posixc file there is not ours to close */
+        if(FDBase != NULL && FD_Reserve(fd2, FD_OWNER_BSDSOCKET, so) != 0) {
+            error = EBADF;
+            goto Return;
+        }
+#endif
     }
     /*
      * Tell the link library about the new fd
@@ -1188,14 +1300,20 @@ AROS_LH2(LONG, Dup2Socket,
     if(libPtr->fdCallback)
         if(error = AROS_UFC2(int, libPtr->fdCallback,
                              AROS_UFCA(int, fd2, D0),
-                             AROS_UFCA(int, FDCB_ALLOC, D1)))
+                             AROS_UFCA(int, FDCB_ALLOC, D1))) {
+            sdFree(fd2);    /* reserved by sdFind() or above */
             goto Return;
+        }
 
     FD_SET(fd2, (fd_set *)(libPtr->dTable + libPtr->dTableSize));
 
     if(so != NULL) {
         so->so_refcnt++;
         libPtr->dTable[fd2] = so;
+#if defined(ENABLE_FDLIBRARY)
+        if(FDBase != NULL && fd2 == newfd)
+            FD_SetData(fd2, FD_OWNER_BSDSOCKET, so);
+#endif
     }
 
 Return:

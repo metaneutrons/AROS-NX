@@ -13,6 +13,7 @@
 #include <exec/libraries.h>
 #include <exec/execbase.h>
 #include <aros/asmcall.h>
+#include <dos/bptr.h>
 
 #include <stddef.h>
 
@@ -35,8 +36,27 @@ struct rellibraryset
 #define DECLARESET(set) \
 extern const void * const SETNAME(set)[] __attribute__((weak));
 
+#if defined(__mc68000__)
+/*
+ * The default (empty) set goes in a mergeable constant section, so that the
+ * Kickstart link keeps one copy of {0,0} per ROM bank instead of one per set
+ * in every module (see arch/m68k-amiga/boot/kobj-romtag.ld).
+ */
+#define __SETNAME_STR(set) "__" #set "_LIST__"
+#define DEFINESET(set) \
+DECLARESET(set) \
+__asm__("\t.pushsection .rodata.cst8,\"aM\",@progbits,8\n" \
+        "\t.balign 4\n" \
+        "\t.weak " __SETNAME_STR(set) "\n" \
+        "\t.type " __SETNAME_STR(set) ",@object\n" \
+        "\t.size " __SETNAME_STR(set) ",8\n" \
+        __SETNAME_STR(set) ":\n" \
+        "\t.long 0,0\n" \
+        "\t.popsection");
+#else
 #define DEFINESET(set) \
 const void * const SETNAME(set)[] __attribute__((weak))={0,0};
+#endif
 
 #define ADD2SET(symbol, _set, pri)\
 	static const void * const __aros_set_##_set##_##symbol __attribute__((__section__(".aros.set." #_set "." #pri))) __used = (void *)&symbol;
@@ -254,5 +274,49 @@ extern int _set_libinit(const struct __aros_libinit_sets *sets, void *libbase, s
    close, per-task slot, __freebase). */
 extern void _set_libexpunge(const struct __aros_libinit_sets *sets, void *libbase, struct ExecBase *sysBase);
 #define set_libexpunge(sets, libbase) _set_libexpunge(sets, libbase, SysBase)
+
+/* The library vectors genmodule used to emit inline into every module, for
+   the plain case: an auto-initialised base, no per-opener or per-task bases.
+   The module-specific field stores stay at the call site. Resources have no
+   vectors, so only libraries and devices carry the extra sets. */
+struct __aros_libfuncs_sets
+{
+    struct __aros_libinit_sets init;
+    const void * const *openlib;        /* OPENLIB,  NULL if noopenclose */
+    const void * const *closelib;       /* CLOSELIB, NULL if noopenclose */
+    const void * const *opendev;        /* OPENDEV,  NULL if no device   */
+    const void * const *closedev;       /* CLOSEDEV, NULL if no device   */
+};
+
+struct IORequest;
+extern void *_set_libinitbase(const struct __aros_libinit_sets *sets, struct Library *lib,
+                              LONG sysver, struct Library **oopbaseptr, struct ExecBase *sysBase);
+extern void *_set_resalloc(ULONG vecsize, ULONG basesize, CONST_STRPTR name, BYTE pri,
+                           CONST_APTR functable, LONG sysver, struct ExecBase *sysBase);
+extern void *_set_resadd(const struct __aros_libinit_sets *sets, APTR base, ULONG vecsize,
+                         ULONG basesize, struct ExecBase *sysBase);
+extern void *_set_libopen(const struct __aros_libfuncs_sets *sets, struct Library *lib);
+extern void _set_devopen(const struct __aros_libfuncs_sets *sets, struct Library *lib,
+                         struct IORequest *ioreq, IPTR unitnum, ULONG flags);
+extern int _set_libclose(const struct __aros_libfuncs_sets *sets, struct Library *lib,
+                         struct IORequest *ioreq);
+extern BPTR _set_libexpungebase(const struct __aros_libfuncs_sets *sets, struct Library *lib,
+                                BPTR seglist, struct Library **oopbaseptr, struct ExecBase *sysBase);
+
+/* Consolidated OOP class creation: what genmodule used to emit inline into
+   every OOP class's startup and shutdown. */
+struct OOP_InterfaceDescr;
+struct OOP_IClass;
+struct __aros_oopclass
+{
+    const struct OOP_InterfaceDescr *ifdescr;
+    CONST_STRPTR superid;               /* NULL: superclass passed as pointer */
+    CONST_STRPTR classid;               /* NULL: no aMeta_ID                  */
+    IPTR instsize;
+};
+
+extern int _set_oop_addclass(const struct __aros_oopclass *c, struct OOP_IClass *superptr,
+                             APTR libbase, struct OOP_IClass **clptr, struct Library *OOPBase);
+extern void _set_oop_removeclass(struct OOP_IClass *cl, struct Library *OOPBase);
 
 #endif /* _AROS_SYMBOLSETS_H */

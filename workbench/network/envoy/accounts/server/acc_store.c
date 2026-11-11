@@ -134,7 +134,16 @@ static void InsertGroup(struct AccStore *s, struct AccGroup *g)
 
 static void DeriveFlags(struct AccStore *s, struct AccUser *u)
 {
+    /* A password field of "*" or starting with "!" is a locked account (Unix convention),
+       not one without a password: it must never verify. An empty field means no password. */
+    if (u->Hash[0] == '*' || u->Hash[0] == '!')
+    {
+        u->Locked = TRUE;
+        u->Hash[0] = '\0';
+    }
     u->Flags = 0;
+    if (u->Locked)
+        u->Flags |= UFLAGF_NeedsPassword;
     if (u->Uid == ACC_ROOT_UID)
         u->Flags |= UFLAGF_AdminAll | UFLAGF_AdminGroups;
     if (u->Hash[0])
@@ -385,7 +394,7 @@ static void SaveFiles(struct AccStore *s)
     {
         pos = 0;
         ForeachNode(&s->Users, u)
-            pos += snprintf(text + pos, size - pos, "%s|%s|%u|%u|%s|%s|%s\n", u->Name, u->Hash, u->Uid, u->Gid, u->Gecos, u->Home, u->Shell);
+            pos += snprintf(text + pos, size - pos, "%s|%s|%u|%u|%s|%s|%s\n", u->Name, u->Locked ? "*" : u->Hash, u->Uid, u->Gid, u->Gecos, u->Home, u->Shell);
         if (WriteText(s->PasswdPath, text))
         {
             Log(s, "password file written");
@@ -447,17 +456,20 @@ static void LoadUserGroup(struct AccStore *s)
     ug_setpwent(UserGroupBase);
     while ((pw = ug_getpwent(UserGroupBase)))
     {
-        struct AccUser *u = AllocVec(sizeof(struct AccUser), MEMF_CLEAR | MEMF_PUBLIC);
-        if (!u)
+        struct AccUser *u;
+        /* uid -1 is not an account: AROSTCP's passwd carries its version string that way */
+        if (!pw->pw_name || pw->pw_uid == (uid_t)-1)
+            continue;
+        if (!(u = AllocVec(sizeof(struct AccUser), MEMF_CLEAR | MEMF_PUBLIC)))
             break;
-        AccCopyName(u->Name, pw->pw_name, sizeof(u->Name));
-        if (pw->pw_passwd && strcmp(pw->pw_passwd, "*"))
-            AccCopyName(u->Hash, pw->pw_passwd, sizeof(u->Hash));
+        AccCopyName(u->Name, (CONST_STRPTR)pw->pw_name, sizeof(u->Name));
+        if (pw->pw_passwd)
+            AccCopyName(u->Hash, (CONST_STRPTR)pw->pw_passwd, sizeof(u->Hash));
         u->Uid = UG2MU(pw->pw_uid);
         u->Gid = UG2MU(pw->pw_gid);
-        AccCopyName(u->Gecos, pw->pw_gecos, sizeof(u->Gecos));
-        AccCopyName(u->Home, pw->pw_dir, sizeof(u->Home));
-        AccCopyName(u->Shell, pw->pw_shell, sizeof(u->Shell));
+        AccCopyName(u->Gecos, pw->pw_gecos ? (CONST_STRPTR)pw->pw_gecos : (CONST_STRPTR)"", sizeof(u->Gecos));
+        AccCopyName(u->Home, pw->pw_dir ? (CONST_STRPTR)pw->pw_dir : (CONST_STRPTR)"", sizeof(u->Home));
+        AccCopyName(u->Shell, pw->pw_shell ? (CONST_STRPTR)pw->pw_shell : (CONST_STRPTR)"", sizeof(u->Shell));
         DeriveFlags(s, u);
         InsertUser(s, u);
     }
@@ -466,17 +478,19 @@ static void LoadUserGroup(struct AccStore *s)
     ug_setgrent(UserGroupBase);
     while ((gr = ug_getgrent(UserGroupBase)))
     {
-        struct AccGroup *g = AllocVec(sizeof(struct AccGroup), MEMF_CLEAR | MEMF_PUBLIC);
+        struct AccGroup *g;
         char **m;
-        if (!g)
+        if (!gr->gr_name || gr->gr_gid == (gid_t)-1)
+            continue;
+        if (!(g = AllocVec(sizeof(struct AccGroup), MEMF_CLEAR | MEMF_PUBLIC)))
             break;
-        AccCopyName(g->Name, gr->gr_name, sizeof(g->Name));
+        AccCopyName(g->Name, (CONST_STRPTR)gr->gr_name, sizeof(g->Name));
         g->Gid = UG2MU(gr->gr_gid);
         g->Admin = ACC_ROOT_UID;
         InsertGroup(s, g);
         for (m = gr->gr_mem; m && *m; m++)
         {
-            struct AccUser *u = StoreUserByName(s, *m);
+            struct AccUser *u = StoreUserByName(s, (CONST_STRPTR)*m);
             if (u)
                 AddMemberSorted(s, g, u->Uid);
         }
@@ -647,7 +661,7 @@ struct AccUser *StoreNextMember(struct AccStore *s, struct AccGroup *g, struct A
  */
 ULONG StoreVerify(struct AccStore *s, struct AccUser *u, CONST_STRPTR token, BOOL hashed, CONST_STRPTR rhost)
 {
-    if (!u)
+    if (!u || u->Locked)
         return ENVOYERR_UNKNOWNUSER;
     if (!(u->Flags & UFLAGF_NeedsPassword))
         return 0;
@@ -762,7 +776,10 @@ ULONG StoreModifyUser(struct AccStore *s, struct AccUser *u, CONST_STRPTR name, 
     u->Gid = gid;
     /* the only flag with a stored counterpart: clearing it removes the password */
     if (!(flags & UFLAGF_NeedsPassword))
+    {
         u->Hash[0] = '\0';
+        u->Locked = FALSE;              /* an administrator removed the password explicitly */
+    }
     DeriveFlags(s, u);
     s->UsersDirty = TRUE;
     return 0;
@@ -776,6 +793,7 @@ ULONG StoreSetPassword(struct AccStore *s, struct AccUser *u, CONST_STRPTR passw
         Hash(u->Hash, password, u->Name);
     else
         u->Hash[0] = '\0';
+    u->Locked = FALSE;                  /* setting a password unlocks the account */
     DeriveFlags(s, u);
     s->UsersDirty = TRUE;
     return 0;

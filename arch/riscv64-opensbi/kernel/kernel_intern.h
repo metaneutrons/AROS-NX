@@ -17,6 +17,8 @@
 #include <stdio.h>
 #include <stdarg.h>
 
+#include "kernel_riscv.h"
+
 #undef KernelBase
 struct KernelBase;
 
@@ -91,16 +93,20 @@ struct HartData
     uint64_t    hd_SleepTime;
     uint64_t    hd_LastLoadTime;
     uint32_t    hd_Load;
+    uint32_t    hd_CPUNumber;       /* Logical CPU number, once online      */
 };
 
 #define HARTF_BOOT      (1 << 0)    /* The hart AROS booted on              */
 #define HARTF_ONLINE    (1 << 1)    /* Executing AROS                       */
+#define HARTF_TRIED     (1 << 2)    /* A start has been attempted           */
 
 struct PlatformData
 {
     uint32_t        kb_HartCount;
     int             kb_BootHart;    /* Index into kb_Harts                  */
     uint32_t        kb_TimebaseFreq;/* /cpus timebase-frequency, Hz         */
+    /* kb_Harts index of each logical CPU (CPU 0 = kb_BootHart) */
+    int             kb_CPUHart[RISCV_MAXCPUS];
     struct HartData kb_Harts[0];
 };
 
@@ -152,6 +158,16 @@ struct krnFDTInfo
 #define KRN_MAX_PLIC_CONTEXTS   16
     int         plic_contexts[KRN_MAX_PLIC_CONTEXTS];
     unsigned int plic_ncontexts;
+    /*
+     * Hardware quirks named by the controller's compatible string.
+     * KRN_PLIC_QUIRK_CLAIM: UltraRISC CP100/DP1000 (Milk-V Titan). Reading
+     * the claim register while more than one enabled source is pending
+     * loses pending interrupts (Linux: PLIC_QUIRK_CP100_CLAIM_REGISTER_
+     * ERRATUM). A lost ethernet interrupt is a dead network: the DMA
+     * status shows TI|RI set, the PLIC shows the source not pending.
+     */
+#define KRN_PLIC_QUIRK_CLAIM    (1U << 0)
+    uint32_t    plic_quirks;
 };
 int krnParseFDT(void *dtb, struct krnFDTInfo *info);
 void krnDumpFDT(void *dtb);
@@ -163,6 +179,8 @@ void krnDumpACPI(void);
 /* Describe the interrupt controller from the MADT when there is no
    device tree; returns 0 when ACPI says nothing about it */
 int  krnACPIPLICInfo(struct krnFDTInfo *info);
+/* The harts from the MADT, when there is no device tree; returns how many */
+int  krnACPIHartInfo(struct krnFDTInfo *info, unsigned long boothart);
 
 /* Platform interrupt controller (kernel_plic.c) */
 int krnPLICInit(struct krnFDTInfo *info);
@@ -178,6 +196,16 @@ void krnHandleExternalIRQ(void);
    riscv,ndev seen plus the unused source 0 */
 #define KRN_MAX_IRQ_SOURCES 161
 extern ULONG __irq_counts[KRN_MAX_IRQ_SOURCES];
+void krnIRQUnthrottle(void);
+
+#if defined(RISCV_KRNWATCHDOG)
+/* Lock-up watchdog (kernel_watchdog.c) */
+struct ExceptionContext;
+extern int __krn_watchdog;
+extern volatile uint32_t __krn_wdcpu;
+void krnWatchRecord(struct ExceptionContext *ctx);
+void krnWatchdogService(uint32_t self);
+#endif
 
 /* How many sources the interrupt controller drives (kernel_plic.c) */
 unsigned int krnPLICSourceCount(void);
@@ -228,13 +256,16 @@ int krnLoadPackage(void *pkg, IPTR pkgsize, IPTR memlow, IPTR memhigh,
 extern void *__ks_debuginfo;
 
 /*
- * mhartid is an M-mode CSR and can not be read from S-mode; the boot
- * hart id comes from the SBI handoff. Once SMP bring-up exists the
- * per-hart id will live in the per-cpu data block (tp/sscratch) instead.
+ * The logical CPU number (riscv-native/kernel/kernel_riscv.h): the
+ * boot hart is 0 and the others are numbered as they come online. The
+ * SBI hart id is only for firmware calls - see HartData.
  */
 static inline int GetCPUNumber(void)
 {
-    return (int)__boot_hartid;
+    return (int)krnRVCPUNumber();
 }
+
+/* Per-hart scheduler tick for a secondary hart (kernel_timer.c) */
+void krnTimerInitCore(void);
 
 #endif /* KERNEL_INTERN_H_ */

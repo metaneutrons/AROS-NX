@@ -11,7 +11,7 @@ include $(SRCDIR)/$(CURDIR)/sources.drm.mak
 #
 # The 3D side is Mesa's own svga gallium driver, driven through its stock
 # drm winsys and an in-process libdrm shim by a port of the Linux vmwgfx
-# kernel driver, in the way nouveau.hidd is built. The DRM core, TTM and
+# kernel driver, in the way nvgfx.hidd is built. The DRM core, TTM and
 # the Linux compatibility layer are the same base the nouveau hidd carries,
 # as a copy of its own in this tree.
 
@@ -47,7 +47,7 @@ endif
 # The svga glue targets the Mesa 26 gallium driver API; only hook the hidd
 # in for the Mesa version it has been ported to.
 #MM- workbench-hidds-vmwaresvga : hidd-vmwaresvga-mesa$(OPT_MESAGL)
-#MM- hidd-vmwaresvga-mesa26.0.0 : hidd-vmwaresvga-$(AROS_TARGET_ARCH)-$(AROS_TARGET_CPU)
+#MM- hidd-vmwaresvga-mesa26.2.5 : hidd-vmwaresvga-$(AROS_TARGET_ARCH)-$(AROS_TARGET_CPU)
 #MM- hidd-vmwaresvga-pc-i386 : hidd-vmwaresvga
 #MM- hidd-vmwaresvga-pc-x86_64 : hidd-vmwaresvga
 #MM hidd-vmwaresvga: includes hidd-vmwaresvga-drmcore hidd-vmwaresvga-drm hidd-vmwaresvga-libdrm hidd-vmwaresvga-svga hidd-gallium mesa3dgl-linklibs linklibs-libatomic workbench-libs-z-linklib

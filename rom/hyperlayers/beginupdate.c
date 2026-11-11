@@ -100,20 +100,27 @@
 
   AndRectRegion(damage_region, &l->bounds);
 
-  visible_damage_region = AndRegionRegionND(l->VisibleRegion, damage_region);
-  AndRegionRegion(l->visibleshape, visible_damage_region);
-  
-  if (l->shaperegion)
+  if (IS_COMPOSITED(l))
   {
-    _TranslateRect(&visible_damage_region->bounds, -l->bounds.MinX, -l->bounds.MinY);
-    AndRegionRegion(l->shaperegion, visible_damage_region);
-    _TranslateRect(&visible_damage_region->bounds, l->bounds.MinX, l->bounds.MinY);
+    /* The whole damage, covered or not: the layer is complete in its surface */
+    visible_damage_region = NewRegion();
+    if (visible_damage_region)
+      OrRegionRegion(damage_region, visible_damage_region);
   }
+  else
+  {
+    visible_damage_region = AndRegionRegionND(l->VisibleRegion, damage_region);
+    AndRegionRegion(l->visibleshape, visible_damage_region);
+  }
+  
+  _AndShapeRegion(l, visible_damage_region, LayersBase);
 
   l->ClipRect = _CreateClipRectsFromRegion(visible_damage_region,
                                            l,
                                            FALSE,
                                            damage_region,
+                                           0,
+                                           l->cr2,
                                            LayersBase);
 
   if (IS_SMARTREFRESH(l))
@@ -122,10 +129,10 @@
                                 l->cr2,
                                 l->ClipRect,
                                 0,
-                                0,
                                 FALSE,
                                 FALSE,
                                 FALSE,
+                                TRUE,
                                 LayersBase);
 
   }

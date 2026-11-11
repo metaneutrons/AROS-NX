@@ -32,10 +32,12 @@
           KATTR_ClockSource     [.G] APTR     - Used Time Source Resource, or -1 if not set.
 
           KATTR_SystemLoad     [.G]
-          KATTR_CPULoad        [.G]
-          KATTR_CPULoad_END    [.G]
+          KATTR_CPULoad        [.G] - Base of the legacy per-CPU load
+                                   attribute range. Add the CPU index;
+                                   KATTR_CPULoad_END is exclusive.
 
-          KATTR_AffinityMask   [.G]
+          KATTR_AffinityMask   [.G] IPTR     - Bitmap of the running CPUs, by
+                                   CPU number (KrnGetCPUNumber()).
 
           KATTR_PeripheralBase [.G] IPTR     - (ARM only) peripheral IO Base address.
 

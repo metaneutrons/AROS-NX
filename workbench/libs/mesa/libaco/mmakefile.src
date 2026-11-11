@@ -23,7 +23,6 @@ ACO_CXX_SOURCES := \
     $(top_srcdir)/$(CUR_MESADIR)/instruction_selection/aco_select_nir \
     $(top_srcdir)/$(CUR_MESADIR)/instruction_selection/aco_select_ps_epilog \
     $(top_srcdir)/$(CUR_MESADIR)/instruction_selection/aco_select_ps_prolog \
-    $(top_srcdir)/$(CUR_MESADIR)/instruction_selection/aco_select_rt_prolog \
     $(top_srcdir)/$(CUR_MESADIR)/instruction_selection/aco_select_trap_handler \
     $(top_srcdir)/$(CUR_MESADIR)/instruction_selection/aco_select_vs_prolog \
     $(top_srcdir)/$(CUR_MESADIR)/aco_dead_code_analysis \
@@ -65,6 +64,8 @@ ACO_GEN_CXX_SOURCES := \
     $(ACO_GENDIR)/aco_opcodes
 
 USER_INCLUDES += \
+    -I$(SRCDIR)/workbench/hidds/amdgpu/libdrm/amdgpu \
+    -I$(SRCDIR)/workbench/hidds/amdgpu/include \
     -iquote $(top_srcdir)/$(CUR_MESADIR) \
     -iquote $(top_srcdir)/$(CUR_MESADIR)/instruction_selection \
     -iquote $(top_srcdir)/src \

@@ -4,13 +4,16 @@
  *
  * ----------------------------------------------------------------------
  * This code is (C) Copyright 1993,1994 by Frank Munkert.
- *              (C) Copyright 2002-2012 The AROS Development Team
+ *              (C) Copyright 2002-2026 The AROS Development Team
  * All rights reserved.
  * This software may be freely distributed and redistributed for
  * non-commercial purposes, provided this notice is included.
  * ----------------------------------------------------------------------
  * History:
  *
+ * 03-Nov-26 aros    Declare the low-memory handler with exec's memory
+ *                   handler arguments.
+ * 29-Oct-26 aros    Recover small file caches after memory pressure eases.
  * 28-Dec-12 neil    Pass corrected TOC length back from Read_TOC instead of
  *                   the raw TOC header. Errors in the length field of this
  *                   header were causing buffer overruns with many drives.
@@ -96,9 +99,12 @@ AROS_INTH1(CDChangeHandler, struct CDVDBase *, global)
     AROS_INTFUNC_EXIT
 }
 
-static AROS_INTH1(CDCacheLowMemHandler, CDROM *, cd)
+static AROS_UFH3(LONG, CDCacheLowMemHandler,
+    AROS_UFHA(struct MemHandlerData *, mhd, A0),
+    AROS_UFHA(CDROM *, cd, A1),
+    AROS_UFHA(struct ExecBase *, SysBase, A6))
 {
-    AROS_INTFUNC_INIT
+    AROS_USERFUNC_INIT
 
     if (!cd->cache_io_busy &&
         cd->global->DosProc->pr_Task.tc_State == TS_WAIT)
@@ -146,7 +152,7 @@ static AROS_INTH1(CDCacheLowMemHandler, CDROM *, cd)
 
     return MEM_DID_NOTHING;
 
-    AROS_INTFUNC_EXIT
+    AROS_USERFUNC_EXIT
 }
 
 /*
@@ -188,11 +194,50 @@ static UBYTE *IO_Buffer(CDROM *cd)
     return cd->buffer_io;
 }
 
+/* Reclamation must not permanently turn small alternating file reads into
+ * physical seeks. Recreate only the two small file slots, without expunging
+ * anything to obtain them. They remain reclaimable by the same handler.
+ */
+static void Recover_File_Cache(CDROM *cd)
+{
+    ULONG flags = cd->cache_memory_type | MEMF_NO_EXPUNGE;
+    unsigned short busy = cd->cache_io_busy;
+
+    if (!cd->split_cache || cd->buffer_file2 != NULL)
+        return;
+
+    /* A managed allocator can wait even without expunging. Keep another
+     * task's low-memory handler out until the recovered state is complete. */
+    cd->cache_io_busy = TRUE;
+    if (cd->buffer_data == NULL)
+    {
+        cd->buffer_data = AllocVec(2 * SCSI_BUFSIZE + 15, flags);
+        if (cd->buffer_data == NULL)
+            goto out;
+        cd->cache_slots[0].current_sector = -1;
+        cd->cache_slots[0].valid_sectors = 0;
+        cd->buffer_sectors = 2;
+        cd->file_slots = 1;
+        cd->cache_reclaimed = 1;
+    }
+
+    cd->buffer_file2 = AllocVec(2 * SCSI_BUFSIZE + 15, flags);
+    if (cd->buffer_file2 != NULL)
+    {
+        cd->cache_slots[1].current_sector = -1;
+        cd->cache_slots[1].valid_sectors = 0;
+        cd->file_slots = 2;
+        cd->cache_reclaimed = 0;
+    }
+out:
+    cd->cache_io_busy = busy;
+}
+
 CDROM *Open_CDROM
         (
                 struct CDVDBase *global,
                 char *p_device,
-                int p_scsi_id,
+                IPTR p_scsi_id,
                 uint32_t p_memory_type,
                 int p_std_buffers,
                 int p_file_buffers
@@ -215,6 +260,7 @@ CDROM *Open_CDROM
             break;
 
         cd->global = global;
+        cd->cache_memory_type = MEMF_PUBLIC | p_memory_type;
         cd->io_sector = -1;
         /* Preserve the historical 32 KiB minimum cache allocation. */
         if (p_std_buffers == 1)
@@ -407,7 +453,8 @@ int Read_From_Drive
 
     D(bug("[CDVDFS]\tAccessing sectors %ld:%ld\n", (long)p_sector, (long)p_number_of_sectors));
 
-    if (0 != DoIO((struct IORequest*) p_cd->scsireq))
+    if (0 != DoIO((struct IORequest*) p_cd->scsireq) ||
+        p_cd->scsireq->io_Actual != p_cd->scsireq->io_Length)
     {
         D(bug("[CDVDFS]\tTransfer failed: %ld\n", (long)p_cd->scsireq->io_Error));
         Clear_Sector_Buffers(p_cd);
@@ -420,8 +467,9 @@ int Read_From_Drive
 
 /*
  * USAGE NOTE >> VERY IMPORTANT <<
- * File reads use slots of p_cd->buffer_sectors sectors. Metadata reads only
- * require the requested sector to be valid.
+ * File slots have p_cd->buffer_sectors sectors of capacity, but a final
+ * read may fill less. Callers must use buffer_bytes for the valid length
+ * starting at buffer. Metadata reads require only the requested sector.
  */
 static int Find_Cache_Slot(CDROM *p_cd, int first, int last)
 {
@@ -453,7 +501,7 @@ static int Read_Chunk_Internal(CDROM *p_cd, long p_sector, int file_data)
     int status;
     int i;
     int loc;
-    long vol_size;
+    uint64_t read_end = global->g_volume ? global->g_volume->read_end : 0;
     long start;
     int count;
     int first;
@@ -461,12 +509,22 @@ static int Read_Chunk_Internal(CDROM *p_cd, long p_sector, int file_data)
 
     D(bug("[CDVDFS]\tClient requested sector %ld\n", p_sector));
 
-    if (p_cd->buffer_data == NULL ||
+    p_cd->buffer_bytes = 0;
+    if (p_sector < 0)
+        return 0;
+
+    if (file_data && p_cd->io_sector != p_sector)
+        Recover_File_Cache(p_cd);
+
+    /* A declared endpoint limits read-ahead, not access to an existing sector. */
+    if ((read_end && (uint64_t)p_sector >= read_end) ||
+        p_cd->buffer_data == NULL ||
         (!file_data && p_cd->split_cache && p_cd->buffer_metadata == NULL))
     {
         if (p_cd->io_sector == p_sector)
         {
             p_cd->buffer = p_cd->buffer_io;
+            p_cd->buffer_bytes = SCSI_BUFSIZE;
             return 1;
         }
 
@@ -478,6 +536,7 @@ static int Read_Chunk_Internal(CDROM *p_cd, long p_sector, int file_data)
         if (status)
         {
             p_cd->buffer = p_cd->buffer_io;
+            p_cd->buffer_bytes = SCSI_BUFSIZE;
             p_cd->io_sector = p_sector;
         }
         return status;
@@ -486,10 +545,10 @@ static int Read_Chunk_Internal(CDROM *p_cd, long p_sector, int file_data)
     for (i=0; i<p_cd->buffers_cnt; i++)
     {
         start = p_cd->cache_slots[i].current_sector;
-        count = p_cd->cache_slots[i].sector_count;
+        count = p_cd->cache_slots[i].valid_sectors;
         if (start == -1 || p_sector < start || p_sector >= start + count)
             continue;
-        if (file_data && count < p_cd->buffer_sectors)
+        if (file_data && p_cd->cache_slots[i].sector_count < p_cd->buffer_sectors)
             continue;
 
         /*
@@ -498,6 +557,10 @@ static int Read_Chunk_Internal(CDROM *p_cd, long p_sector, int file_data)
         D(bug("[CDVDFS]\tSector already cached\n"));
         p_cd->buffer = Sector_Buffer(p_cd, i) +
             ((p_sector - start) << 11);
+        p_cd->buffer_bytes = (count - (p_sector - start)) * SCSI_BUFSIZE;
+        /* A probe may have filled this slot before the volume was assigned. */
+        if (read_end && read_end - p_sector < count - (p_sector - start))
+            p_cd->buffer_bytes = (read_end - p_sector) * SCSI_BUFSIZE;
 
         /*
          * try most frequently used
@@ -541,12 +604,10 @@ static int Read_Chunk_Internal(CDROM *p_cd, long p_sector, int file_data)
      */
     count = p_cd->cache_slots[loc].sector_count;
     start = p_sector & ~(count - 1);
-    if (global->g_volume != NULL)
-        vol_size = Volume_Size(global->g_volume);
-    else
-        vol_size = 0;
-    if (vol_size != 0 && vol_size - start < count)
-        count = vol_size - start;
+    if (read_end && read_end - start < count)
+        count = read_end - start;
+    p_cd->cache_slots[loc].current_sector = -1;
+    p_cd->cache_slots[loc].valid_sectors = 0;
     p_cd->cache_io_busy = TRUE;
     status = Read_From_Drive(p_cd, Sector_Buffer(p_cd, loc), SCSI_BUFSIZE,
         start, count);
@@ -555,6 +616,8 @@ static int Read_Chunk_Internal(CDROM *p_cd, long p_sector, int file_data)
     if (status)
     {
         p_cd->cache_slots[loc].current_sector = start;
+        p_cd->cache_slots[loc].valid_sectors = count;
+        p_cd->buffer_bytes = (count - (p_sector - start)) * SCSI_BUFSIZE;
         p_cd->buffer = Sector_Buffer(p_cd, loc) +
             ((p_sector - start) << 11);
         p_cd->cache_slots[loc].last_used = 1000;
@@ -590,6 +653,8 @@ int Test_Unit_Ready(CDROM *p_cd)
     return TRUE;
 }
 
+#ifndef AROS_KERNEL
+/* only used by the stand-alone test program */
 int Mode_Select
         (
                 CDROM *p_cd,
@@ -632,7 +697,13 @@ int Inquire (CDROM *p_cd, t_inquiry_data *p_data)
     CopyMem(buf, p_data, sizeof (*p_data));
     return 1;
 }
+#endif /* !AROS_KERNEL */
 
+/* t_toc_data is packed: fetch the unaligned address field in one place */
+CDVDFS_SHARED uint32_t TOC_Address(const t_toc_data *p_toc)
+{
+    return p_toc->address;
+}
 
 t_toc_data *Read_TOC
         (
@@ -768,7 +839,7 @@ int Data_Tracks(CDROM *p_cd, uint32_t** p_buf)
     {
         if ((99 >= toc[i].track_number) &&
             (0  != (toc[i].flags & 4)))
-            (*p_buf)[j++] = toc[i].address;
+            (*p_buf)[j++] = TOC_Address(&toc[i]);
     }
 
     return cnt;
@@ -816,7 +887,7 @@ int Start_Play_Audio(CDROM *p_cd)
         if ((99 >= toc[i].track_number) &&
             (0  == (toc[i].flags & 4)))
         {
-            start=toc[i].address;
+            start=TOC_Address(&toc[i]);
             break;
         }
     }
@@ -836,7 +907,7 @@ int Start_Play_Audio(CDROM *p_cd)
             (0  != (toc[i].flags & 4)))
             break;
     }
-    end=toc[i].address;
+    end=TOC_Address(&toc[i]);
 
     /*
      * fill up request and send
@@ -895,8 +966,12 @@ void Clear_Sector_Buffers (CDROM *p_cd)
     int i;
 
     p_cd->io_sector = -1;
+    p_cd->buffer_bytes = 0;
     for (i=0; i<p_cd->buffers_cnt; i++)
+    {
         p_cd->cache_slots[i].current_sector = -1;
+        p_cd->cache_slots[i].valid_sectors = 0;
+    }
 }
 
 /* Finds offset of last session. (Not supported by all CDROM drives)

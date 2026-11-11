@@ -30,6 +30,25 @@ only ever reaches the target C driver through the
   (the Rust parts of the NVK Vulkan driver) as AROS link libraries.
 * `tools-crosstools-rust-check` links a std program for the target and fails
   if the AROS executable has undefined symbols.
+* `tools-crosstools-rust-abicheck` (`abicheck.sh`) compares the size and
+  alignment of each type in `abi-types.txt` (the C types the AROS `libc`
+  patches restate in Rust) with the AROS C headers. It checks the `libc`
+  inside the installed std and the crate store's copy, and
+  `contrib-rust-crates-abicheck` checks the contrib store's copy. Nothing
+  runs on the target: both sides are compiled to objects and their symbol
+  sizes compared. `rust-crates-config` and `contrib-rust-crates-config`
+  depend on these checks, so no Rust program builds against a `libc` that
+  disagrees with the headers. When a C header changes, update every `libc`
+  patch (`rustc-*-aros.diff`, `crates/libc-*-aros.diff` and the contrib
+  store's) and add any new type to `abi-types.txt`.
+* std is not rebuilt when only a vendored crate's patch changes: cargo never
+  looks at vendored sources again, and `fetch.sh` applies a patch only once.
+  After changing the `libc` part of `rustc-*-aros.diff`, make the same change
+  in the unpacked `vendor/libc-*` (or unpack again, which rebuilds
+  everything), then remove `stage1-std/<target triple>` under the build
+  directory and the `.installflag-rust-*` file so `tools-crosstools-rust`
+  builds std again. A crate store's copy is refreshed by removing it, its
+  copied patch and its `.applied`/`.unpacked` markers.
 
 `crosstools-rust-create-patch` regenerates the diff from a patched source
 tree, as for the other crosstools.
@@ -48,9 +67,14 @@ tree, as for the other crosstools.
   like the C toolchain. Only x86_64 and riscv64 have been built here.
 * A `libc` crate module for AROS (`vendor/libc-0.2.185/src/unix/aros`):
   types and structures from the SDK headers, constants generated from them
-  with the target compiler, and, with their C symbol names, ENOSYS stubs for
-  the POSIX calls the AROS C library does not have (sockets, fork, poll,
-  pread/pwrite, mmap, ...) so that std's shared unix code links.
+  with the target compiler, and, with their C symbol names, what the AROS C
+  library does not have: sockets through bsdsocket.library (one library base
+  per thread, opened on first use), `poll()` over `WaitSelect()`,
+  `getaddrinfo()` through the stack's resolver, `mmap()` emulated with
+  allocated memory, and ENOSYS stubs for the rest (fork, pwrite, ...) so
+  that std's shared unix code links. This crate is the only one that
+  defines these symbols; the libc crate in `crates/`, which programs build
+  against, declares them.
 * std as a unix-family target: errno through `__stdc_geterrnoptr()`, the
   environment through `__stdcio_get_environptr()`, `arc4random_buf` for
   randomness, `pthread_setname_np` for thread names, `T:` as the temporary
@@ -60,10 +84,20 @@ tree, as for the other crosstools.
 
 ## Known limitations
 
-* `std::process::Command` and `std::net` compile but fail at run time
-  (there is no `fork`, and sockets live in bsdsocket.library behind its
-  library base).
+* `std::process::Command` compiles but fails at run time (there is no
+  `fork`).
+* bsdsocket.library accepts calls on a base only from the task that opened
+  it, and finds a socket only through the base that holds it: a socket works
+  on the thread that created or accepted it, and another thread gets EBADF.
+  The sockets of x86_64 and riscv64 are implemented; the other CPUs have the
+  stubs. `poll()` reports descriptors that are not sockets of the calling
+  thread as ready.
+* `mmap()` cannot provide writable shared file mappings, `MAP_FIXED` or
+  `PROT_NONE` (ENOTSUP), and `munmap()` releases whole mappings only.
 * Binaries carry std and must not be fully stripped (the AROS loader needs
-  the relocations' symbols).
+  the relocations' symbols); `$(TARGET_STRIP)` (`--strip-unneeded`) is safe.
+* Build-machine paths are remapped (`RUST_REMAP_FLAGS` in `../rust.cfg`)
+  for the crates built in the tree.
 * Verified on hosted AROS x86_64: threads, channels, mutexes, time, HashMap,
-  files and directories.
+  files and directories, TCP and UDP over loopback, name resolution, and
+  `mmap()`.

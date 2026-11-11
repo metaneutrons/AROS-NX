@@ -78,8 +78,11 @@ do                                                                             \
 
 /* HIDD BM Flags */
 
-#define HIDD_BMF_SHARED_PIXTAB    	1
-#define HIDD_BMF_SCREEN_BITMAP	      512
+#define HIDD_BMF_SHARED_PIXTAB         1
+#define HIDD_BMF_OWN_PIXTAB            2	/* own colormap and pixtab with the friend's colours mapped opaque (alphapixtab.c) */
+#define HIDD_BMF_CLEAR_ALPHA           4	/* has alpha and a friend: Clear writes transparent 0 */
+#define HIDD_BMF_SCREEN_BITMAP         512
+#define HIDD_BMF_LAYERSURFACES         1024	/* has a LayerSurfaceNode (composited layers) */
 
 /* Minterms and GC drawmodes are in opposite order */
 #define MINTERM_TO_GCDRMD(minterm) 	\
@@ -145,7 +148,22 @@ struct gfx_driverdata {
     struct RastPort *dd_RastPort;	/* This RastPort		*/
     struct Rectangle  dd_ClipRectangle;
     UBYTE   	      dd_ClipRectangleFlags;
+    UBYTE             dd_ColorFlags;    /* DDCF_*                       */
+    /*
+     * RPTAG_FgColor/RPTAG_BgColor as given (ARGB) and as mapped for the
+     * RastPort's bitmap when they were set. The GC keeps only the mapped
+     * pixel, which has no alpha when the RastPort's bitmap has none; a
+     * destination with an alpha channel of its own (a composited layer's
+     * alpha surface) maps the ARGB colour again (see remap_gc_pens()).
+     */
+    ULONG             dd_FgColor;
+    ULONG             dd_BgColor;
+    HIDDT_Pixel       dd_FgPixel;
+    HIDDT_Pixel       dd_BgPixel;
 };
+
+#define DDCF_FGCOLOR    (1 << 0)    /* dd_FgColor/dd_FgPixel valid */
+#define DDCF_BGCOLOR    (1 << 1)    /* dd_BgColor/dd_BgPixel valid */
 
 static inline struct gfx_driverdata *ObtainDriverData(struct RastPort *rp)
 {
@@ -192,6 +210,8 @@ BOOL int_bltbitmap(struct BitMap *srcBitMap, OOP_Object *srcbm_obj, WORD xSrc, W
                    OOP_Object *gc, struct GfxBase *GfxBase);
 
 
+HIDDT_PixelLUT *alpha_pixtab_lut(OOP_Object *dstbm_obj, struct RastPort *rp, HIDDT_PixelLUT *lut,
+                                 HIDDT_PixelLUT *store, struct GfxBase *GfxBase);
 LONG write_pixels_8(struct RastPort *rp, UBYTE *array, ULONG modulo,
                     WORD xstart, WORD ystart, WORD xstop, WORD ystop,
                     HIDDT_PixelLUT *pixlut, BOOL do_update, struct GfxBase *GfxBase);
@@ -209,6 +229,10 @@ void amiga2hidd_fast(APTR src_info, OOP_Object *hidd_gc, WORD x_src, WORD y_src,
 BOOL MoveRaster(struct RastPort *rp, WORD dx, WORD dy, WORD x1, WORD y1,
                 WORD x2, WORD y2, BOOL UpdateDamageList, struct GfxBase *GfxBase);
 
+/* ScrollRaster() and ScrollRasterBF() (scrollraster.c) */
+void internal_ScrollRaster(struct RastPort *rp, WORD dx, WORD dy, WORD xMin, WORD yMin,
+                           WORD xMax, WORD yMax, BOOL backfill, struct GfxBase *GfxBase);
+
 BOOL GetRPClipRectangleForRect(struct RastPort *rp, struct Rectangle *rect, struct Rectangle *r);
 BOOL GetRPClipRectangleForBitMap(struct RastPort *rp, struct BitMap *bm,
                                  struct Rectangle *r, struct GfxBase *GfxBase);
@@ -216,12 +240,28 @@ BOOL GetRPClipRectangleForBitMap(struct RastPort *rp, struct BitMap *bm,
 void update_bitmap(struct BitMap *bitmap, OOP_Object *bm, UWORD x, UWORD y, UWORD width, UWORD height,
                    struct GfxBase *GfxBase);
 
+/* composited layer surfaces of a screen bitmap (layersurfaceschanged.c) */
+struct HIDD_CompositeRequest *gfx_FindLayerSurfaces(struct BitMap *bitmap, struct GfxBase *GfxBase);
+void gfx_ForgetLayerSurfaces(struct BitMap *bitmap, struct GfxBase *GfxBase);
+
 void BltRastPortBitMap(struct RastPort *srcRastPort, WORD xSrc, WORD ySrc,
                        struct BitMap *destBitMap, WORD xDest, WORD yDest,
                        WORD xSize, WORD ySize, ULONG minterm,
                        struct GfxBase *GfxBase);
 
+/* The pixel value of an ARGB8888 colour in a HIDD bitmap */
+HIDDT_Pixel argb_pixel_for(OOP_Object *bm_obj, ULONG argb, struct GfxBase *GfxBase);
+
 void GenMinterms(struct RastPort *rp);
+
+/* The render data of BltBitMapRastPort() and BltMaskBitMapRastPort() */
+struct bitmap_render_data {
+    struct render_special_info rsi;
+    ULONG                      minterm;
+    struct BitMap             *srcbm;
+    OOP_Object                *srcbm_obj;
+    PLANEPTR                   mask;        /* BltMaskBitMapRastPort() only */
+};
 
 /****************************************************************************************/
 

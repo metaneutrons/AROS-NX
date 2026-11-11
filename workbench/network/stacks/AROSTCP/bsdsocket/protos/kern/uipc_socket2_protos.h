@@ -22,8 +22,9 @@ void socantsendmore(struct socket * so);
 
 void socantrcvmore(struct socket * so);
 
+struct SocketWaiter;
 void sbselqueue(struct sockbuf * sb,
-               struct SocketBase * cp);
+               struct SocketWaiter * w);
 
 int sbwait(struct sockbuf * sb,
            struct SocketBase * cp);
@@ -47,6 +48,10 @@ int soreserve(register struct socket * so,
 int sbreserve(struct sockbuf * sb,
               u_long cc);
 
+int sbreserve_max(struct sockbuf * sb,
+                  u_long cc,
+                  u_long max);
+
 void sbrelease(struct sockbuf * sb);
 
 void sbappend(struct sockbuf * sb,
@@ -68,6 +73,9 @@ int sbappendaddr(register struct sockbuf * sb,
 int sbappendcontrol(struct sockbuf * sb,
                     struct mbuf * m0,
                     struct mbuf * control);
+
+struct mbuf * sbcreatecontrol(caddr_t p, int size, int type, int level);
+struct mbuf * sbcreatetimestamp(struct socket *so);
 
 void sbcompress(register struct sockbuf * sb,
                register struct mbuf * m,

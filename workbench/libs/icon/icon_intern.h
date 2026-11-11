@@ -2,7 +2,7 @@
 #define ICON_INTERN_H
 
 /*
-    Copyright © 1995-2013, The AROS Development Team. All rights reserved.
+    Copyright © 1995-2026, The AROS Development Team. All rights reserved.
     $Id$
 */
 
@@ -203,6 +203,10 @@ extern const LONG IFFParseBase_version,
                   CyberGfxBase_version,
                   DataTypesBase_version;
 
+#if defined(__mc68000__)
+/* Saves ROM space on m68k: one copy in support.c instead of one per file */
+APTR DemandOpenLibrary(struct Library **libp, CONST_STRPTR libname, ULONG version);
+#else
 static inline APTR DemandOpenLibrary(struct Library **libp, CONST_STRPTR libname, ULONG version)
 {
     if (*libp == NULL)
@@ -210,6 +214,7 @@ static inline APTR DemandOpenLibrary(struct Library **libp, CONST_STRPTR libname
 
     return *libp;
 }
+#endif
 
 #define IFFParseBase	DemandOpenLibrary((struct Library **)&IconBase->ib_IFFParseBase, "iffparse.library", IFFParseBase_version)
 #define CyberGfxBase	DemandOpenLibrary((struct Library **)&IconBase->ib_CyberGfxBase, "cybergraphics.library", CyberGfxBase_version)
@@ -232,7 +237,6 @@ UBYTE * WriteValue     (LONG, UBYTE *);
 BOOL ReadIcon35(struct NativeIcon *icon, struct Hook *streamhook, void *stream, struct IconBase *IconBase);
 BOOL WriteIcon35(struct NativeIcon *icon, struct Hook *streamhook, void *stream, struct IconBase *IconBase);
 VOID FreeIcon35(struct NativeIcon *icon, struct IconBase *IconBase);
-VOID MakeMask35(UBYTE *imgdata, UBYTE *imgmask, UBYTE transpcolor, LONG imagew, LONG imageh);
 
 BOOL ReadIconNI(struct NativeIcon *icon, struct Hook *streamhook, void *stream, struct IconBase *IconBase);
 BOOL WriteIconNI(struct NativeIcon *icon, struct Hook *streamhook, void *stream, struct IconBase *IconBase);

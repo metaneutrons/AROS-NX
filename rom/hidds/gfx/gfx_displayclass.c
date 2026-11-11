@@ -19,6 +19,7 @@
 
 #include "gfx_intern.h"
 #include "gfx_display.h"
+#include "gfx_softmodes.h"
 
 #include <string.h>
 #include <stddef.h>
@@ -381,6 +382,7 @@ OOP_Object *Display__Root__New(OOP_Class *cl, OOP_Object *o, struct pRoot_New *m
         {TAG_MORE           , 0}
     };
     OOP_Class *dmenumclass = NULL;
+    OOP_Class *compositorclass = NULL;
 
     o = (OOP_Object *)OOP_DoSuperMethod(cl, o, (OOP_Msg)&supermsg);
     if (o)
@@ -406,6 +408,9 @@ OOP_Object *Display__Root__New(OOP_Class *cl, OOP_Object *o, struct pRoot_New *m
         data->cursor_visible = FALSE;
         data->cursor_drawn = FALSE;
 
+        NEWLIST((struct List *)&data->decodes);
+        InitSemaphore(&data->decodesem);
+
         while ((tag = NextTagItem(&tstate)))
         {
             ULONG idx;
@@ -421,17 +426,31 @@ OOP_Object *Display__Root__New(OOP_Class *cl, OOP_Object *o, struct pRoot_New *m
             case aoHidd_Display_DMEnumClass:
                 dmenumclass = (OOP_Class *)tag->ti_Data;
                 break;
+            case aoHidd_Display_CompositorClass:
+                compositorclass = (OOP_Class *)tag->ti_Data;
+                break;
             case aoHidd_Display_ConnectorType:
                 data->connectortype = tag->ti_Data;
                 break;
             case aoHidd_Display_ConnectorID:
                 data->connectorid = tag->ti_Data;
                 break;
+            case aoHidd_Display_DecodeVectors:
+                data->decodevectors = (struct HIDD_DecodeInterface *)tag->ti_Data;
+                break;
+            case aoHidd_Display_DecodeDataSize:
+                data->decodedatasize = tag->ti_Data;
+                break;
             }
         }
 
         if (data->gfxhidd)
+        {
             OOP_GetAttr(data->gfxhidd, aHidd_Gfx_FrameBufferType, &fbtype);
+
+            /* The display can be reached from its driver, and the other way round, as a relation */
+            HIDD_AddRelation(o, vHidd_Relation_Parent, data->gfxhidd, NULL);
+        }
         data->fbmode = fbtype;
 
         /*
@@ -456,6 +475,34 @@ OOP_Object *Display__Root__New(OOP_Class *cl, OOP_Object *o, struct pRoot_New *m
             OOP_CoerceMethod(cl, o, &dispose_mid);
             return NULL;
         }
+
+        /*
+         * Every display owns a compositor. It decides what is scanned out when
+         * the driver does not compose in hardware (see ComposeViewPorts). The
+         * driver may supply its own policy class; the base class composes in
+         * software and passes a single full-display bitmap straight through.
+         */
+        {
+            struct TagItem comptags[] =
+            {
+                {aHidd_Compositor_DisplayHidd, (IPTR)o},
+                {TAG_DONE                    , 0      }
+            };
+
+            data->compositor = OOP_NewObject(compositorclass ? compositorclass : CSD(cl)->compositorclass, NULL, comptags);
+            if (NULL == data->compositor)
+            {
+                OOP_MethodID dispose_mid = msg->mID - moRoot_New + moRoot_Dispose;
+                OOP_CoerceMethod(cl, o, &dispose_mid);
+                return NULL;
+            }
+            /* Damage notification runs after every render operation: resolve it once */
+            data->comp_RectChanged = OOP_GetMethod(data->compositor,
+                                                   HiddCompositorBase + moHidd_Compositor_BitMapRectChanged,
+                                                   &data->comp_RectChanged_cl);
+            if (!Compositor__Internal__CanHandleSoftware(CSD(cl)->compositorclass, data->compositor))
+                DMEnum__Internal__DisableSoftwareModes(CSD(cl)->dmenumclass, data->dmenum);
+        }
     }
     return o;
 }
@@ -465,6 +512,8 @@ VOID Display__Root__Dispose(OOP_Class *cl, OOP_Object *o, OOP_Msg msg)
     struct Library *OOPBase = CSD(cl)->cs_OOPBase;
     struct HIDDDisplayData *data = OOP_INST_DATA(cl, o);
 
+    if (NULL != data->compositor)
+        OOP_DisposeObject(data->compositor);
     if (NULL != data->gc)
         OOP_DisposeObject(data->gc);
     if (NULL != data->dmenum)
@@ -473,6 +522,16 @@ VOID Display__Root__Dispose(OOP_Class *cl, OOP_Object *o, OOP_Msg msg)
         FreeVec(data->cursor_backup);
     if (NULL != data->cursor_argb)
         FreeVec(data->cursor_argb);
+
+    /*
+     * Decode interfaces their owners did not free. The driver ended their
+     * sessions in its own Dispose (before calling us); only memory is left.
+     */
+    while (!IsListEmpty((struct List *)&data->decodes))
+    {
+        struct DecodeInstance *inst = (struct DecodeInstance *)RemHead((struct List *)&data->decodes);
+        FreeMem(inst, inst->allocsize);
+    }
 
     OOP_DoSuperMethod(cl, o, msg);
 }
@@ -496,6 +555,28 @@ VOID Display__Root__Get(OOP_Class *cl, OOP_Object *o, struct pRoot_Get *msg)
         return;
     case aoHidd_Display_FrameBuffer:
         *msg->storage = (IPTR)data->framebuffer;
+        return;
+    case aoHidd_Display_DisplayID:
+        *msg->storage = data->displayid;
+        return;
+    case aoHidd_Display_PlaneCount:
+        *msg->storage = 1;      /* the primary plane, driven by Show() */
+        return;
+    case aoHidd_Display_VBlankCount:
+        *msg->storage = 0;      /* not counted by the base class */
+        return;
+    case aoHidd_Display_ColorKey:
+        *msg->storage = HIDD_DISPLAY_DEFAULT_COLORKEY;
+        return;
+    case aoHidd_Display_CompositionCapabilities:
+        *msg->storage = 0;
+        if (data->compositor)
+            OOP_GetAttr(data->compositor, aHidd_Compositor_Capabilities, msg->storage);
+        return;
+    case aoHidd_Display_CompositionState:
+        *msg->storage = 0;
+        if (data->compositor)
+            OOP_GetAttr(data->compositor, aHidd_Compositor_State, msg->storage);
         return;
     case aoHidd_Display_DefaultGC:
         *msg->storage = (IPTR)data->gc;
@@ -540,6 +621,7 @@ VOID Display__Root__Set(OOP_Class *cl, OOP_Object *o, struct pRoot_Set *msg)
 {
     struct HIDDDisplayData *data = OOP_INST_DATA(cl, o);
     struct Library *UtilityBase = CSD(cl)->cs_UtilityBase;
+    struct Library *OOPBase = CSD(cl)->cs_OOPBase;
     struct TagItem *tag, *tstate = msg->attrList;
     ULONG idx;
 
@@ -550,9 +632,14 @@ VOID Display__Root__Set(OOP_Class *cl, OOP_Object *o, struct pRoot_Set *msg)
         case aoHidd_Display_FrameBuffer:
             data->framebuffer = (OOP_Object *)tag->ti_Data;
             break;
-        case aoHidd_Display_Compositor:
-            data->compositor = (OOP_Object *)tag->ti_Data;
+        case aoHidd_Display_DisplayID:
+            data->displayid = tag->ti_Data;
             break;
+        case aoHidd_Display_CompositionState:
+            if (data->compositor)
+                OOP_SetAttrsTags(data->compositor, aHidd_Compositor_State, tag->ti_Data, TAG_DONE);
+            break;
+        /* aoHidd_Display_Compositor: owned by the display, not settable */
         }
     }
 }
@@ -592,8 +679,14 @@ VOID Display__Root__Set(OOP_Class *cl, OOP_Object *o, struct pRoot_Set *msg)
 *****************************************************************************************/
 VOID Display__Hidd_Display__DisplayToBMCoords(OOP_Class *cl, OOP_Object *o, struct pHidd_Display_DisplayToBMCoords *msg)
 {
-        *msg->TargetX = msg->DispX;
-        *msg->TargetY = msg->DispY;
+    struct HIDDDisplayData *data = OOP_INST_DATA(cl, o);
+    LONG x = msg->DispX, y = msg->DispY;
+
+    /* The compositor knows how (whether) the bitmap is scaled on the display */
+    if (data->compositor)
+        HIDD_Compositor_MapCoords(data->compositor, msg->Target, FALSE, &x, &y);
+    *msg->TargetX = x;
+    *msg->TargetY = y;
 }
 
 /*****************************************************************************************
@@ -631,8 +724,13 @@ VOID Display__Hidd_Display__DisplayToBMCoords(OOP_Class *cl, OOP_Object *o, stru
 *****************************************************************************************/
 VOID Display__Hidd_Display__BMToDisplayCoords(OOP_Class *cl, OOP_Object *o, struct pHidd_Display_BMToDisplayCoords *msg)
 {
-        *msg->DispX = msg->TargetX;
-        *msg->DispY = msg->TargetY;
+    struct HIDDDisplayData *data = OOP_INST_DATA(cl, o);
+    LONG x = msg->TargetX, y = msg->TargetY;
+
+    if (data->compositor)
+        HIDD_Compositor_MapCoords(data->compositor, msg->Target, TRUE, &x, &y);
+    *msg->DispX = x;
+    *msg->DispY = y;
 }
 
 /*****************************************************************************************
@@ -668,6 +766,9 @@ VOID Display__Hidd_Display__BMToDisplayCoords(OOP_Class *cl, OOP_Object *o, stru
 *****************************************************************************************/
 VOID Display__Hidd_Display__NominalDimensions(OOP_Class *cl, OOP_Object *o, struct pHidd_Display_NominalDimensions *msg)
 {
+    struct Library *OOPBase = CSD(cl)->cs_OOPBase;
+    struct HIDDDisplayData *data = OOP_INST_DATA(cl, o);
+
     EnterFunc(bug("HIDDGfx::NominalDimensions()\n"));
 
     if (msg->width)
@@ -675,7 +776,36 @@ VOID Display__Hidd_Display__NominalDimensions(OOP_Class *cl, OOP_Object *o, stru
     if (msg->height)
         *(msg->height) = AROS_NOMINAL_HEIGHT;
     if (msg->depth)
-        *(msg->depth) = AROS_NOMINAL_DEPTH;
+    {
+        UBYTE nomdepth = AROS_NOMINAL_DEPTH;
+
+        if (data->dmenum)
+        {
+            HIDDT_ModeID mode = vHidd_ModeID_Invalid;
+            OOP_Object *sync = NULL, *pf = NULL;
+            ULONG min_ge_nom = ~0UL;
+
+            while ((mode = HIDD_DMEnum_NextModeID(data->dmenum, mode, &sync, &pf)) != vHidd_ModeID_Invalid)
+            {
+                IPTR d = 0;
+
+                if (DMEnum__Internal__IsSoftwareMode(CSD(cl)->dmenumclass, data->dmenum, mode))
+                    continue;
+
+                if (pf)
+                {
+                    OOP_GetAttr(pf, aHidd_PixFmt_Depth, &d);
+                    if (d >= AROS_NOMINAL_DEPTH && (ULONG)d < min_ge_nom)
+                        min_ge_nom = (ULONG)d;
+                }
+            }
+
+            if (min_ge_nom != ~0UL)
+                nomdepth = (UBYTE)min_ge_nom;
+        }
+
+        *(msg->depth) = nomdepth;
+    }
 }
 
 /*****************************************************************************************
@@ -820,12 +950,18 @@ OOP_Object *Display__Hidd_Display__CreateObject(OOP_Class *cl, OOP_Object *o, st
             {TAG_MORE        , 0},      /* 6 */
         };
         struct TagItem *tag, *tstate = msg->attrList;
+        struct TagItem *cloned_attrlist = NULL;
         ULONG idx;
 
         STRPTR        classid     = NULL;
         OOP_Class    *classptr    = NULL;
         BOOL          displayable = FALSE;
         BOOL          framebuffer = FALSE;
+        BOOL          scanout     = FALSE;
+        HIDDT_ModeID  modeid      = vHidd_ModeID_Invalid;
+        BOOL          got_modeid  = FALSE;
+        BOOL          softmode    = FALSE;
+        BOOL          softfriend  = FALSE;
         HIDDT_StdPixFmt pixfmt    = vHidd_StdPixFmt_Unknown;
         OOP_Object   *friend_bm   = NULL;
         OOP_Object   *sync            = NULL;
@@ -865,6 +1001,10 @@ OOP_Object *Display__Hidd_Display__CreateObject(OOP_Class *cl, OOP_Object *o, st
                         framebuffer = tag->ti_Data;
                         break;
 
+                    case aoHidd_BitMap_Scanout:
+                        scanout = tag->ti_Data;
+                        break;
+
                     case aoHidd_BitMap_Width:
                         got_width = TRUE;
                         break;
@@ -884,6 +1024,8 @@ OOP_Object *Display__Hidd_Display__CreateObject(OOP_Class *cl, OOP_Object *o, st
                             D(bug("!!! Gfx::CreateObject: USER PASSED INVALID MODEID !!!\n"));
                             return NULL;
                         }
+                        modeid = (HIDDT_ModeID)tag->ti_Data;
+                        got_modeid = TRUE;
                         break;
 
                     case aoHidd_BitMap_Friend:
@@ -909,6 +1051,88 @@ OOP_Object *Display__Hidd_Display__CreateObject(OOP_Class *cl, OOP_Object *o, st
                         break;
                 }
             }
+        }
+
+        if (got_modeid && data->dmenum)
+        {
+            softmode = DMEnum__Internal__IsSoftwareMode(CSD(cl)->dmenumclass, data->dmenum, modeid);
+        }
+        else if (friend_bm && pixfmt == vHidd_StdPixFmt_Unknown &&
+                 !GetTagData(aHidd_BitMap_VideoFormat, vHidd_VideoFmt_None, msg->attrList))
+        {
+            IPTR friend_modeid = vHidd_ModeID_Invalid;
+
+            OOP_GetAttr(friend_bm, aHidd_BitMap_ModeID, &friend_modeid);
+            if (friend_modeid != vHidd_ModeID_Invalid && data->dmenum)
+            {
+                softfriend = DMEnum__Internal__IsSoftwareMode(CSD(cl)->dmenumclass, data->dmenum,
+                                                              (HIDDT_ModeID)friend_modeid);
+            }
+        }
+
+        if ((softmode || softfriend) && scanout)
+        {
+            /* Software modes are never hardware scanout targets */
+            return NULL;
+        }
+
+        if (softmode && framebuffer)
+        {
+            /*
+             * Hardware framebuffers must use the sync's native TrueColor ModeID.
+             * Clone msg->attrList and rewrite every aHidd_BitMap_ModeID tag so
+             * caller tag arrays are never mutated in place and BM__Root__New
+             * sees only the native backing ModeID.
+             */
+            HIDDT_ModeID backing_mode = DMEnum__Internal__GetBackingMode(CSD(cl)->dmenumclass,
+                                                                         data->dmenum, modeid);
+            if (backing_mode == vHidd_ModeID_Invalid ||
+                !HIDD_DMEnum_GetMode(data->dmenum, backing_mode, &sync, &pf))
+            {
+                return NULL;
+            }
+
+            cloned_attrlist = CloneTagItems(msg->attrList);
+            if (!cloned_attrlist)
+                return NULL;
+
+            tstate = cloned_attrlist;
+            while ((tag = NextTagItem(&tstate)))
+            {
+                if (tag->ti_Tag == aHidd_BitMap_ModeID)
+                    tag->ti_Data = (IPTR)backing_mode;
+            }
+
+            modeid = backing_mode;
+            softmode = FALSE;
+        }
+        else if (softmode)
+        {
+            /*
+             * Ensure the compositor's palette worker exists before creating a
+             * software-mode bitmap. If worker creation fails, reject only the
+             * optional software bitmap without failing native display operation.
+             */
+            if (!data->compositor ||
+                !Compositor__Internal__CanHandleSoftware(CSD(cl)->compositorclass, data->compositor) ||
+                !Compositor__Internal__EnsurePaletteTask(CSD(cl)->compositorclass, data->compositor))
+            {
+                return NULL;
+            }
+
+            /*
+             * Software-mode screen and offscreen bitmaps always live in RAM
+             * (ChunkyBM), even if a driver subclass prepended its own ClassPtr.
+             */
+            classptr = CSD(cl)->chunkybmclass;
+            classid  = NULL;
+            gotclass = TRUE;
+        }
+        else if (softfriend)
+        {
+            classptr = CSD(cl)->chunkybmclass;
+            classid  = NULL;
+            gotclass = TRUE;
         }
 
         /* If we have a friend bitmap, we can inherit some attributes from it */
@@ -966,7 +1190,25 @@ OOP_Object *Display__Hidd_Display__CreateObject(OOP_Class *cl, OOP_Object *o, st
             if (!gotclass)
             {
                 D(bug("!!! Gfx::CreateObject: SUBCLASS DID NOT PASS CLASS FOR DISPLAYABLE BITMAP !!!\n"));
+                if (cloned_attrlist)
+                    FreeTagItems(cloned_attrlist);
                 return NULL;
+            }
+
+            /*
+             * The mode's own format with its unused byte as alpha asked for
+             * instead, for a plane below the screen: the same bytes, so any
+             * driver scans it out as it would the mode's. No other layout.
+             */
+            if (pixfmt != vHidd_StdPixFmt_Unknown)
+            {
+                HIDDT_PixelFormat *own = (HIDDT_PixelFormat *)pf;
+                HIDDT_PixelFormat *alt = (HIDDT_PixelFormat *)DMEnum__Internal__GetPixFmt(CSD(cl)->dmenumclass, pixfmt);
+
+                if (alt && (alt->bytes_per_pixel == own->bytes_per_pixel) && alt->alpha_mask
+                    && (alt->red_mask == own->red_mask) && (alt->green_mask == own->green_mask)
+                    && (alt->blue_mask == own->blue_mask))
+                    pf = (OOP_Object *)alt;
             }
         }
         else /* if (!displayable) */
@@ -1011,7 +1253,13 @@ OOP_Object *Display__Hidd_Display__CreateObject(OOP_Class *cl, OOP_Object *o, st
             {
                 /* Last alternative is that the user passed a friend bitmap */
 
-                OOP_GetAttr(friend_bm, aHidd_BitMap_PixFmt, (IPTR *)&pf);
+                /*
+                 * A video bitmap (aHidd_BitMap_VideoFormat) has no RGB layout:
+                 * the bitmap class registers its own pixel format, the friend
+                 * only supplies size, class and display.
+                 */
+                if (!GetTagData(aHidd_BitMap_VideoFormat, vHidd_VideoFmt_None, msg->attrList))
+                    OOP_GetAttr(friend_bm, aHidd_BitMap_PixFmt, (IPTR *)&pf);
 
                 /*
                  * Inherit the class from friend bitmap (if not already specified).
@@ -1067,9 +1315,12 @@ OOP_Object *Display__Hidd_Display__CreateObject(OOP_Class *cl, OOP_Object *o, st
         /* Set the tags we want to pass to the selected bitmap class */
         bmtags[0].ti_Data = (IPTR)o;
         bmtags[1].ti_Data = (IPTR)pf;
-        bmtags[6].ti_Data = (IPTR)msg->attrList;
+        bmtags[6].ti_Data = (IPTR)(cloned_attrlist ? cloned_attrlist : msg->attrList);
 
         object = OOP_NewObject(classptr, classid, bmtags);
+
+        if (cloned_attrlist)
+            FreeTagItems(cloned_attrlist);
 
         /*
          * Drivers without a hardware sprite get a software pointer rendered by
@@ -1078,7 +1329,7 @@ OOP_Object *Display__Hidd_Display__CreateObject(OOP_Class *cl, OOP_Object *o, st
          * in a CursorFB bitmap that brackets every drawing operation with a
          * hide/show of the pointer. The drivers themselves are untouched.
          */
-        if (object && (displayable || framebuffer) && display_NeedSoftCursor(cl, o))
+        if (object && !softmode && (displayable || framebuffer) && display_NeedSoftCursor(cl, o))
         {
             OOP_Object *wrapped = create_cursorfb(CSD(cl), o, object);
             if (wrapped)
@@ -1182,6 +1433,15 @@ OOP_Object *Display__Hidd_Display__Show(OOP_Class *cl, OOP_Object *o, struct pHi
 
     if (NULL == data->framebuffer)
     {
+        if (bm && data->dmenum)
+        {
+            IPTR modeid = vHidd_ModeID_Invalid;
+
+            OOP_GetAttr(bm, aHidd_BitMap_ModeID, &modeid);
+            if (DMEnum__Internal__IsSoftwareMode(CSD(cl)->dmenumclass, data->dmenum, (HIDDT_ModeID)modeid))
+                return NULL;
+        }
+
         /*
          * No framebuffer: the shown bitmap is scanned out directly (e.g. vesagfx).
          * The driver's own Show() has already made the bitmap visible. Here we
@@ -1234,6 +1494,12 @@ OOP_Object *Display__Hidd_Display__Show(OOP_Class *cl, OOP_Object *o, struct pHi
          * This operation can fail if the bitmap has inappropriate mode.
          */
         OOP_GetAttr(bm, aHidd_BitMap_ModeID, &modeid);
+        if (data->dmenum &&
+            DMEnum__Internal__IsSoftwareMode(CSD(cl)->dmenumclass, data->dmenum, (HIDDT_ModeID)modeid))
+        {
+            modeid = DMEnum__Internal__GetBackingMode(CSD(cl)->dmenumclass, data->dmenum,
+                                                      (HIDDT_ModeID)modeid);
+        }
         if (!OOP_SetAttrsTags(data->framebuffer, aHidd_BitMap_ModeID, modeid, TAG_DONE))
         {
             ReleaseSemaphore(&data->fbsem);
@@ -1350,8 +1616,150 @@ OOP_Object *Display__Hidd_Display__Show(OOP_Class *cl, OOP_Object *o, struct pHi
 
 ULONG Display__Hidd_Display__ShowViewPorts(OOP_Class *cl, OOP_Object *o, struct pHidd_Display_ShowViewPorts *msg)
 {
-    /* By default we don't support screen composition (and this method too) */
+    /*
+     * The base class does not compose in hardware. Returning FALSE makes
+     * graphics.library call ComposeViewPorts(), which hands the chain to the
+     * display's compositor.
+     */
     return FALSE;
+}
+
+/*****************************************************************************************
+
+    NAME
+        moHidd_Display_ComposeViewPorts
+
+    SYNOPSIS
+        OOP_Object *OOP_DoMethod(OOP_Object *obj, struct pHidd_Display_ComposeViewPorts *msg);
+
+        OOP_Object *HIDD_Display_ComposeViewPorts(OOP_Object *display, struct HIDD_ViewPortData *Data, BOOL *composing);
+
+    LOCATION
+        hidd.gfx.display
+
+    FUNCTION
+        Show a chain of bitmaps through the display's compositor. This is what
+        graphics.library calls when the driver's ShowViewPorts() returned FALSE:
+        the compositor shows the frontmost bitmap directly when it covers the
+        whole display, and composes the chain into one bitmap otherwise.
+
+    INPUTS
+        display   - the display object
+        Data      - a singly linked list of bitmaps to show, frontmost first;
+                    NULL blanks the display
+        composing - set to TRUE when the display now shows a composed bitmap
+                    rather than the frontmost bitmap itself
+
+    RESULT
+        The bitmap object actually scanned out (what Show() returned), or NULL
+        for a blank display.
+
+    NOTES
+        A driver with a hardware compositor overrides ShowViewPorts() and
+        never sees this method. A driver that wants the system compositor for
+        some chains only returns FALSE from its ShowViewPorts() for them.
+
+    SEE ALSO
+        moHidd_Display_ShowViewPorts, moHidd_Display_Show
+
+*****************************************************************************************/
+
+OOP_Object *Display__Hidd_Display__ComposeViewPorts(OOP_Class *cl, OOP_Object *o, struct pHidd_Display_ComposeViewPorts *msg)
+{
+    struct HIDDDisplayData *data = OOP_INST_DATA(cl, o);
+
+    if (data->compositor)
+        return HIDD_Compositor_BitMapStackChanged(data->compositor, msg->Data, msg->composing);
+
+    *msg->composing = FALSE;
+    return HIDD_Display_Show(o, msg->Data ? msg->Data->Bitmap : NULL, fHidd_Display_Show_CopyBack);
+}
+
+/*****************************************************************************************
+
+    NAME
+        moHidd_Display_ViewPortPositionChange
+
+    SYNOPSIS
+        BOOL OOP_DoMethod(OOP_Object *obj, struct pHidd_Display_ViewPortPositionChange *msg);
+
+        BOOL HIDD_Display_ViewPortPositionChange(OOP_Object *display, OOP_Object *bitMap, SIPTR *x, SIPTR *y);
+
+    LOCATION
+        hidd.gfx.display
+
+    FUNCTION
+        A shown bitmap is being moved on the display (screen drag or scroll).
+        The caller has already stored the new offsets in the bitmap's LeftEdge
+        and TopEdge attributes; the display's compositor validates them, clamps
+        them to what composition allows and writes the result back.
+
+    INPUTS
+        display - the display object
+        bitMap  - the bitmap being moved
+        x, y    - the requested offsets, updated to the validated ones
+
+    RESULT
+        TRUE when composition is active after the move, FALSE when the
+        bitmap is scanned out directly.
+
+*****************************************************************************************/
+
+BOOL Display__Hidd_Display__ViewPortPositionChange(OOP_Class *cl, OOP_Object *o, struct pHidd_Display_ViewPortPositionChange *msg)
+{
+    struct HIDDDisplayData *data = OOP_INST_DATA(cl, o);
+
+    if (data->compositor)
+        return HIDD_Compositor_BitMapPositionChange(data->compositor, msg->bitMap, msg->x, msg->y);
+
+    return FALSE;
+}
+
+/*****************************************************************************************
+
+    NAME
+        moHidd_Display_UpdateRect
+
+    SYNOPSIS
+        VOID OOP_DoMethod(OOP_Object *obj, struct pHidd_Display_UpdateRect *msg);
+
+        VOID HIDD_Display_UpdateRect(OOP_Object *display, OOP_Object *bitMap, WORD x, WORD y, UWORD width, UWORD height);
+
+    LOCATION
+        hidd.gfx.display
+
+    FUNCTION
+        A rectangle of a bitmap belonging to this display has been rendered to.
+        While composing, the compositor re-composes the visible part of it;
+        otherwise the change is passed to the bitmap's own UpdateRect().
+
+    NOTES
+        This is called after every rendering operation, so graphics.library
+        caches the method with OOP_GetMethod() and the display calls its
+        compositor through a cached method pointer as well.
+
+*****************************************************************************************/
+
+VOID Display__Hidd_Display__UpdateRect(OOP_Class *cl, OOP_Object *o, struct pHidd_Display_UpdateRect *msg)
+{
+    struct HIDDDisplayData *data = OOP_INST_DATA(cl, o);
+
+    if (data->comp_RectChanged)
+    {
+        struct pHidd_Compositor_BitMapRectChanged cmsg =
+        {
+            .mID    = HiddCompositorBase + moHidd_Compositor_BitMapRectChanged,
+            .bm     = msg->bitMap,
+            .x      = msg->x,
+            .y      = msg->y,
+            .width  = msg->width,
+            .height = msg->height
+        };
+
+        data->comp_RectChanged(data->comp_RectChanged_cl, data->compositor, (OOP_Msg)&cmsg);
+    }
+    else
+        HIDD_BM_UpdateRect(msg->bitMap, msg->x, msg->y, msg->width, msg->height);
 }
 
 /*****************************************************************************************
@@ -1962,4 +2370,579 @@ ULONG Display__Hidd_Display__InitViewPorts(OOP_Class *cl, OOP_Object *o, struct 
     D(bug("[HiddDisplay] %s()\n", __func__));
 
     return MCOP_OK;
+}
+
+/*****************************************************************************************
+
+    NAME
+        moHidd_Display_SurfaceStackChanged
+
+    SYNOPSIS
+        VOID OOP_DoMethod(OOP_Object *obj, struct pHidd_Display_SurfaceStackChanged *msg);
+
+        VOID HIDD_Display_SurfaceStackChanged(OOP_Object *display, struct HIDD_ViewPortData *Data);
+
+    LOCATION
+        hidd.gfx.display
+
+    FUNCTION
+        The composited layer surfaces (Data->Surfaces) of a shown ViewPort
+        changed. The display's compositor re-composes the affected area.
+
+    NOTES
+        graphics.library calls this from its private LayerSurfacesChanged()
+        entry on behalf of layers.library.
+
+*****************************************************************************************/
+
+VOID Display__Hidd_Display__SurfaceStackChanged(OOP_Class *cl, OOP_Object *o, struct pHidd_Display_SurfaceStackChanged *msg)
+{
+    struct HIDDDisplayData *data = OOP_INST_DATA(cl, o);
+
+    if (data->compositor)
+        HIDD_Compositor_SurfaceStackChanged(data->compositor, msg->Data);
+}
+
+/*****************************************************************************************
+
+    NAME
+        moHidd_Display_GetPlaneInfo
+
+    SYNOPSIS
+        ULONG OOP_DoMethod(OOP_Object *obj, struct pHidd_Display_GetPlaneInfo *msg);
+
+        ULONG HIDD_Display_GetPlaneInfo(OOP_Object *display, ULONG index, struct HIDD_PlaneInfo *info, ULONG infoLen);
+
+    LOCATION
+        hidd.gfx.display
+
+    FUNCTION
+        Describe one of the display's scan-out planes: its type, the z-order
+        positions it can take, the pixel formats it can scan out, how much it
+        can scale, which alpha blending it does, and its alignment and size
+        limits. The display's compositor uses this to decide which composition
+        requests can be scanned out directly and which must be blitted.
+
+    INPUTS
+        display - the display object
+        index   - 0 .. aHidd_Display_PlaneCount - 1
+        info    - where to store the description
+        infoLen - size of the buffer, so that the structure may grow
+
+    RESULT
+        The number of bytes stored, 0 if there is no such plane.
+
+    NOTES
+        The base class has one plane, the primary: any displayable pixel
+        format, no scaling, no blending. It is what Show() drives.
+
+        A primary that reports a scale range (ScaleMin/ScaleMax other than
+        unity) must handle fHidd_Display_Show_Scale in Show(): the compositor
+        then passes a scaled screen through rather than composing it.
+
+*****************************************************************************************/
+
+ULONG Display__Hidd_Display__GetPlaneInfo(OOP_Class *cl, OOP_Object *o, struct pHidd_Display_GetPlaneInfo *msg)
+{
+    struct HIDD_PlaneInfo info =
+    {
+        .Type       = vHidd_Plane_Primary,
+        .ZMin       = 0,
+        .ZMax       = 0,
+        .PixFmtMask = 0xFFFFFFFF,
+        .ScaleMin   = HIDD_PLANE_SCALE_UNITY,
+        .ScaleMax   = HIDD_PLANE_SCALE_UNITY,
+        .AlphaModes = (1 << vHidd_CompAlpha_None),
+        .PosAlignX  = 1,
+        .PosAlignY  = 1,
+        .MaxWidth   = 0,
+        .MaxHeight  = 0,
+        .Flags      = 0
+    };
+    ULONG len = msg->infoLen;
+
+    if (msg->index != 0)
+        return 0;
+
+    if (len > sizeof(info))
+        len = sizeof(info);
+    CopyMem(&info, msg->info, len);
+
+    return len;
+}
+
+/*****************************************************************************************
+
+    NAME
+        moHidd_Display_CommitPlanes
+
+    SYNOPSIS
+        BOOL OOP_DoMethod(OOP_Object *obj, struct pHidd_Display_CommitPlanes *msg);
+
+        BOOL HIDD_Display_CommitPlanes(OOP_Object *display, struct HIDD_PlaneState *states, ULONG count, ULONG flags);
+
+    LOCATION
+        hidd.gfx.display
+
+    FUNCTION
+        Apply a complete set of plane states atomically: every plane named in
+        the array takes its new bitmap, rectangles and blending at the same
+        frame boundary; planes not named keep their state. A NULL BitMap
+        disables a plane.
+
+    INPUTS
+        display - the display object
+        states  - the plane states to apply
+        count   - how many
+        flags   - fHidd_Commit_NoWait: return as soon as the state is queued;
+                  fHidd_Commit_Test: validate against GetPlaneInfo() only
+
+    RESULT
+        TRUE when the states are valid (and, unless testing, applied).
+
+    NOTES
+        The base class implements its single primary plane with Show(): the
+        bitmap of the plane 0 state is shown, unscaled, at the origin.
+
+    SEE ALSO
+        moHidd_Display_GetPlaneInfo, moHidd_Display_WaitLatch, moHidd_Display_Show
+
+*****************************************************************************************/
+
+BOOL Display__Hidd_Display__CommitPlanes(OOP_Class *cl, OOP_Object *o, struct pHidd_Display_CommitPlanes *msg)
+{
+    struct HIDD_PlaneState *primary = NULL;
+    ULONG i;
+
+    for (i = 0; i < msg->count; i++)
+    {
+        struct HIDD_PlaneState *st = &msg->states[i];
+
+        if (st->Plane != 0)
+            return FALSE;
+        if (st->BitMap)
+        {
+            /* The primary scans the bitmap out as it is: no offset, no scaling, no blending */
+            if ((st->Dest.MinX != 0) || (st->Dest.MinY != 0) || (st->Src.MinX != 0) || (st->Src.MinY != 0))
+                return FALSE;
+            if (((st->Dest.MaxX - st->Dest.MinX) != (st->Src.MaxX - st->Src.MinX)) ||
+                ((st->Dest.MaxY - st->Dest.MinY) != (st->Src.MaxY - st->Src.MinY)))
+                return FALSE;
+            if (st->AlphaMode != vHidd_CompAlpha_None)
+                return FALSE;
+        }
+        primary = st;
+    }
+
+    if (!primary || (msg->flags & fHidd_Commit_Test))
+        return TRUE;
+
+    HIDD_Display_Show(o, primary->BitMap, fHidd_Display_Show_CopyBack);
+    return TRUE;
+}
+
+/*****************************************************************************************
+
+    NAME
+        moHidd_Display_WaitLatch
+
+    SYNOPSIS
+        VOID OOP_DoMethod(OOP_Object *obj, struct pHidd_Display_WaitLatch *msg);
+
+        VOID HIDD_Display_WaitLatch(OOP_Object *display);
+
+    LOCATION
+        hidd.gfx.display
+
+    FUNCTION
+        Wait until the last CommitPlanes() has been scanned out, i.e. until
+        the bitmaps it replaced are no longer read by the hardware and may be
+        reused or freed.
+
+    NOTES
+        The base class shows bitmaps synchronously and returns at once.
+
+*****************************************************************************************/
+
+VOID Display__Hidd_Display__WaitLatch(OOP_Class *cl, OOP_Object *o, struct pHidd_Display_WaitLatch *msg)
+{
+}
+
+/*****************************************************************************************
+
+    NAME
+        moHidd_Display_QueryScanout
+
+    SYNOPSIS
+        ULONG OOP_DoMethod(OOP_Object *obj, struct pHidd_Display_QueryScanout *msg);
+
+        ULONG HIDD_Display_QueryScanout(OOP_Object *display, HIDDT_StdPixFmt pixFmt, ULONG videoFmt,
+                                        ULONG width, ULONG height, struct HIDD_ScanoutCaps *caps);
+
+    LOCATION
+        hidd.gfx.display
+
+    FUNCTION
+        Asks whether a plane of this display can show a client surface of the
+        given format and source size: a video format (videoFmt != 0, pixFmt is
+        then ignored) or a standard RGB pixel format. The answer is SCF_* flags,
+        0 when no plane can show it at all; caps (may be NULL) receives the
+        details. cgxvideo.library and gallium.library ask this before creating
+        a scan-out bitmap (aHidd_BitMap_Scanout) through moHidd_Display_CreateObject.
+
+        The base class answers 0: its one plane shows screens, not surfaces.
+        A driver answers from its plane set; a driver that cannot scan the
+        format out in hardware must answer 0, there is no software fallback in
+        the system (the client provides its own).
+
+    INPUTS
+        display  - the display
+        pixFmt   - vHidd_StdPixFmt_* of an RGB surface
+        videoFmt - vHidd_VideoFmt_* of a video surface, or vHidd_VideoFmt_None
+        width    - source width in pixels
+        height   - source height in pixels
+        caps     - filled in when non-NULL
+
+    RESULT
+        SCF_* flags, 0 = not possible.
+
+    SEE ALSO
+        moHidd_Display_AttachSurface, moHidd_Display_GetPlaneInfo
+
+*****************************************************************************************/
+
+ULONG Display__Hidd_Display__QueryScanout(OOP_Class *cl, OOP_Object *o, struct pHidd_Display_QueryScanout *msg)
+{
+    struct Library *UtilityBase = CSD(cl)->cs_UtilityBase;
+
+    if (msg->caps)
+        SetMem(msg->caps, 0, sizeof(struct HIDD_ScanoutCaps));
+    return 0;
+}
+
+/*****************************************************************************************
+
+    NAME
+        moHidd_Display_QueryDecode
+
+    SYNOPSIS
+        ULONG OOP_DoMethod(OOP_Object *obj, struct pHidd_Display_QueryDecode *msg);
+
+        ULONG HIDD_Display_QueryDecode(OOP_Object *display, LONG profile, ULONG width,
+                                       ULONG height, struct HIDD_DecodeCaps *caps);
+
+    LOCATION
+        hidd.gfx.display
+
+    FUNCTION
+        Asks whether this display's hardware decoder can decode a stream of
+        the given VA-API profile (a VAProfile value, <va/va.h>) and picture
+        size. The answer is DCF_* flags, 0 when it cannot; caps (may be NULL)
+        receives the details: size limits, the vHidd_VideoFmt_* and
+        vHidd_VideoLayout_* it writes, and how many reference frames it holds.
+        A size of 0 x 0 asks about the profile alone.
+
+        Decoding then goes through a decode interface
+        (moHidd_Display_GetDecodeInterface) into video bitmaps created with
+        aHidd_BitMap_DecodeTarget through moHidd_Display_CreateObject.
+
+        The base class answers 0: there is no software decoder in the system.
+
+    INPUTS
+        display - the display
+        profile - VAProfile value
+        width   - picture width in pixels, or 0
+        height  - picture height in pixels, or 0
+        caps    - filled in when non-NULL
+
+    RESULT
+        DCF_* flags, 0 = not possible.
+
+    SEE ALSO
+        moHidd_Display_GetDecodeInterface, moHidd_Display_QueryScanout
+
+*****************************************************************************************/
+
+ULONG Display__Hidd_Display__QueryDecode(OOP_Class *cl, OOP_Object *o, struct pHidd_Display_QueryDecode *msg)
+{
+    struct Library *UtilityBase = CSD(cl)->cs_UtilityBase;
+
+    if (msg->caps)
+        SetMem(msg->caps, 0, sizeof(struct HIDD_DecodeCaps));
+    return 0;
+}
+
+/* Entries a driver's (older, shorter) decode table does not have */
+static BOOL DecodeStub_BeginFrame(APTR obj, OOP_Object *bitmap, ULONG buffer)            { return FALSE; }
+static BOOL DecodeStub_SubmitParams(APTR obj, ULONG type, APTR data, ULONG size, ULONG count) { return FALSE; }
+static BOOL DecodeStub_SubmitBitstream(APTR obj, APTR data, ULONG size)                 { return FALSE; }
+static BOOL DecodeStub_EndFrame(APTR obj)                                                { return FALSE; }
+static ULONG DecodeStub_Sync(APTR obj, OOP_Object *bitmap, ULONG buffer, ULONG timeoutms) { return vHidd_DecodeStatus_Error; }
+static ULONG DecodeStub_Status(APTR obj, OOP_Object *bitmap, ULONG buffer)              { return vHidd_DecodeStatus_Error; }
+
+static const struct HIDD_DecodeInterface DecodeStubs =
+{
+    sizeof(struct HIDD_DecodeInterface),
+    DecodeStub_BeginFrame,
+    DecodeStub_SubmitParams,
+    DecodeStub_SubmitBitstream,
+    DecodeStub_EndFrame,
+    DecodeStub_Sync,
+    DecodeStub_Status
+};
+
+/*****************************************************************************************
+
+    NAME
+        moHidd_Display_GetDecodeInterface
+
+    SYNOPSIS
+        APTR OOP_DoMethod(OOP_Object *obj, struct pHidd_Display_GetDecodeInterface *msg);
+
+        APTR HIDD_Display_GetDecodeInterface(OOP_Object *display, LONG profile, ULONG width,
+                                             ULONG height, struct Hook *resolve, ULONG flags);
+
+    LOCATION
+        hidd.gfx.display
+
+    FUNCTION
+        Starts a hardware decode session for a stream of the given VA-API
+        profile and coded size, and returns its decode interface: an opaque
+        object used with the HIDD_Decode_*() stubs of <hidd/gfx.h>. Each call
+        starts a new session; a caller decoding two streams gets two
+        interfaces. End a session with moHidd_Display_FreeDecodeInterface.
+
+        Frames are decoded into buffers of video bitmaps created through this
+        display with aHidd_BitMap_DecodeTarget; HIDD_Decode_BeginFrame() names
+        the target of each. Surface IDs in the VA structures the caller
+        submits (reference frames) are resolved with the resolve hook:
+        CallHookPkt(resolve, iface, struct HIDD_DecodeSurfaceMsg *), which
+        fills in the bitmap and buffer holding that surface and returns TRUE.
+
+    INPUTS
+        display - the display
+        profile - VAProfile value (<va/va.h>)
+        width   - coded picture width
+        height  - coded picture height
+        resolve - surface ID hook, must stay valid for the session
+        flags   - reserved, 0
+
+    RESULT
+        The interface, or NULL when the display cannot decode the stream.
+
+    NOTES
+        The base class only builds the instance: it allocates the driver's
+        vector table (aHidd_Display_DecodeVectors) followed by
+        aHidd_Display_DecodeDataSize bytes of cleared driver data and returns
+        the data part, or NULL when the driver gave no vectors. A driver
+        overrides the method, calls the superclass and sets up its session in
+        the data part, as ata.device bus drivers do for their PIO and DMA
+        interfaces; it must not allocate the interface itself.
+
+        A driver's Dispose ends the sessions still open before it calls the
+        superclass, which then frees their memory.
+
+    SEE ALSO
+        moHidd_Display_FreeDecodeInterface, moHidd_Display_QueryDecode,
+        aHidd_BitMap_DecodeTarget
+
+*****************************************************************************************/
+
+APTR Display__Hidd_Display__GetDecodeInterface(OOP_Class *cl, OOP_Object *o, struct pHidd_Display_GetDecodeInterface *msg)
+{
+    struct HIDDDisplayData *data = OOP_INST_DATA(cl, o);
+    struct DecodeInstance *inst;
+    IPTR size;
+    ULONG vecsize;
+
+    if (!data->decodevectors || !msg->resolve)
+        return NULL;
+
+    size = sizeof(struct DecodeInstance) + data->decodedatasize;
+    inst = AllocMem(size, MEMF_PUBLIC | MEMF_CLEAR);
+    if (!inst)
+        return NULL;
+
+    inst->allocsize = size;
+
+    /* Driver entries over the stubs; the table always has the current size */
+    CopyMem((APTR)&DecodeStubs, &inst->vec, sizeof(struct HIDD_DecodeInterface));
+    vecsize = data->decodevectors->di_Size;
+    if (vecsize > sizeof(struct HIDD_DecodeInterface))
+        vecsize = sizeof(struct HIDD_DecodeInterface);
+    if (vecsize > offsetof(struct HIDD_DecodeInterface, di_BeginFrame))
+        CopyMem((UBYTE *)data->decodevectors + offsetof(struct HIDD_DecodeInterface, di_BeginFrame),
+                &inst->vec.di_BeginFrame,
+                vecsize - offsetof(struct HIDD_DecodeInterface, di_BeginFrame));
+    inst->vec.di_Size = sizeof(struct HIDD_DecodeInterface);
+
+    ObtainSemaphore(&data->decodesem);
+    AddTail((struct List *)&data->decodes, (struct Node *)&inst->node);
+    ReleaseSemaphore(&data->decodesem);
+
+    return DECODEINST_DATA(inst);
+}
+
+/*****************************************************************************************
+
+    NAME
+        moHidd_Display_FreeDecodeInterface
+
+    SYNOPSIS
+        VOID OOP_DoMethod(OOP_Object *obj, struct pHidd_Display_FreeDecodeInterface *msg);
+
+        VOID HIDD_Display_FreeDecodeInterface(OOP_Object *display, APTR iface);
+
+    LOCATION
+        hidd.gfx.display
+
+    FUNCTION
+        Ends a decode session started with moHidd_Display_GetDecodeInterface.
+        Decoding in flight completes first; the target buffers keep what was
+        decoded into them.
+
+    INPUTS
+        display - the display the interface was obtained from
+        iface   - the interface, may be NULL
+
+    NOTES
+        A driver overrides it to end its session (waiting for its engine) and
+        then calls the superclass, which frees the instance.
+
+*****************************************************************************************/
+
+VOID Display__Hidd_Display__FreeDecodeInterface(OOP_Class *cl, OOP_Object *o, struct pHidd_Display_FreeDecodeInterface *msg)
+{
+    struct HIDDDisplayData *data = OOP_INST_DATA(cl, o);
+    struct DecodeInstance *inst;
+
+    if (!msg->iface)
+        return;
+
+    inst = DECODEINST_FROM(msg->iface);
+
+    ObtainSemaphore(&data->decodesem);
+    Remove((struct Node *)&inst->node);
+    ReleaseSemaphore(&data->decodesem);
+
+    FreeMem(inst, inst->allocsize);
+}
+
+/*****************************************************************************************
+
+    NAME
+        moHidd_Display_AttachSurface
+
+    SYNOPSIS
+        BOOL OOP_DoMethod(OOP_Object *obj, struct pHidd_Display_AttachSurface *msg);
+
+        BOOL HIDD_Display_AttachSurface(OOP_Object *display, OOP_Object *screenBitMap,
+                                        struct HIDD_CompositeRequest *request, struct Hook *hook);
+
+    LOCATION
+        hidd.gfx.display
+
+    FUNCTION
+        Attaches a client surface (a video overlay or a 3D colour buffer) to a
+        screen shown on this display. The request describes the surface: BitMap
+        is a scan-out bitmap, Src the part of it shown, Dest its rectangle in
+        screen bitmap coordinates, Shape the visible region in the same
+        coordinates (NULL = all of Dest), Flags carry CRF_PLANE_REQUIRED (video,
+        never blitted) or CRF_PLANE_OK (may be blitted when no plane is free)
+        and CRF_SCALED. The request belongs to the caller and must stay valid and
+        unchanged while attached, except through moHidd_Display_UpdateSurface.
+
+        The display's compositor shows the surface above the screen's own
+        content, on a hardware plane where it can (cropped to its visible
+        rectangle or colour keyed), and calls hook (CallHookPkt(hook, display,
+        struct HIDD_SurfaceHookMsg *)) when the client should look at the screen
+        again (vHidd_SurfaceHook_Damage) or the plane state changed. The hook
+        runs in the task that caused the event, with no compositor lock held,
+        and must not block.
+
+    INPUTS
+        display      - the display
+        screenBitMap - the screen's bitmap object (HIDD_BM_OBJ of the screen bitmap)
+        request      - the surface description, owned by the caller
+        hook         - notification hook, may be NULL
+
+    RESULT
+        TRUE when attached. FALSE when the display cannot compose surfaces.
+
+    SEE ALSO
+        moHidd_Display_UpdateSurface, moHidd_Display_DetachSurface, moHidd_Display_QueryScanout
+
+*****************************************************************************************/
+
+BOOL Display__Hidd_Display__AttachSurface(OOP_Class *cl, OOP_Object *o, struct pHidd_Display_AttachSurface *msg)
+{
+    struct HIDDDisplayData *data = OOP_INST_DATA(cl, o);
+
+    if (!data->compositor || !msg->request || !msg->screenBitMap)
+        return FALSE;
+    return HIDD_Compositor_AttachSurface(data->compositor, msg->screenBitMap, msg->request, msg->hook);
+}
+
+/*****************************************************************************************
+
+    NAME
+        moHidd_Display_UpdateSurface
+
+    SYNOPSIS
+        VOID OOP_DoMethod(OOP_Object *obj, struct pHidd_Display_UpdateSurface *msg);
+
+        VOID HIDD_Display_UpdateSurface(OOP_Object *display, struct HIDD_CompositeRequest *request);
+
+    LOCATION
+        hidd.gfx.display
+
+    FUNCTION
+        Tells the display that an attached request changed (Dest, Shape, Src,
+        Flags, Opacity). The caller edits the request in place and then calls
+        this; the compositor re-evaluates the surface's plane and redraws.
+
+    INPUTS
+        display - the display
+        request - an attached request
+
+*****************************************************************************************/
+
+VOID Display__Hidd_Display__UpdateSurface(OOP_Class *cl, OOP_Object *o, struct pHidd_Display_UpdateSurface *msg)
+{
+    struct HIDDDisplayData *data = OOP_INST_DATA(cl, o);
+
+    if (data->compositor && msg->request)
+        HIDD_Compositor_UpdateSurface(data->compositor, msg->request);
+}
+
+/*****************************************************************************************
+
+    NAME
+        moHidd_Display_DetachSurface
+
+    SYNOPSIS
+        VOID OOP_DoMethod(OOP_Object *obj, struct pHidd_Display_DetachSurface *msg);
+
+        VOID HIDD_Display_DetachSurface(OOP_Object *display, struct HIDD_CompositeRequest *request);
+
+    LOCATION
+        hidd.gfx.display
+
+    FUNCTION
+        Removes an attached surface. When it returns the plane (if any) is off,
+        the area is redrawn and the hook is not called again; the request and
+        the bitmap may then be freed.
+
+    INPUTS
+        display - the display
+        request - an attached request
+
+*****************************************************************************************/
+
+VOID Display__Hidd_Display__DetachSurface(OOP_Class *cl, OOP_Object *o, struct pHidd_Display_DetachSurface *msg)
+{
+    struct HIDDDisplayData *data = OOP_INST_DATA(cl, o);
+
+    if (data->compositor && msg->request)
+        HIDD_Compositor_DetachSurface(data->compositor, msg->request);
 }

@@ -16,6 +16,7 @@
 #include "graphics_intern.h"
 #include "gfxfuncsupport.h"
 #include "dispinfo.h"
+#include "graphics_private.h"
 
 #define SET_TAG(tags, idx, tag, val)    \
     tags[idx].ti_Tag = tag ; tags[idx].ti_Data = (IPTR)val;
@@ -23,7 +24,10 @@
 #define SET_BM_TAG(tags, idx, tag, val) \
     SET_TAG(tags, idx, aHidd_BitMap_ ## tag, val)
 
-static HIDDT_StdPixFmt const cyber2hidd_pixfmt[] = {
+/* Kept in bytes: every standard pixel format number fits */
+_Static_assert(num_Hidd_AllPf <= 256, "cyber2hidd_pixfmt[] entries are UBYTE");
+
+static const UBYTE cyber2hidd_pixfmt[] = {
     vHidd_StdPixFmt_LUT8,
     vHidd_StdPixFmt_RGB15,
     vHidd_StdPixFmt_BGR15,
@@ -39,6 +43,112 @@ static HIDDT_StdPixFmt const cyber2hidd_pixfmt[] = {
     vHidd_StdPixFmt_BGRA32,
     vHidd_StdPixFmt_RGBA32
 };
+
+/* The same pixel layout: pixel values mean the same in both */
+static BOOL same_pixel_layout(OOP_Object *pf1, OOP_Object *pf2, struct GfxBase *GfxBase)
+{
+    static const UBYTE layout_attrs[] = {
+        aoHidd_PixFmt_ColorModel, aoHidd_PixFmt_BytesPerPixel,
+        aoHidd_PixFmt_RedMask, aoHidd_PixFmt_GreenMask,
+        aoHidd_PixFmt_BlueMask, aoHidd_PixFmt_AlphaMask,
+        aoHidd_PixFmt_SwapPixelBytes
+    };
+    IPTR a, b;
+    ULONG i;
+
+    if (pf1 == pf2)
+        return TRUE;
+
+    OOP_GetAttr(pf1, aHidd_PixFmt_StdPixFmt, &a);
+    OOP_GetAttr(pf2, aHidd_PixFmt_StdPixFmt, &b);
+    if (a != b)
+        return FALSE;
+    if (a != vHidd_StdPixFmt_Unknown)
+        return TRUE;
+
+    /* Compared in this order, up to the first difference */
+    for (i = 0; i < sizeof(layout_attrs); i++)
+    {
+        OOP_GetAttr(pf1, HiddPixFmtAttrBase + layout_attrs[i], &a);
+        OOP_GetAttr(pf2, HiddPixFmtAttrBase + layout_attrs[i], &b);
+        if (a != b)
+            return FALSE;
+    }
+    return TRUE;
+}
+
+/*
+ * A bitmap allocated as a friend of a bitmap in another pixel layout cannot
+ * share the friend's colormap and pixel table: their pixel values are in the
+ * friend's layout (and a friend without an alpha channel gives no alpha bits,
+ * so every pen would render fully transparent on a bitmap with one). Give it
+ * a colormap and pixel table of its own, with the friend's colours mapped
+ * through its own pixel format and opaque, and register it for colour
+ * updates on the friend. Returns FALSE when the bitmap is to share the
+ * friend's colours in the ordinary way.
+ */
+static BOOL own_friend_colors(struct BitMap *nbm, struct BitMap *friend_bitmap, struct GfxBase *GfxBase)
+{
+    OOP_Object  *bm_obj = HIDD_BM_OBJ(nbm);
+    OOP_Object  *pf, *friendpf;
+    IPTR         alphamask = 0, friendalphamask = 0;
+    HIDDT_Color *colors;
+    ULONG        i;
+    BOOL         ok = FALSE;
+
+    if (!bm_obj || !HIDD_BM_OBJ(friend_bitmap) || !HIDD_BM_COLMAP(friend_bitmap))
+        return FALSE;
+
+    OOP_GetAttr(bm_obj, aHidd_BitMap_PixFmt, (IPTR *)&pf);
+    OOP_GetAttr(pf, aHidd_PixFmt_AlphaMask, &alphamask);
+    OOP_GetAttr(HIDD_BM_OBJ(friend_bitmap), aHidd_BitMap_PixFmt, (IPTR *)&friendpf);
+    OOP_GetAttr(friendpf, aHidd_PixFmt_AlphaMask, &friendalphamask);
+
+    if (same_pixel_layout(pf, friendpf, GfxBase))
+        return FALSE;
+
+    colors = AllocMem(sizeof(HIDDT_Color) * AROS_PALETTE_SIZE, MEMF_ANY);
+    if (!colors)
+        return FALSE;
+
+    HIDD_BM_PIXTAB(nbm) = AllocVec(sizeof(HIDDT_Pixel) * AROS_PALETTE_SIZE, MEMF_ANY);
+    if (HIDD_BM_PIXTAB(nbm))
+    {
+        for (i = 0; i < AROS_PALETTE_SIZE; i++)
+        {
+            if (!HIDD_CM_GetColor(HIDD_BM_COLMAP(friend_bitmap), i, &colors[i]))
+                colors[i].red = colors[i].green = colors[i].blue = 0;
+            colors[i].alpha = 0xFFFF;   /* pens are opaque */
+        }
+
+        /* into the bitmap's own colormap, mapped for its own pixel format */
+        if (HIDD_BM_SetColors(bm_obj, colors, 0, AROS_PALETTE_SIZE))
+        {
+            for (i = 0; i < AROS_PALETTE_SIZE; i++)
+                HIDD_BM_PIXTAB(nbm)[i] = colors[i].pixval;
+
+            HIDD_BM_COLMAP(nbm) = (OOP_Object *)OOP_GET(bm_obj, aHidd_BitMap_ColorMap);
+
+            if (gfx_AddAlphaPixTab(nbm, gfx_PixTabSource(friend_bitmap, GfxBase), GfxBase))
+            {
+                HIDD_BM_FLAGS(nbm) |= HIDD_BMF_OWN_PIXTAB;
+                if (alphamask && !friendalphamask)
+                    HIDD_BM_FLAGS(nbm) |= HIDD_BMF_CLEAR_ALPHA;
+                ok = TRUE;
+            }
+        }
+
+        if (!ok)
+        {
+            FreeVec(HIDD_BM_PIXTAB(nbm));
+            HIDD_BM_PIXTAB(nbm) = NULL;
+        }
+    }
+
+    FreeMem(colors, sizeof(HIDDT_Color) * AROS_PALETTE_SIZE);
+
+    return ok;
+}
 
 /*****************************************************************************
 
@@ -191,6 +301,7 @@ static HIDDT_StdPixFmt const cyber2hidd_pixfmt[] = {
     struct DisplayInfoHandle *dh;
     struct gfxdisplay_data *drv = NULL;
     ULONG clear = flags & BMF_CLEAR;
+    HIDDT_StdPixFmt tagpf = vHidd_StdPixFmt_Unknown;
     BOOL alloc = TRUE;
 
     if(BITMAPFLAGS_ARE_EXTENDED(flags)) {
@@ -216,6 +327,11 @@ static HIDDT_StdPixFmt const cyber2hidd_pixfmt[] = {
                 alloc = !tag->ti_Data;
                 break;
 
+            case BMATags_CGXPixFmt:     /* private, graphics_private.h */
+                if(tag->ti_Data <= PIXFMT_RGBA32)
+                    tagpf = cyber2hidd_pixfmt[tag->ti_Data];
+                break;
+
             case BMATags_DisplayID:
                 dh = FindDisplayInfo(tag->ti_Data);
                 if(!dh)
@@ -231,6 +347,12 @@ static HIDDT_StdPixFmt const cyber2hidd_pixfmt[] = {
     }
 
     ASSERT_VALID_PTR_OR_NULL(friend_bitmap);
+
+    /* A friend requests a compatible storage layout, including interleaved
+     * planes. Classic image loaders use that layout for their row data. */
+    if (friend_bitmap && (friend_bitmap->Flags & BMF_INTERLEAVED))
+        flags |= BMF_INTERLEAVED;
+
     D(bug("AllocBitMap(%u, %u, %u, 0x%08lX)\n", sizex, sizey, depth, flags));
     D(bug("[AllocBitMap] ModeID: 0x%08lX, friend_bitmap: 0x%p\n", hiddmode, friend_bitmap));
 
@@ -244,7 +366,7 @@ static HIDDT_StdPixFmt const cyber2hidd_pixfmt[] = {
             (friend_bitmap && (friend_bitmap->pad == HIDD_BM_PAD_MAGIC)) ||
             (flags & BMF_SPECIALFMT) ||
             ((flags & BMF_REQUESTVMEM) == BMF_REQUESTVMEM)) {
-        struct TagItem bm_tags[9];
+        struct TagItem bm_tags[10];
         HIDDT_StdPixFmt stdpf = vHidd_StdPixFmt_Unknown;
 
         D(bug("[AllocBitMap] Allocating HIDD bitmap\n"));
@@ -287,6 +409,20 @@ static HIDDT_StdPixFmt const cyber2hidd_pixfmt[] = {
 
             if(cgxpf <= PIXFMT_RGBA32)
                 stdpf = cyber2hidd_pixfmt[cgxpf];
+        } else if(tagpf != vHidd_StdPixFmt_Unknown) {
+            /* BMATags_CGXPixFmt: the format, with a mode only one of its size of pixel */
+            stdpf = tagpf;
+            if((hiddmode != vHidd_ModeID_Invalid) && drv) {
+                OOP_Object *sync, *modepf, *pf = HIDD_DMEnum_GetPixFmt(drv->display_dmenum, stdpf);
+                IPTR modebpp = 0, bpp = 0;
+
+                if(pf && HIDD_DMEnum_GetMode(drv->display_dmenum, hiddmode, &sync, &modepf)) {
+                    OOP_GetAttr(modepf, aHidd_PixFmt_BytesPerPixel, &modebpp);
+                    OOP_GetAttr(pf, aHidd_PixFmt_BytesPerPixel, &bpp);
+                }
+                if(!bpp || (bpp != modebpp))
+                    stdpf = vHidd_StdPixFmt_Unknown;    /* the mode's own then */
+            }
         } else if((!friend_bitmap) && (hiddmode == vHidd_ModeID_Invalid)) {
             /* If there is neither pixelformat nor friend bitmap nor ModeID specified,
                we have to use some default pixelformat depending on the depth */
@@ -304,10 +440,15 @@ static HIDDT_StdPixFmt const cyber2hidd_pixfmt[] = {
         /* If we have a friend bitmap, pixelformat will be
            picked up from it */
 
+        SET_TAG(bm_tags, 8, TAG_IGNORE, 0);
         if(stdpf != vHidd_StdPixFmt_Unknown) {
             D(bug("[AllocBitMap] Setting pixelformat to %d\n", stdpf));
             SET_BM_TAG(bm_tags, 4, StdPixFmt, stdpf);
-            hiddmode = vHidd_ModeID_Invalid;
+            if((tagpf != vHidd_StdPixFmt_Unknown) && (hiddmode != vHidd_ModeID_Invalid)) {
+                SET_BM_TAG(bm_tags, 8, ModeID, hiddmode);
+            } else {
+                hiddmode = vHidd_ModeID_Invalid;
+            }
         } else if(hiddmode != vHidd_ModeID_Invalid) {
             D(bug("[AllocBitMap] Setting ModeID to 0x%08lX\n", hiddmode));
             SET_BM_TAG(bm_tags, 4, ModeID, hiddmode);
@@ -327,7 +468,7 @@ static HIDDT_StdPixFmt const cyber2hidd_pixfmt[] = {
 
         SET_TAG(bm_tags, 7, aHidd_PlanarBM_Interleaved,
                 (flags & BMF_INTERLEAVED) != 0);
-        SET_TAG(bm_tags, 8, TAG_DONE, 0);
+        SET_TAG(bm_tags, 9, TAG_DONE, 0);
 
         /* Allocate an extra planes for HIDD bitmap info */
         nbm = AllocVec(sizeof(struct BitMap) + sizeof(PLANEPTR) * HIDD_BM_EXTRAPLANES, MEMF_ANY | MEMF_CLEAR);
@@ -402,7 +543,21 @@ static HIDDT_StdPixFmt const cyber2hidd_pixfmt[] = {
                               (flags & BMF_REQUESTVMEM) == BMF_REQUESTVMEM)) {
                     HIDD_BM_FLAGS(nbm) |= HIDD_BMF_SCREEN_BITMAP;
 
-                    if(friend_bitmap && IS_HIDD_BM(friend_bitmap)) {
+                    if(friend_bitmap && IS_HIDD_BM(friend_bitmap) &&
+                       own_friend_colors(nbm, friend_bitmap, GfxBase)) {
+                        /*
+                         * A bitmap in another pixel format than its friend (for
+                         * instance a composited layer's alpha surface on a 0RGB
+                         * screen, or an off-screen bitmap of a special format):
+                         * the friend's pixel values mean nothing in its layout,
+                         * so it got a colormap and pixel table of its own with
+                         * the friend's colours mapped opaque. SetRGB32() and
+                         * friends on the friend keep them up to date
+                         * (gfx_UpdateAlphaPixTabs()).
+                         */
+                        HIDD_BM_COLMOD(nbm)     = HIDD_BM_COLMOD(friend_bitmap);
+                        HIDD_BM_REALDEPTH(nbm)  = HIDD_BM_REALDEPTH(friend_bitmap);
+                    } else if(friend_bitmap && IS_HIDD_BM(friend_bitmap)) {
                         /* We got a friend_bitmap bitmap. We inherit its
                            colormap.
                            !!! NOTE !!! If this is used after the
@@ -433,7 +588,7 @@ static HIDDT_StdPixFmt const cyber2hidd_pixfmt[] = {
                             col.red     = 0;
                             col.green   = 0;
                             col.blue    = 0;
-                            col.alpha   = 0;
+                            col.alpha   = 0xFFFF;   /* pens are opaque */
 
                             if(vHidd_ColorModel_Palette == colmod || vHidd_ColorModel_TrueColor == colmod) {
                                 ULONG numcolors;
@@ -449,6 +604,22 @@ static HIDDT_StdPixFmt const cyber2hidd_pixfmt[] = {
                         } /* if (pixtab successfully allocated) */
                         else
                             ok = FALSE;
+                    }
+
+                    /*
+                     * An alpha bitmap made as a friend (a layer's surface, an
+                     * ARGB image) clears transparent. An alpha screen of its
+                     * own has no friend and clears to pen 0.
+                     */
+                    if(friend_bitmap && IS_HIDD_BM(friend_bitmap)) {
+                        OOP_Object *pf = NULL;
+                        IPTR alphamask = 0;
+
+                        OOP_GetAttr(bm_obj, aHidd_BitMap_PixFmt, (IPTR *)&pf);
+                        if(pf)
+                            OOP_GetAttr(pf, aHidd_PixFmt_AlphaMask, &alphamask);
+                        if(alphamask)
+                            HIDD_BM_FLAGS(nbm) |= HIDD_BMF_CLEAR_ALPHA;
                     }
                 }
 

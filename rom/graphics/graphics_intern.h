@@ -51,6 +51,13 @@ void internal_SetRGB32Colors(struct ViewPort *vp, HIDDT_Color *colors,
                              ULONG first, ULONG count,
                              struct GfxBase *GfxBase);
 
+/* alphapixtab.c */
+BOOL gfx_AddAlphaPixTab(struct BitMap *bm, OOP_Object *colmap, struct GfxBase *GfxBase);
+OOP_Object *gfx_PixTabSource(struct BitMap *friend_bitmap, struct GfxBase *GfxBase);
+void gfx_ForgetAlphaPixTab(struct BitMap *bm, struct GfxBase *GfxBase);
+void gfx_UpdateAlphaPixTabs(OOP_Object *colmap, HIDDT_Color *colors, ULONG first, ULONG count,
+                            struct GfxBase *GfxBase);
+
 struct RegionRectangleExt {
     struct RegionRectangle     RR;
     IPTR                       Counter;
@@ -109,16 +116,22 @@ struct gfxdisplay_data {
 							   struct MonitorHandle mirror - do not grow  */
     OOP_Object                  *display_obj;	/* display object to use			  */
     OOP_Object                  *display_gfxhidd;/* displays graphics driver object		  */
-    OOP_Object                  *display_compositor;	/* screen composition object		  */
     OOP_Object                  *display_dmenum;	/* display mode enumerator		  */
     APTR                        display_userdata;
     struct gfxdriver_data       *display_cfg;
+    /* Damage notification, resolved once: called after every render operation */
+    OOP_MethodFunc              display_UpdateRect;
+    OOP_Class                   *display_UpdateRect_cl;
 };
 
 struct DisplayInfoHandle {
     HIDDT_ModeID                id;  	        /* HIDD Mode ID (without card ID)	    */
     struct gfxdisplay_data      *drv;	        /* Points back to display descriptor        */
 };
+
+BOOL internal_TryRawBlit(struct gfxdisplay_data *driver,
+    struct BitMap *src, struct BitMap *dst, WORD sx, WORD sy, WORD dx, WORD dy,
+    WORD width, WORD height, ULONG minterm, UBYTE mask, struct GfxBase *GfxBase);
 
 #define DIH(x) ((struct DisplayInfoHandle *)x)
 
@@ -139,12 +152,26 @@ struct monitor_displaydata {
     struct DisplayInfoHandle    modes[1];	/* Display modes array				  */
 };
 
+/*
+ * ViewPortExtra as allocated by GfxNew(): the public structure followed by
+ * the composition parameters set through VideoControl(). Only GfxNew() may
+ * allocate a ViewPortExtra, so every one reaching graphics.library has them.
+ */
+struct IntViewPortExtra
+{
+    struct ViewPortExtra        vpe;
+    ULONG                       compflags;      /* COMPF_* requested for this ViewPort      */
+    struct Hook                 *prealphahook;  /* hook run on the backdrop before blending */
+};
+
+#define IVPE(x) ((struct IntViewPortExtra *)(x))
+
 #define GFXPRIVATE_DISPLAYDATA(x) ((struct monitor_displaydata *)(x))
 
 /* Driver flags */
 #define DF_Enabled      (1 << 0)
 #define DF_SoftCursor   (1 << 1)	/* Software cursor used				*/
-#define DF_SoftComposit (1 << 2)	/* Software screen composition requested	*/
+#define DF_Composes     (1 << 2)	/* Display composes screens (hardware or compositor) */
 #define DF_DirectFB     (1 << 3)	/* Driver uses a direct-mode framebuffer	*/
 #define DF_ExternalPlanar (1 << 4) /* Displays caller-owned Chip RAM planar BitMaps */
 #define DF_BootSurvive  (1 << 15)	/* Boot mode driver that shouldnt be flushed	*/
@@ -169,7 +196,6 @@ struct gfxsoftrast_data {
     ObjectCache                 *planarbm_cache;/* Planar bitmaps cache		   */
 
     /* HIDD classes */
-    OOP_Class                   *compositorClass;	/* Compositor class		   */
     OOP_Class                   *gcClass;	/* GC class			   */
 
     /* Attribute bases */
@@ -198,7 +224,7 @@ struct gfxsoftrast_data {
 #define __IHidd_Gfx         	CDD(GfxBase)->hiddGfxAttrBase
 #define __IHidd_Display     	CDD(GfxBase)->hiddDisplayAttrBase
 #define __IHidd_DMEnum      	CDD(GfxBase)->hiddDMEnumAttrBase
-#define HiddCompositorAttrBase  CDD(GfxBase)->hiddCompositorAttrBase
+#define __IHidd_Compositor  	CDD(GfxBase)->hiddCompositorAttrBase
 
 /* Hashtable sizes. Must be powers of two */
 #define GFXASSOCIATE_HASHSIZE   8
@@ -246,7 +272,6 @@ struct GfxBase_intern {
     OOP_MethodID                HiddDisplayBase;
     OOP_MethodID                HiddDMEnumBase;
     OOP_MethodID                HiddPlanarBMBase;
-    OOP_MethodID		HiddCompositorMethodBase;
 
     /* baseclass for CreateObject */
     OOP_Class                   *basebm;
@@ -254,6 +279,37 @@ struct GfxBase_intern {
     /* ChangeVPBitMap() replies due after the display's next vertical blank. */
     struct DBufInfo             *dbuf_pending;
     struct SimpleSprite         *simple_sprites[8];
+
+    /*
+     * Composited layer surfaces per screen bitmap (LayerSurfacesChanged()):
+     * one node per screen bitmap that has surfaces, looked up by MakeVPort().
+     * The plane data behind a HIDD struct BitMap is full, so this lives here.
+     */
+    struct MinList              layersurfaces;
+    struct SignalSemaphore      layersurfaces_sema;
+
+    /*
+     * Bitmaps with an alpha channel allocated as friends of a bitmap without
+     * one (composited layer surfaces, see AllocBitMap()) have a colormap and
+     * pixel table of their own, with the friend's colours mapped opaque. They
+     * are listed here so that colour changes on the friend reach them.
+     */
+    struct MinList              alphapixtabs;
+    struct SignalSemaphore      alphapixtabs_sema;
+};
+
+struct AlphaPixTabNode
+{
+    struct MinNode                node;
+    struct BitMap                *bitmap;    /* the bitmap with its own colormap and pixtab */
+    OOP_Object                   *colmap;    /* the friend's colormap its colours come from */
+};
+
+struct LayerSurfaceNode
+{
+    struct MinNode                node;
+    struct BitMap                *bitmap;
+    struct HIDD_CompositeRequest *surfaces;
 };
 
 void internal_QueueDBufInfo(struct DBufInfo *db, struct GfxBase *GfxBase);
@@ -343,6 +399,9 @@ extern BOOL pattern_pen(struct RastPort *rp
                         , ULONG apen, ULONG bpen
                         , ULONG *pixval_ptr
                         , struct GfxBase *GfxBase);
+
+/* The "not implemented" report of the functions that are still stubs (graphics_misc.c) */
+void gfx_NotImplemented(CONST_STRPTR name, struct GfxBase *GfxBase);
 
 /* function for area opeartions */
 BOOL areafillpolygon(struct RastPort   *rp,
@@ -457,9 +516,10 @@ struct ChunkExt {
 
 struct ChunkPool {
     struct MinNode  Node;
-    struct ChunkExt Chunks[SIZECHUNKBUF];
     struct MinList  ChunkList;
     LONG            NumChunkFree;
+    LONG            NumChunks;
+    struct ChunkExt Chunks[];
 };
 
 void __DisposeRegionRectangleExtChunk

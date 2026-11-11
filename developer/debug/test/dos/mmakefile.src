@@ -9,6 +9,8 @@ EXEDIR          := $(AROS_TESTS)/dos
 
 FILES := \
     addpart \
+    assignlocks \
+    auxstartup \
     clicreatenewproc \
     consolemodes \
     doslist \
@@ -16,15 +18,18 @@ FILES := \
     examine \
     examinefh \
     exnext \
+    exnextdelete \
     filetest \
     fread \
     fstest \
     getenv \
     inhibit \
     isinteractive \
+    lockrelative \
     match \
     matchtest \
     minicat \
+    mountcarry \
     mountlist \
     namefromfh \
     nil \
@@ -42,6 +47,8 @@ FILES := \
     scantest \
     scanvarstest \
     seektest \
+    seglistrelocs \
+    sfs_seek \
     setfiledate \
     setenv \
     setfilesize \
@@ -50,6 +57,7 @@ FILES := \
     systemtags_slave \
     systemtags2 \
     systemtags2_slave \
+    typeretry \
     waitforchar
 
 PURE_FILES := \
@@ -63,8 +71,8 @@ CUNITSTDCTESTFILES := \
 #MM- test : test-dos
 #MM- test-quick : test-dos-quick
 
-#MM- test-dos : test-dos-common test-dos-pure test-dos-cunit test-dos-resident
-#MM- test-dos-quick : test-dos-common-quick test-dos-pure-quick test-dos-cunit-quick test-dos-resident-quick
+#MM- test-dos : test-dos-common test-dos-pure test-dos-cunit test-dos-resident test-dos-runcommandredir test-dos-systemconsole
+#MM- test-dos-quick : test-dos-common-quick test-dos-pure-quick test-dos-cunit-quick test-dos-resident-quick test-dos-runcommandredir-quick test-dos-systemconsole-quick
 
 #MM- test-cunit : test-dos-cunit
 #MM- test-cunit-quick : test-dos-cunit-quick

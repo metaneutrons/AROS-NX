@@ -14,7 +14,15 @@ FILES := \
     smallscreen \
     screenclass \
     screentest \
-    scrollerwin 
+    screendrag \
+    compwindow \
+    planescreens \
+    pointerpos \
+    scrollerwin \
+    compflicker \
+    windowinputregion \
+    windowinputdrop \
+    strgtextval
 
 EXEDIR := $(AROS_TESTS)/intuition
 

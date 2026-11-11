@@ -2,7 +2,7 @@
 #define HIDD_GALLIUM_H
 
 /*
-    Copyright 2010-2019, The AROS Development Team. All rights reserved.
+    Copyright 2010-2026, The AROS Development Team. All rights reserved.
     $Id$
 */
 
@@ -44,6 +44,7 @@ enum
     moHidd_Gallium_DestroyPipeScreen,
     moHidd_Gallium_DisplayResource,
     moHidd_Gallium_DisplayResourceRP,
+    moHidd_Gallium_ResourceFromBitMap,
 
     NUM_GALLIUM_METHODS
 };
@@ -52,12 +53,19 @@ enum
 {
     aoHidd_Gallium_InterfaceVersion = 0,
     aoHidd_Gallium_CoreAPI,
+    aoHidd_Gallium_VulkanObject,    /* [I..] OOP_Object *: the hidd.vulkan object a gallium-on-Vulkan
+                                       driver (hidd.gallium.zink) renders through */
+    aoHidd_Gallium_LinearDisplay,   /* [..G] BOOL: DisplayResource needs linear colour buffers (it reads
+                                       their memory directly); FALSE when it can present tiled ones.
+                                       A driver that does not answer is taken to need them. */
 
     num_Hidd_Gallium_Attrs
 };
 
 #define aHidd_Gallium_InterfaceVersion  (HiddGalliumAttrBase + aoHidd_Gallium_InterfaceVersion)
 #define aHidd_Gallium_CoreAPI  (HiddGalliumAttrBase + aoHidd_Gallium_CoreAPI)
+#define aHidd_Gallium_VulkanObject  (HiddGalliumAttrBase + aoHidd_Gallium_VulkanObject)
+#define aHidd_Gallium_LinearDisplay  (HiddGalliumAttrBase + aoHidd_Gallium_LinearDisplay)
 #define aHidd_Gallium_WinSys  (HiddGalliumAttrBase + aoHidd_Gallium_WinSys)
 
 #define IS_GALLIUM_ATTR(attr, idx) \
@@ -105,6 +113,23 @@ struct pHidd_Gallium_DisplayResourceRP
     STACKED LONG                    dsty;
     STACKED LONG                    width;
     STACKED LONG                    height;
+};
+
+/* Alias one buffer of a scan-out bitmap (aHidd_BitMap_Scanout, created
+ * through the screen's display) as a pipe_resource of the given pipe
+ * screen, so that a GL context renders straight into display memory a
+ * plane can scan out (or the compositor blits). The resource must use
+ * the buffer's linear layout and pitch and be usable as a render target
+ * (PIPE_BIND_RENDER_TARGET | SAMPLER_VIEW | SCANOUT | LINEAR). Returns a
+ * referenced struct pipe_resource * (release with pipe_resource_reference)
+ * or NULL. The base class returns NULL: gallium.library then refuses the
+ * scan-out framebuffer and mesa3dgl keeps the DisplayResource blit path. */
+struct pHidd_Gallium_ResourceFromBitMap
+{
+    STACKED OOP_MethodID            mID;
+    STACKED OOP_Object              *bitmap;   /* scan-out bitmap object */
+    STACKED ULONG                   buffer;    /* 0 .. aHidd_BitMap_Buffers-1 */
+    STACKED APTR                    screen;    /* struct pipe_screen * of this pipe */
 };
 
 #endif

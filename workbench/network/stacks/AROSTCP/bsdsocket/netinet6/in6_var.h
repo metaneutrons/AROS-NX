@@ -30,6 +30,20 @@ struct in6_multi {
 };
 
 /*
+ * Look up the in6_multi record for a given (group, interface) pair; the
+ * IPv6 counterpart of IN_LOOKUP_MULTI().
+ */
+#define	IN6_LOOKUP_MULTI(addr, ifp, in6m)				\
+{									\
+	struct in6_multi *_in6m;					\
+	for(_in6m = in6_multihead; _in6m != NULL; _in6m = _in6m->in6m_next) \
+		if(_in6m->in6m_ifp == (ifp) &&				\
+		   IN6_ARE_ADDR_EQUAL(&_in6m->in6m_addr, &(addr)))	\
+			break;						\
+	(in6m) = _in6m;							\
+}
+
+/*
  * Macros for IPv6 address classification.
  */
 /*
@@ -143,20 +157,21 @@ struct ip6_moptions {
 #define IP6_TEMP_REGEN_ADVANCE       5       /* seconds before deprecation to regen */
 #define IP6_TEMP_MAX_DESYNC_FACTOR   600     /* max random desync (seconds) */
 
-/* IN6P socket flags (stored in in6p_flags / in6_rawcb.flags) */
+/* IN6P socket flags (stored in in6p_flags) */
 #define IN6P_PKTINFO	0x01		/* receive packet info (RECVPKTINFO) */
+#define IN6P_HOPLIMIT	0x02		/* receive hop limit (RECVHOPLIMIT) */
+#define IN6P_RECVPATHMTU 0x04		/* IPV6_RECVPATHMTU */
+#define IN6P_DONTFRAG	0x08		/* IPV6_DONTFRAG */
+#define IN6P_MINMTU	0x10		/* IPV6_USE_MIN_MTU 1 */
+#define IN6P_PMTU	0x20		/* IPV6_USE_MIN_MTU 0 (neither: -1) */
+#define IN6P_TCLASS	0x40		/* receive the traffic class (RECVTCLASS) */
 
-/*
- * Extended rawcb for raw IPv6 sockets (in6_rawcb.rcb must be first).
- */
-struct in6_rawcb {
-	struct rawcb		rcb;	/* common rawcb (must be first) */
-	struct ip6_moptions    *im6o;	/* multicast options */
-	int			hops;	/* unicast hop limit (-1 = default) */
-	int			v6only;	/* IPv6-only socket flag */
-	int			tclass;	/* traffic class */
-	int			flags;	/* IN6P_* flags */
-};
+/* ip6_output() flags: the RFC 3542 section 11 options for one datagram */
+#define IPV6_OUT_MINMTU	0x01		/* send at most IPV6_MMTU bytes a packet */
+#define IPV6_OUT_DONTFRAG 0x02		/* do not fragment; EMSGSIZE above the link MTU */
+/* a socket's IPV6_USE_MIN_MTU: -1, 0 or 1 */
+#define IN6P_MINMTU_OPT(inp) (((inp)->in6p_flags & IN6P_MINMTU) ? 1 : \
+                              ((inp)->in6p_flags & IN6P_PMTU) ? 0 : -1)
 
 #ifdef KERNEL
 extern struct ip6stat ip6stat;
@@ -174,11 +189,58 @@ int  in6_ifinit(struct ifnet *, struct in6_ifaddr *, struct sockaddr_in6 *, int)
 void in6_purgeaddr(struct ifaddr *);
 int  in6_ifconf(int, caddr_t);
 struct in6_ifaddr *in6_ifawithifp(struct ifnet *, struct in6_addr *);
+struct in6_ifaddr *in6_ourifa(const struct in6_addr *, struct ifnet *);
 struct in6_ifaddr *in6_ifaof_ifpforlinklocal(struct ifnet *);
 int  in6_localaddr(struct in6_addr *);
 void in6_if_up(struct ifnet *);
 struct in6_multi *in6_addmulti(struct in6_addr *, struct ifnet *);
 void in6_delmulti(struct in6_multi *);
+struct ip6_moptions;
+void ip6_freemoptions(struct ip6_moptions *);
+void in6_ifdetach(struct ifnet *);
+
+/*
+ * The stack's own view of an IPv6 interface address. The public record
+ * (struct in6_ifaddr, common/include/netinet/in_var.h) comes first, so a
+ * pointer to one is a pointer to the other; in6.c allocates the whole of it,
+ * zeroed, in one mbuf. What only the stack needs lives here, out of the
+ * public header.
+ */
+/* The IN6_IFF_* states the stack keeps for an address, not a caller's to set */
+#define	IN6_IFF_STACKSTATE	(IN6_IFF_TENTATIVE | IN6_IFF_DUPLICATED | \
+				 IN6_IFF_DETACHED | IN6_IFF_DEPRECATED)
+
+struct in6_ifaddr_priv {
+	struct in6_ifaddr ia6p_ia;
+	struct in6_multi *ia6p_solicited; /* the address's solicited-node group */
+};
+#define IA6_PRIV(ia)	((struct in6_ifaddr_priv *)(ia))
+
+/*
+ * What an ICMPv6 error tells the upper-layer protocol of the packet it
+ * quotes (icmp6_notify_error()): the pr_ctlinput's sockaddr is the quoted
+ * destination, and this is its arg.
+ */
+struct ip6ctlparam {
+	struct in6_addr ip6c_src;	/* the quoted packet's source (ours) */
+	u_int16_t ip6c_sport;		/* its ports, network byte order; */
+	u_int16_t ip6c_dport;		/* 0 when not known */
+	u_int32_t ip6c_seq;		/* TCP: its sequence number, host order */
+	int ip6c_haveseq;		/* ip6c_seq was quoted */
+	u_int32_t ip6c_mtu;		/* PRC_MSGSIZE: the path MTU, >= IPV6_MMTU */
+};
+struct inpcb;
+struct inpcbhead;
+struct sockaddr;
+struct sockaddr_in6;
+void in6_pcbnotify(struct inpcbhead *, const struct sockaddr_in6 *, u_int,
+                   const struct in6_addr *, u_int, int,
+                   void (*)(struct inpcb *, int));
+void udp6_ctlinput(int, struct sockaddr *, void *);
+int  ip6_outflags(int, int, const struct in6_addr *);
+void ip6_notify_pmtu(const struct inpcb *, const struct sockaddr_in6 *, u_int32_t);
+u_int32_t ip6_pathmtu(const struct inpcb *);
+void tcp6_ctlinput(int, struct sockaddr *, void *);
 
 /* Privacy extensions (RFC 4941) */
 extern int ip6_use_tempaddr;   /* enable temporary addresses (0=off, 1=on) */

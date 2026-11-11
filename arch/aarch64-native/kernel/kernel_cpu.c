@@ -35,7 +35,6 @@
 #define DREGS(x)
 
 #if defined(__AROSEXEC_SMP__)
-extern struct Task *cpu_InitBootStrap(struct ExecBase *);
 extern void cpu_BootStrap(struct Task *, struct ExecBase *);
 #endif
 
@@ -165,8 +164,16 @@ void cpu_Register()
     bug("[Kernel:%02d] KernelBase @ 0x%p\n", cpunum, KernelBase);
     bug("[Kernel:%02d] SysBase @ 0x%p\n", cpunum, SysBase);
 
-    if ((__tls->ThisTask = cpu_InitBootStrap(SysBase)) == NULL)
-        goto cpu_registerfatal;
+    /* Built for this core by the boot CPU (bcm27xx_init) */
+    if (__tls->ThisTask == NULL)
+    {
+        /* cpu_Init counted it as running, but it will never schedule */
+        __atomic_and_fetch(&__arm_arosintern.ARMI_AffinityMask, ~(1U << cpunum), __ATOMIC_RELEASE);
+        bug("[Kernel:%02d] FATAL : no bootstrap task - core parked\n", cpunum);
+        KrnSpinUnLock(&startup_lock);
+        for (;;)
+            asm volatile("wfi");
+    }
 
     if (__arm_arosintern.ARMI_InitCore)
         __arm_arosintern.ARMI_InitCore(KernelBase, SysBase);
@@ -183,9 +190,6 @@ void cpu_Register()
 
     bug("[Kernel:%02d] Operational\n", cpunum);
 
-#if defined(__AROSEXEC_SMP__)
-cpu_registerfatal:
-#endif
     bug("[Kernel:%02d] Waiting for interrupts\n", cpunum);
 
     KrnSpinUnLock(&startup_lock);
@@ -218,11 +222,19 @@ cpu_registerfatal:
     Permit();
     Enable();
 
-    /* Become this core's idle context - do NOT return: we were reached by
-     * a `br`, so x30 still holds firmware leftovers. An IPI arrives as an
-     * FIQ and its exit path dispatches whatever became ready. */
-    for (;;)
-        asm volatile("wfi");
+    /* Without an idle task, stay as this core's idle loop: exiting would
+     * leave it nothing to run. Its load then reads as 0%. */
+    if (!Exec_ARMCreateIdleTask(SysBase))
+    {
+        for (;;)
+            asm volatile("wfi");
+    }
+
+    /* The bootstrap's work is done. Do NOT return: we were reached by a
+     * `br`, so x30 still holds firmware leftovers. Leave through exec's
+     * task exit code instead, as every task does; the scheduler then runs
+     * this core's idle task. */
+    ((void (*)(void))SysBase->TaskExitCode)();
 #endif
 }
 
@@ -320,9 +332,20 @@ void cpu_Probe(struct ARM_Implementation *krnARMImpl)
     krnARMImpl->ARMI_Delay = &cpu_Delay;
 }
 
+uint64_t aarch64_CPUHwID[AARCH64_MAXCPUS];
+
 void cpu_Init(struct ARM_Implementation *krnARMImpl, struct TagItem *msg)
 {
     cpuid_t cpunum = GetCPUNumber();
+
+    if (cpunum < AARCH64_MAXCPUS)
+    {
+        uint64_t mpidr;
+
+        asm volatile("mrs %0, mpidr_el1" : "=r"(mpidr));
+        /* Aff3 (39:32) and Aff2..Aff0 (23:0) - the hardware id */
+        aarch64_CPUHwID[cpunum] = mpidr & 0xff00ffffffULL;
+    }
 
     core_SetupMMU(msg);
 

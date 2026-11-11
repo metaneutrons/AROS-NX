@@ -8,6 +8,7 @@
 
 #include <proto/exec.h>
 #include <proto/oop.h>
+#include <proto/utility.h>
 
 #include "hostgl_ctx_manager.h"
 #include "hostgl_funcs.h"
@@ -28,9 +29,7 @@
 
 /*  FUNCTION
 
-        Crates a GL rendering context. Whether the rendering will be software
-        or hardware based depends on the gallium.library returning a module
-        best suited.
+        Create a rendering context using the hosted OpenGL backend.
  
     INPUTS
 
@@ -90,7 +89,7 @@
 
     RESULT
 
-        A valid GL context or NULL of creation was not successful.
+        A rendering context, or NULL if creation fails.
  
     BUGS
 
@@ -141,6 +140,7 @@
     }
 
     HostGLStandardInit(ctx, tagList);
+    ctx->swap_interval = GetTagData(GLA_SwapInterval, 0, tagList) > 0 ? 1 : 0;
 
     D(bug("[HostGL] %s: allocating framebuffer ..\n", __func__));
 

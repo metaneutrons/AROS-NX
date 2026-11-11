@@ -32,6 +32,9 @@ struct Volume {
 	LONG numbuffers;
 	APTR bulkbuffer;             /* bounce buffer for multi-block reads */
 	ULONG bulkblocks;            /* blocks it holds (0 = none) */
+	BOOL cachepending;           /* dirty cache belongs to the removed medium */
+	BOOL bitmapinvalid;          /* last successful root write cleared its valid flag */
+	BOOL writefailed;            /* pause mutations/background retries after an I/O error */
 	ULONG cachecounter;           /* Keeps track of cache usage */
 	ULONG state;                 /* Read-only, read/write or validating */
         ULONG key;                   /* Lock key */
@@ -47,7 +50,8 @@ struct Volume {
 	ULONG bitmapextensionblock;
 
 	struct BlockCache *bitmapblock; /* last bitmap block used for marking */
-	ULONG bstartblock;              /* first block marked in "bitmapblock" */
+	ULONG bstartblock;              /* first block covered by "bitmapblock", as block
+	                                   number minus bootblocks (0 = first bitmapped block) */
 	ULONG lastextensionblock; /* last used extensionblock (0=volume->bitmapblocks) */
 	ULONG lastposition;             /* last position in extensionblock */
 	ULONG lastaccess;               /* last marked block */
