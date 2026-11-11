@@ -35,12 +35,16 @@ BINARIES = (
     "Tools/ESP32Board",
     "System/Network/AROSTCP/C/AROSTCP",
     "System/Network/AROSTCP/C/dhclient",
+    "System/Network/Services/dhcpd",
     "Libs/posixc.library", "Libs/stdcio.library", "Libs/stdc.library",
 )
 IMAGES = tuple("System/Images/" + name for name in
                ("interface", "host", "wireless", "protocol"))
 DB_FILES = ("netdb", "hosts", "networks", "protocols", "services",
             "inet.access", "group", "passwd", "inetd.conf")
+# One manifest per external service daemon (db/services.d/<name>). Only the
+# DHCP client manager is staged; the stack starts it from this directory.
+SERVICE_FILES = ("dhcp",)
 
 
 def read_file(root, relative):
@@ -124,6 +128,9 @@ def collect(aros_root, source_root=REPO, include_desktop=False):
     for name in DB_FILES:
         payload["Prefs/Env-Archive/AROSTCP/db/" + name] = read_file(
             source_root, db + name)
+    for name in SERVICE_FILES:
+        payload["Prefs/Env-Archive/AROSTCP/db/services.d/" + name] = read_file(
+            source_root, db + "services.d/" + name)
     # Stage built catalogs if present, but never import arbitrary locale files.
     catalogs = aros_root / "Locale/Catalogs"
     if catalogs.is_dir() and not catalogs.is_symlink():

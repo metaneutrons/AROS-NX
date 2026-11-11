@@ -70,6 +70,15 @@ class DefaultsTest(unittest.TestCase):
             self.assertTrue(all(line.startswith(";") for line in lines))
         self.assertNotIn("192.168.", "".join(values.values()))
 
+    def test_dhcp_client_is_not_configured_through_the_stack(self):
+        # DHCP is an external service (services/dhcp, db/services.d/dhcp);
+        # the stack no longer reads DHCLIENT, so the overlay must not set it.
+        config = module.defaults()["Prefs/Env-Archive/AROSTCP/db/general.config"]
+        self.assertNotIn("DHCLIENT", config)
+        # The service manifest comes from the source tree via the stage script.
+        self.assertNotIn("Prefs/Env-Archive/AROSTCP/db/services.d/dhcp",
+                         module.defaults())
+
 
 if __name__ == "__main__":
     unittest.main()

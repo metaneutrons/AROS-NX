@@ -109,6 +109,14 @@ clocks;203 actual-helper checks pass in host/32-bit time_t at O0/O2 sanitized.
 Stored values still do not prove installed global routing/resolver state;
 clock/GUI/runtime qualification remains open. Credential transmission remains gated.
 
+DHCP runs as the external service `SYS:System/Network/Services/dhcpd`, which the
+stack starts from `db/services.d/dhcp` (upstream f93780cc5a). The WLAN overlay
+therefore stages that manifest and the `dhcpd` binary next to `dhclient`, and
+`general.config` no longer carries a `DHCLIENT=` line (the stack ignores it).
+`dhcpd` runs `AROSTCP/dhcp/client` or, unset, `SYS:System/Network/AROSTCP/C/dhclient`.
+`PATH_DHCLIENT_*` are still read by `dhclient` itself. Checked statically against
+the sources and the host stage tests only; not run on hardware.
+
 `python3 make-wifi-defaults.py NEW_DIRECTORY` generates fixed, credential-free
 preferences for native `DEVS:Networks/esp32p4wlan.device`, unit0 and DHCP.
 This helper alone produces a preferences overlay, not a complete network image.

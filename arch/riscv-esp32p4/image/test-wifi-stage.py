@@ -177,6 +177,10 @@ class WifiStageTests(unittest.TestCase):
         for name in STAGE.DB_FILES:
             (database / name).write_bytes(("database fixture: " + name + "\n")
                                           .encode("ascii"))
+        (database / "services.d").mkdir(exist_ok=True)
+        for name in STAGE.SERVICE_FILES:
+            (database / "services.d" / name).write_bytes(
+                ("service manifest fixture: " + name + "\n").encode("ascii"))
 
         defaults = source_root / "workbench/system/Wanderer/Env/default"
         defaults.mkdir(parents=True, exist_ok=True)
@@ -338,7 +342,8 @@ class WifiStageTests(unittest.TestCase):
             "Devs/Networks/esp32p4wifi.device",
             "Tools/ESP32Board",
             "System/Network/AROSTCP/C/AROSTCP",
-            "System/Network/AROSTCP/C/dhclient", "Libs/posixc.library",
+            "System/Network/AROSTCP/C/dhclient",
+            "System/Network/Services/dhcpd", "Libs/posixc.library",
             "Libs/stdcio.library", "Libs/stdc.library",
         }
         required_images = {
@@ -350,8 +355,12 @@ class WifiStageTests(unittest.TestCase):
             "Prefs/Env-Archive/AROSTCP/db/" + name
             for name in STAGE.DB_FILES
         }
+        service_files = {
+            "Prefs/Env-Archive/AROSTCP/db/services.d/" + name
+            for name in STAGE.SERVICE_FILES
+        }
         expected = (required_defaults | required_binaries | required_images |
-                    database_files | {"Prefs/WiFi.info", "Prefs/Network.info",
+                    database_files | service_files | {"Prefs/WiFi.info", "Prefs/Network.info",
                                       "Tools/ESP32Board.info"})
 
         self.assertEqual(required_binaries, set(STAGE.BINARIES))
@@ -371,6 +380,15 @@ class WifiStageTests(unittest.TestCase):
             source = self.source_root / "workbench/network/stacks/AROSTCP/Env/db" / name
             self.assertEqual(source.read_bytes(),
                              first["Prefs/Env-Archive/AROSTCP/db/" + name])
+        for name in STAGE.SERVICE_FILES:
+            source = (self.source_root / "workbench/network/stacks/AROSTCP/Env/db"
+                      / "services.d" / name)
+            self.assertEqual(
+                source.read_bytes(),
+                first["Prefs/Env-Archive/AROSTCP/db/services.d/" + name])
+        self.assertEqual(("dhcp",), STAGE.SERVICE_FILES)
+        self.assertNotIn("DHCLIENT=",
+                         defaults["Prefs/Env-Archive/AROSTCP/db/general.config"])
         self.assertEqual("/T/dhclient.leases",
                          defaults["Prefs/Env-Archive/PATH_DHCLIENT_DB"])
         self.assertEqual("/T/dhclient.pid",
