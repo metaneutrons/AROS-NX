@@ -1,7 +1,10 @@
-
 include $(SRCDIR)/config/aros.cfg
 
 #MM- workbench-network-stacks-arostcp : workbench-network-stacks-arostcp-db
 
-%copy_files_q mmake=workbench-network-stacks-arostcp-db files="$(filter-out mmakefile.src mmakefile, $(call WILDCARD, *))" \
-    dst=$(AROS_SYSTEM)/Network/AROSTCP/db
+# The directory is copied as a whole: the CMake build models %copy_dir_recursive
+# but not a %copy_files_q into the system directory, so a file list left the image
+# without a db directory and AROSTCP, which reads its configuration from
+# <program directory>/../db, then ran without ever creating its port.
+%copy_dir_recursive mmake=workbench-network-stacks-arostcp-db \
+    src=. dst=$(AROS_SYSTEM)/Network/AROSTCP/db
