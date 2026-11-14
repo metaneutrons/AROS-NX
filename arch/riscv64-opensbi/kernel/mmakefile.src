@@ -28,10 +28,10 @@ CFILES := \
         kernel_plic \
         intr \
         kernel_timer \
+        kernel_watchdog \
         kernel_mmu \
         kernel_cpu \
         kernel_elf \
-        getcpucount \
         getcpuattr \
         getsystemattr \
         allocirq \
@@ -92,7 +92,11 @@ $(OSGENDIR)/boot/Image: $(OSGENDIR)/boot/core.elf
 #MM kernel-kernel-opensbi-riscv64 : includes
 
 USER_INCLUDES := $(PRIV_KERNEL_INCLUDES) -I$(GENINCDIR) -I$(AROS_DEVELOPER)/include
+# startup.S and traps.S read aros/config.h and the TLS offsets (tls.h)
+USER_AFLAGS := $(PRIV_KERNEL_INCLUDES) -I$(GENINCDIR)
 USER_CPPFLAGS += -DAROS_ARCHITECTURE="\"$(AROS_TARGET_PLATFORM)\""
+# where the UEFI stub finds aros-bsp.pkg on the boot volume (efi_stub.c)
+USER_CPPFLAGS += -DAROS_DIR_BOOTARCH="\"$(AROS_DIR_BOOTARCH)\""
 
 %build_archspecific \
   mainmmake=kernel-kernel modname=kernel maindir=rom/kernel arch=opensbi-riscv64 \

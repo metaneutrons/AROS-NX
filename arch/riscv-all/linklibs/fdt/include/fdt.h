@@ -23,6 +23,11 @@ typedef LONG fdt_node_t;
 
 #define FDT_NONE ((fdt_node_t)-1)
 
+/* The same, for one property of a node */
+typedef LONG fdt_prop_t;
+
+#define FDT_PROPNONE ((fdt_prop_t)-1)
+
 /*
  * Hand the library the blob to work on. Returns FALSE if it is not a
  * device tree. Drivers normally pass what KrnGetBootInfo() reports for
@@ -42,9 +47,28 @@ fdt_node_t FDT_Root(void);
  */
 fdt_node_t FDT_NextNode(fdt_node_t node);
 
+/*
+ * Walk one level of the tree. FDT_FirstChild() returns the first node
+ * directly inside the given one, FDT_NextSibling() the next node with
+ * the same parent; both return FDT_NONE when there is none.
+ *
+ *     for (c = FDT_FirstChild(node); c != FDT_NONE; c = FDT_NextSibling(c))
+ */
+fdt_node_t FDT_FirstChild(fdt_node_t node);
+fdt_node_t FDT_NextSibling(fdt_node_t node);
+
 /* The node's name, without the unit address ("serial", not
    "serial@20300000"). NULL if the node does not exist. */
 CONST_STRPTR FDT_NodeName(fdt_node_t node);
+
+/*
+ * The node's full path from the root, unit addresses included
+ * ("/soc/serial@20300000"). This names the node uniquely, and is what
+ * a driver puts behind "dt" to make the aHidd_DevicePath of the
+ * hardware it found there. Returns FALSE if the node does not exist or
+ * the buffer is too small.
+ */
+BOOL FDT_GetPath(fdt_node_t node, STRPTR buf, ULONG size);
 
 /*
  * Does this node's "compatible" list contain the given string? The
@@ -71,6 +95,25 @@ CONST_STRPTR FDT_GetPropStr(fdt_node_t node, CONST_STRPTR name);
 /* Is the property present at all (for the valueless flags such as
    "interrupt-controller" or "dma-coherent")? */
 BOOL FDT_HasProp(fdt_node_t node, CONST_STRPTR name);
+
+/*
+ * Walk a node's properties, for when the names are not known up front.
+ *
+ *     fdt_prop_t p;
+ *     for (p = FDT_FirstProp(node); p != FDT_PROPNONE; p = FDT_NextProp(p))
+ *         bug("%s\n", FDT_PropName(p));
+ *
+ * Properties belong to a node until its first child, so the walk stops
+ * there of its own accord.
+ */
+fdt_prop_t FDT_FirstProp(fdt_node_t node);
+fdt_prop_t FDT_NextProp(fdt_prop_t prop);
+
+/* The property's name, or NULL. Points into the blob and stays valid */
+CONST_STRPTR FDT_PropName(fdt_prop_t prop);
+
+/* Its value and length, as FDT_GetProp() would return them */
+CONST_APTR FDT_PropData(fdt_prop_t prop, ULONG *len);
 
 /*
  * One entry of a "reg" property, decoded with the cell counts the

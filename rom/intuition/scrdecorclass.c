@@ -37,6 +37,7 @@
 
 #include "intuition_intern.h"
 #include "gadgets.h"
+#include "decorsupport.h"
 
 /**************************************************************************************************/
 
@@ -64,139 +65,18 @@
 
 /**************************************************************************************************/
 
-static inline VOID getintframesizes(struct IntuitionBase *IntuitionBase, WORD *xsize, WORD *ysize)
-{
-    switch (FRAME_SIZE(IntuitionBase))
-    {
-        case FRAMESIZE_THICK:
-            *xsize = 2;
-            *ysize = 2;
-            break;
-        case FRAMESIZE_MEDRES:
-            *xsize = 2;
-            *ysize = 1;
-            break;
-        default:    /* FRAMESIZE_THIN */
-            *xsize = 1;
-            *ysize = 1;
-            break;
-    }
-}
-
-static void renderimageframe(struct RastPort *rp, ULONG which, ULONG state, UWORD *pens,
-                             WORD left, WORD top, WORD width, WORD height,
-                             struct IntuitionBase *IntuitionBase)
-{
-    struct GfxBase *GfxBase = GetPrivIBase(IntuitionBase)->GfxBase;
-    WORD right = left + width - 1;
-    WORD bottom = top + height - 1;
-    BOOL leftedgegodown = FALSE;
-    BOOL topedgegoright = FALSE;
-    UWORD frameh;
-    UWORD framev;
-
-    getintframesizes(IntuitionBase, &frameh, &framev);
-
-    if (left == 0) leftedgegodown = TRUE;
-    if (top == 0) topedgegoright = TRUE;
-
-    SetAPen(rp, pens[((state == IDS_SELECTED) || (state == IDS_INACTIVESELECTED)) ? SHADOWPEN : SHINEPEN]);
-
-    /* left edge */
-    RectFill(rp, left,
-             top,
-             left + (frameh - 1),
-             bottom - (leftedgegodown ? 0 : framev));
-
-    /* top edge */
-    RectFill(rp, left + 1,
-             top,
-             right - (topedgegoright ? 0 : frameh),
-             top + (framev - 1));
-
-    SetAPen(rp, pens[((state == IDS_SELECTED) || (state == IDS_INACTIVESELECTED)) ? SHINEPEN : SHADOWPEN]);
-
-    /* right edge */
-    RectFill(rp, right - (frameh - 1),
-             top + (topedgegoright ? frameh : 0),
-             right,
-             bottom);
-
-    /* bottom edge */
-    RectFill(rp, left + (leftedgegodown ? framev : 0),
-             bottom - (framev - 1),
-             right - 1,
-             bottom);
-}
-
-/**************************************************************************************************/
-
-#if 0
-static UWORD getbgpen(ULONG state, UWORD *pens)
-{
-    UWORD bg;
-
-    switch (state)
-    {
-        case IDS_NORMAL:
-        case IDS_SELECTED:
-            bg = pens[FILLPEN];
-            break;
-
-        default:
-            bg = pens[BACKGROUNDPEN];
-            break;
-    }
-    
-    return bg;
-}
-#endif
-
 /**************************************************************************************************/
 
 IPTR ScrDecorClass__OM_NEW(Class *cl, Object *obj, struct opSet *msg)
 {
-    struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)cl->cl_UserData;
-    struct Library *UtilityBase = GetPrivIBase(IntuitionBase)->UtilityBase;
-    struct scrdecor_data *data;
-
-    D(bug("[SCRDECOR] %s()\n", __func__));
-
-    obj = (Object *)DoSuperMethodA(cl, obj, (Msg)msg);
-    if (obj)
-    {
-        data = INST_DATA(cl, obj);
-
-        data->userbuffersize = (ULONG) GetTagData(SDA_UserBuffer, 0, msg->ops_AttrList);
-        
-    }
-    
-    return (IPTR)obj;
+    return decor_om_new(cl, obj, msg, SDA_UserBuffer);
 }
 
 /**************************************************************************************************/
 
 IPTR ScrDecorClass__OM_GET(Class *cl, Object *obj, struct opGet *msg)
 {
-    struct scrdecor_data *data = INST_DATA(cl, obj);
-
-    D(bug("[SCRDECOR] %s()\n", __func__));
-
-    switch(msg->opg_AttrID)
-    {
-        case SDA_UserBuffer:
-            *msg->opg_Storage = (IPTR) data->userbuffersize;
-            break;
-
-        case SDA_TrueColorOnly:
-            *msg->opg_Storage = FALSE;
-            break;
-            
-        default:
-            return DoSuperMethodA(cl, obj, (Msg)msg);
-    }
-    
-    return 1;
+    return decor_om_get(cl, obj, msg, SDA_UserBuffer, SDA_TrueColorOnly);
 }
     
 
@@ -277,8 +157,6 @@ IPTR ScrDecorClass__SDM_DRAW_SYSIMAGE(Class *cl, Object *obj, struct sdpDrawSysI
         case SDEPTHIMAGE:
         {
             UWORD  bg;
-            WORD   h_spacing;
-            WORD   v_spacing;
 
             renderimageframe(rp, DEPTHIMAGE, state, pens,
                              left, top, width, height, IntuitionBase);
@@ -288,9 +166,6 @@ IPTR ScrDecorClass__SDM_DRAW_SYSIMAGE(Class *cl, Object *obj, struct sdpDrawSysI
             bottom--;
             width -= (frameh << 1);
             height -= (framev << 1);
-
-            h_spacing = width / 6;
-            v_spacing = height / 6;
 
             bg = pens[BACKGROUNDPEN];
  
@@ -303,34 +178,7 @@ IPTR ScrDecorClass__SDM_DRAW_SYSIMAGE(Class *cl, Object *obj, struct sdpDrawSysI
              * overlapping window frames.
              */
 
-            left += h_spacing;
-            top  += v_spacing;
-
-            width  -= h_spacing * 2;
-            height -= v_spacing * 2;
-
-            right  = left + width  - 1;
-            bottom = top  + height - 1;
-
-            /* Render top left window  */
-            SetAPen(rp, pens[SHADOWPEN]);
-            drawrect(rp, left, top, right - (width / 3 ), bottom - (height / 3), IntuitionBase);
-
-            /* Render bottom right window  */
-            SetAPen(rp, pens[SHADOWPEN]);
-            drawrect(rp, left + (width / 3), top + (height / 3), right, bottom, IntuitionBase);
-
-            /* Fill bottom right window (inside of the frame above) */
-            SetAPen(rp, pens[SHINEPEN]);
-            RectFill(rp, left + (width / 3) + 1, top + (height / 3) + 1,
-                            right - 1, bottom - 1);
-
-            if (state == IDS_SELECTED)
-            {
-                /* Re-Render top left window  */
-                SetAPen(rp, pens[SHADOWPEN]);
-                drawrect(rp, left, top, right - (width / 3 ), bottom - (height / 3), IntuitionBase);
-            }
+            drawdepthwindows(rp, pens, state, TRUE, left, top, width, height, IntuitionBase);
             break;
         }
 

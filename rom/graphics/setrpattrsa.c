@@ -16,6 +16,7 @@
     NAME */
 #include <graphics/rastport.h>
 #include <graphics/rpattr.h>
+#include <graphics/clip.h>
 #include <utility/tagitem.h>
 #include <proto/graphics.h>
 
@@ -141,22 +142,35 @@
             if(rp->BitMap && IS_HIDD_BM(rp->BitMap)) {
                 /* Map ARGB8888 color value to bitmap's format */
                 HIDDT_GC_Intern *_gc = GCINT(&((rp)->longreserved[1]));
-                HIDDT_Color col;
                 HIDDT_Pixel pixval;
                 ULONG rgb = (ULONG)tag->ti_Data;
 
-                /* HIDDT_ColComp are 16 Bit */
-                col.alpha   = (HIDDT_ColComp)((rgb >> 16) & 0x0000FF00);
-                col.red     = (HIDDT_ColComp)((rgb >> 8) & 0x0000FF00);
-                col.green   = (HIDDT_ColComp)(rgb & 0x0000FF00);
-                col.blue    = (HIDDT_ColComp)((rgb << 8) & 0x0000FF00);
-
-                pixval = HIDD_BM_MapColor(HIDD_BM_OBJ(rp->BitMap), &col);
+                pixval = argb_pixel_for(HIDD_BM_OBJ(rp->BitMap), rgb, GfxBase);
 
                 if(tag->ti_Tag == RPTAG_FgColor)
                     _gc->fg = pixval;
                 else
                     _gc->bg = pixval;
+
+                /*
+                 * Keep the colour itself too: a composited layer's surface
+                 * with an alpha channel the RastPort's bitmap lacks maps it
+                 * again, with its alpha (see remap_gc_pens()). The extra data
+                 * is only allocated where such a surface can exist; elsewhere
+                 * (and without memory) only the pixel above is used, as before.
+                 */
+                driverdata = AllocDriverData(rp, rp->Layer && (rp->Layer->Flags & LAYERCOMPOSITED), GfxBase);
+                if(driverdata) {
+                    if(tag->ti_Tag == RPTAG_FgColor) {
+                        driverdata->dd_FgColor = rgb;
+                        driverdata->dd_FgPixel = pixval;
+                        driverdata->dd_ColorFlags |= DDCF_FGCOLOR;
+                    } else {
+                        driverdata->dd_BgColor = rgb;
+                        driverdata->dd_BgPixel = pixval;
+                        driverdata->dd_ColorFlags |= DDCF_BGCOLOR;
+                    }
+                }
             }
             break;
 

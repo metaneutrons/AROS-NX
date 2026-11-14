@@ -44,6 +44,7 @@ FILES := \
     SetDefaultFont \
     SetLocale \
     SetPSM \
+    Sha256Sum \
     Shutdown \
     Sort \
     StackSnoop \
@@ -99,6 +100,7 @@ USER_CFLAGS      := -noposixc
 #MM workbench-c : \
 #MM        includes \
 #MM        kernel-task-includes \
+#MM        kernel-security-includes \
 #MM        kernel-hidd-ipmi-includes \
 #MM        linklibs \
 #MM        workbench-c-adddatatypes \

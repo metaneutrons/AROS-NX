@@ -1,5 +1,5 @@
 /*
-    Copyright (C) 1995-2007, The AROS Development Team. All rights reserved.
+    Copyright (C) 1995-2026, The AROS Development Team. All rights reserved.
 
     Desc:
 */
@@ -61,7 +61,7 @@
 {
   AROS_LIBFUNC_INIT
 
-  struct Layer * _l, * lparent;
+  struct Layer * lparent;
   /*
    * all children must have been destroyed before.
    */
@@ -74,50 +74,14 @@
     return FALSE;
   }
     
-  if (IS_VISIBLE(l))
+  /* A blended layer hid nothing: nothing to show or backfill behind it */
+  if (IS_VISIBLE(l) && !IS_TRANSLUCENT(l))
   {
     struct Region r;
     InitRegion(&r);
 
     SetRegion(l->VisibleRegion, &r);
-    _l = l->back;
-    lparent = l->parent;
-
-    /*
-     * Visit all layers behind this layer until my parent comes
-     * I also visit my parent. If my parent is invisible I must
-     * go further to the parent of that parent etc.
-     */
-    while (1)
-    {
-      if (IS_VISIBLE(_l)  && DO_OVERLAP(&r.bounds, &_l->shape->bounds))
-      {
-        ClearRegion(_l->VisibleRegion);
-        _ShowPartsOfLayer(_l, &r, LayersBase);
-      }
-      else
-        SetRegion(&r,_l->VisibleRegion);
-
-      if (IS_VISIBLE(_l) || IS_ROOTLAYER(_l))
-        AndRegionRegion(_l->VisibleRegion, l->shape);
-      
-      if (_l == lparent)
-      {
-        if (IS_VISIBLE(_l) || (NULL == lparent->parent))
-          break;
-        else
-          lparent = lparent->parent;
-      }
-      /*
-       * The part that this layer is hiding I cannot make
-       * visible on the layers behind it. Therefore I
-       * have to take it out.
-       */
-      if (IS_VISIBLE(_l))
-        ClearRegionRegion(_l->visibleshape, &r);
-
-      _l = _l->back;
-    }
+    lparent = _ShowLayersBehind(l, &r, l->shape, &r.bounds, NULL, FALSE, LayersBase);
 
     ClearRegion(&r);
 
@@ -142,6 +106,11 @@
   
   if (l->back)
     l->back->front = l->front;
+
+  /* The display must drop the surface before it is freed */
+  if (IS_COMPOSITED(l) && NULL != LIE(l->LayerInfo))
+    LIE(l->LayerInfo)->lie_NumComposited--;
+  UPDATE_SURFACES(l->LayerInfo);
   
   UnlockLayers(l->LayerInfo);
 

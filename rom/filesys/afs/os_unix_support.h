@@ -70,6 +70,7 @@ struct Node {};
 #define ERROR_OBJECT_NOT_FOUND    205
 #define ERROR_INVALID_COMPONENT_NAME 210
 #define ERROR_OBJECT_WRONG_TYPE   212
+#define ERROR_DISK_NOT_VALIDATED   213
 #define ERROR_DISK_WRITE_PROTECTED 214
 #define ERROR_DIRECTORY_NOT_EMPTY 216
 #define ERROR_SEEK_ERROR          219
@@ -145,6 +146,7 @@ struct InfoData {
 #define ED_DATE       5
 #define ED_COMMENT    6
 #define ED_OWNER      7
+#define ED_SIZE64     8
 struct ExAllData {
 	struct ExAllData *ed_Next;
 	UBYTE *ed_Name;
@@ -157,6 +159,7 @@ struct ExAllData {
 	UBYTE *ed_Comment;
 	UWORD  ed_OwnerUID;
 	UWORD  ed_OwnerGID;
+	uint64_t ed_Size64;
 };
 struct ExAllControl {
 	ULONG eac_Entries;

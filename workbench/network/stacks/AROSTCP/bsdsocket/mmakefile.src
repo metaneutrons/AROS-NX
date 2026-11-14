@@ -32,6 +32,7 @@ SYS_H= \
 PROTOS_H= \
 	protos/kern/amiga_api_protos.h 	protos/kern/amiga_main_protos.h \
 	protos/kern/amiga_select_protos.h protos/kern/amiga_time_protos.h \
+	protos/kern/kern_random_protos.h \
 	protos/kern/amiga_userlib_protos.h protos/kern/kern_malloc_protos.h \
 	protos/kern/kern_synch_protos.h protos/kern/subr_prf_protos.h \
 	protos/kern/uipc_domain_protos.h \
@@ -72,7 +73,7 @@ NETINET_C:= \
 	netinet/ip_input netinet/ip_output netinet/raw_ip \
 	netinet/tcp_debug netinet/tcp_input netinet/tcp_output \
 	netinet/tcp_subr netinet/tcp_syncache netinet/tcp_timer netinet/tcp_usrreq \
-	netinet/tcp_cc_newreno netinet/tcp_cc_cubic \
+	netinet/tcp_cc_newreno netinet/tcp_cc_cubic netinet/tcp_ss netinet/tcp_rack \
 	netinet/udp_usrreq netinet/igmp
 
 ifeq ($(AROS_TARGET_CPU),x86_64)
@@ -95,7 +96,7 @@ NETINET6_C= \
 	netinet6/in6 netinet6/in6_pcb netinet6/in6_proto \
 	netinet6/ip6_input netinet6/ip6_output \
 	netinet6/icmp6 netinet6/nd6 netinet6/nd6_nbr netinet6/nd6_rtr \
-	netinet6/mld6 \
+	netinet6/mld6 netinet6/raw_ip6 \
 	netinet6/udp6_usrreq
 
 ifeq ($(AROS_TARGET_CPU),x86_64)
@@ -121,13 +122,15 @@ KERN_C= \
 	kern/uipc_domain kern/uipc_socket kern/uipc_socket2 \
 	kern/amiga_log kern/amiga_cstat kern/amiga_rexx \
 	kern/subr_prf kern/accesscontrol kern/config_var \
-	kern/kern_sysctl
+	kern/kern_sysctl kern/amiga_netsvc kern/amiga_svcmgr \
+	kern/kern_random
 
 KERN_H= \
 	kern/amiga_includes.h kern/amiga_time.h kern/amiga_config.h \
 	kern/amiga_netdb.h kern/amiga_gui.h kern/amiga_log.h \
 	kern/amiga_cx.h kern/amiga_dhcp.h kern/amiga_rc.h \
-        kern/amiga_rexx.h kern/amiga_subr.h kern/accesscontrol.h
+        kern/amiga_rexx.h kern/amiga_subr.h kern/accesscontrol.h \
+        kern/amiga_netsvc.h kern/amiga_svcmgr.h
 
 # Application interface sources
 # Amiga "struct Library" interface, API functions,
@@ -141,6 +144,7 @@ API_C=\
 	api/res_comp api/res_debug api/res_init \
 	api/res_mkquery api/res_query api/res_send  \
 	api/amiga_roadshow api/miami_api api/miami_functable \
+	api/netservice_api api/netservice_functable \
         api/if_indextoname api/if_nametoindex api/if_nameindex \
         api/getifaddrs api/inet_pton api/inet_ntop
 
@@ -148,7 +152,7 @@ API_H=\
 	api/amiga_raf.h api/amiga_api.h api/amiga_libcallentry.h \
 	api/allocdatabuffer.h api/dns_cache.h api/gethtbynamadr.h \
 	api/resolv.h api/sockargs.h \
-	api/apicalls.h api/miami_api.h
+	api/apicalls.h api/miami_api.h api/netservice_api.h
 
 #
 # Misc headers

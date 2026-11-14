@@ -69,6 +69,21 @@ extern struct SignalSemaphore ndb_Lock;
 extern struct DynDataBase DynDB;
 extern ULONG ndb_Serial;
 
+/* Per-interface DNS servers (DNS=/DNS6= interface tokens). */
+struct ifnet;
+void ifnet_set_dns(struct ifnet *ifp, const UBYTE *v4csv, const UBYTE *v6csv);
+void ifnet_clear_dns(struct ifnet *ifp);
+
+/* DNS servers and search domains learned from Router Advertisements
+ * (RDNSS and DNSSL options, RFC 8106), each for its lifetime in seconds. */
+struct in6_addr;
+void ndb_ra_server(struct ifnet *ifp, const struct in6_addr *addr, ULONG lifetime);
+void ndb_ra_domain(struct ifnet *ifp, const char *name, ULONG lifetime);
+void ndb_ra_timer(void);
+/* Apply what the stack task queued for the dynamic database (call with
+ * DynDB.dyn_Lock held, before changing it). */
+int ndb_ops_locked(void);
+
 /* Locking macros for NDB */
 #define LOCK_W_NDB(ndb) (ObtainSemaphore(&ndb_Lock))
 #define LOCK_R_NDB(ndb) (ObtainSemaphoreShared(&ndb_Lock))
@@ -98,9 +113,19 @@ struct NameserventNode {
   struct MinNode  nsn_Node;
   short           nsn_EntSize;
   struct nameservent {
-    struct in_addr ns_addr;
+    struct in_addr ns_addr;	/* IPv4 server (nsn_Family == AF_INET) */
   } nsn_Ent;
+  ULONG           nsn_OwnerIndex; /* if_index of the interface it is for, else 0:
+				 * an index is never reused, so it outlives the
+				 * interface, as a pointer would not */
+  UBYTE           nsn_Family;	/* AF_INET or AF_INET6 (0 == AF_INET for old creators) */
+  struct in6_addr nsn_Addr6;	/* IPv6 server (nsn_Family == AF_INET6) */
+  ULONG           nsn_Expire;	/* learned from a Router Advertisement: when it
+				 * ends (system time, s), NDB_RA_FOREVER never;
+				 * 0 otherwise */
 };
+
+#define NDB_RA_FOREVER 0xffffffffUL
 
 struct DomainentNode {
   struct MinNode  dn_Node;
@@ -108,6 +133,8 @@ struct DomainentNode {
   struct domainent {
     char *d_name;
   } dn_Ent;
+  ULONG           dn_OwnerIndex;	/* as nsn_OwnerIndex */
+  ULONG           dn_Expire;	/* as nsn_Expire */
 };
 
 /* NetDataBase Nodes */
@@ -150,10 +177,19 @@ struct ServentNode * findServentNode(struct NetDataBase * ndb,
 /*
  * Read NetDB...
  */
+/*
+ * Stack-private flags for the netdb parsers, above the public NETDB_IFF_*
+ * of <netdb.h>.
+ */
+#define NETDB_IFF_NOASK  0x00010000  /* the stack is running: no requester when an interface fails to start */
+#define NETDB_IFF_REPORT 0x00020000  /* ARexx ADD: an interface that was not brought up is an error */
+
 LONG do_netdb(struct CSource *cs, UBYTE **errstrp, struct CSource *res);
 LONG reset_netdb(struct CSource *cs, UBYTE **errstrp, struct CSource *res);
 LONG init_netdb(void);
 void netdb_deinit(void);
+LONG netdb_reload(void);        /* re-read config in place (reload): swap NDB, re-apply interfaces */
+void dyndb_flush(void);         /* drop all dynamic nameservers/domains (reload) */
 #define NETDB_DEFER_SECS 5      /* how often a DEFER interface is tried again */
 void netdb_defer_timer(void);   /* periodic retry of DEFER interfaces */
      

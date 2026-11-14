@@ -304,7 +304,7 @@ const ULONG sizes[] = {
     offsetof(struct ExAllData,ed_Days),
     offsetof(struct ExAllData,ed_Comment),
     offsetof(struct ExAllData,ed_OwnerUID),
-    sizeof(struct ExAllData)
+    offsetof(struct ExAllData,ed_Size64)    /* ED_OWNER: up to ed_OwnerGID */
 };
 
 static SIPTR examine(struct emulbase *emulbase, struct filehandle *fh,
@@ -888,7 +888,7 @@ static void handlePacket(struct emulbase *emulbase, struct filehandle *fhv, stru
         if (fh->type == FHD_FILE)
             Res1 = DoSeek(emulbase, fh, dp->dp_Arg2, dp->dp_Arg3, &Res2);
         else {
-            Res1 = DOSFALSE;
+            Res1 = -1;
             Res2 = ERROR_OBJECT_WRONG_TYPE;
         }
 

@@ -2,7 +2,7 @@
 #define INPUTHANDLER_H
 
 /*
-    Copyright © 1995-2011, The AROS Development Team. All rights reserved.
+    Copyright © 1995-2026, The AROS Development Team. All rights reserved.
     Copyright © 2001-2003, The MorphOS Development Team. All Rights Reserved.
     $Id$
 */
@@ -75,6 +75,10 @@ struct IIHData
     struct Screen	    *ScreenDrag;
     WORD                     ScreenDragPointX;
     WORD                     ScreenDragPointY;
+    LONG                     ScreenDragRemX;     /* drag left over by screen scaling */
+    LONG                     ScreenDragRemY;
+    LONG                     ScrollRemX;         /* the same for autoscroll */
+    LONG                     ScrollRemY;
     BOOL		     SwitchedMonitor;
 };
 
@@ -85,7 +89,6 @@ struct GeneratedInputEvent
 };
 
 struct Interrupt *InitIIH(struct IntuitionBase *IntuitionBase);
-VOID CleanupIIH(struct Interrupt *iihandler, struct IntuitionBase *IntuitionBase);
 
 
 AROS_UFP2(struct InputEvent *, IntuiInputHandler,

@@ -23,10 +23,54 @@
 #include "pthread_intern.h"
 #include "debug.h"
 
-int pthread_setspecific(pthread_key_t key, const void *value)
+/****************************************************************************
+    NAME */
+        int pthread_setspecific(
+
+/*  SYNOPSIS */
+        pthread_key_t key,
+        const void *value)
+
+/*  FUNCTION
+        Store value in the calling thread's slot for an allocated key. Replacing
+        a value does not call its destructor or free the previous value.
+
+    INPUTS
+        key - Live key allocated by pthread_key_create(). Prevent its deletion
+            or reuse during this operation and while its values remain in use.
+        value - Borrowed pointer to store, or NULL to clear the slot. The caller
+            owns the data and must arrange its lifetime and eventual release.
+
+    RESULT
+        0 after storing the pointer. EINVAL if key is out of range or not
+        allocated when checked, ENOMEM if a task that is not a pthread could
+        not get slots; the slot is unchanged on failure. Errors are returned
+        directly.
+
+    NOTES
+        Include <pthread.h>; link with pthread. The allocation check can wait
+        for the shared TLS semaphore. A task that is not a pthread (another
+        program calling into a shared library, a raw subtask) gets slots of
+        its own on its first store, and its destructors never run. No data
+        storage is allocated or copied. At worker
+        exit, a non-NULL value with an associated destructor is cleared and
+        passed to that destructor, subject to the rules of pthread_key_create().
+        Clear or dispose of a replaced value explicitly when necessary.
+
+    BUGS
+        The TLS semaphore is released before the slot is written; concurrent
+        key deletion/reuse is not excluded. Recreated keys retain stale values
+        in surviving threads. Program-wide teardown does not guarantee
+        execution of worker TLS destructors.
+
+    SEE ALSO
+        pthread_key_create(),
+        pthread_getspecific(),
+        pthread_exit()
+
+*****************************************************************************/
 {
-    pthread_t thread;
-    ThreadInfo *inf;
+    void **values;
     TLSKey *tls;
 
     D(bug("%s(%u)\n", __FUNCTION__, key));
@@ -34,7 +78,6 @@ int pthread_setspecific(pthread_key_t key, const void *value)
     if (key >= PTHREAD_KEYS_MAX)
         return EINVAL;
 
-    thread = pthread_self();
     tls = &tlskeys[key];
 
     ObtainSemaphoreShared(&tls_sem);
@@ -47,8 +90,9 @@ int pthread_setspecific(pthread_key_t key, const void *value)
 
     ReleaseSemaphore(&tls_sem);
 
-    inf = GetThreadInfo(thread);
-    inf->tlsvalues[key] = (void *)value;
+    if (!(values = GetTLSValues(TRUE)))
+        return ENOMEM;
+    values[key] = (void *)value;
 
     return 0;
 }

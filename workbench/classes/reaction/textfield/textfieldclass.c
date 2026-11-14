@@ -3,7 +3,7 @@
 
     Desc: Reaction textfield.gadget - BOOPSI class implementation
 */
-#define DEBUG 1
+#define DEBUG 0
 
 #include <proto/exec.h>
 #include <proto/intuition.h>
@@ -25,6 +25,7 @@
 #include <string.h>
 
 #include "textfield_intern.h"
+#include "../reaction_box.h"
 
 #define TextFieldBase ((struct Library *)(cl->cl_UserData))
 
@@ -180,10 +181,7 @@ IPTR TextField__GM_RENDER(Class *cl, Object *o, struct gpRender *msg)
     if (!rp)
         return FALSE;
 
-    x = gad->LeftEdge;
-    y = gad->TopEdge;
-    w = gad->Width;
-    h = gad->Height;
+    reaction_gadget_box(gad, msg->gpr_GInfo, &x, &y, &w, &h);
 
     /* Fill background */
     SetAPen(rp, dri ? dri->dri_Pens[BACKGROUNDPEN] : 0);

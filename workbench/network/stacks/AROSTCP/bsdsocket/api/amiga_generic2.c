@@ -23,6 +23,7 @@
 #include <conf.h>
 
 #include <aros/libcall.h>
+#include <libraries/bsdsocket.h>	/* SBTC_CAN_SHARE_LIBRARY_BASES, SBTC_ERROR_HOOK */
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -269,6 +270,7 @@ AROS_LH3(VOID, SetSocketSignals,
      * The operations below are atomic so no need to protect them
      */
     libPtr->sigIntrMask = sigintrmask;
+    libPtr->sigIOTask = libPtr->sigUrgTask = FindTask(NULL);
     libPtr->sigIOMask = sigiomask;
     libPtr->sigUrgMask = sigurgmask;
     AROS_LIBFUNC_EXIT
@@ -323,7 +325,7 @@ static int getLastSockFd(struct SocketBase *libPtr)
 /*
  * Set size of descriptor tab|e
  */
-static LONG
+LONG
 setdtablesize(struct SocketBase *libPtr, UWORD size)
 {
 
@@ -387,6 +389,16 @@ setdtablesize(struct SocketBase *libPtr, UWORD size)
   *tagData = (LONG)libPtr->baseField;\
   break;\
  case (code << SBTB_CODE) | SBTF_SET: /* set */\
+  LONG_ASSIGN(libPtr->baseField, *(tagData));\
+  break
+
+/* A signal mask whose signals go to the task that set it */
+#define CASE_SIGMASK(code, baseField, taskField)\
+ case (code << SBTB_CODE): /* get */ \
+  *tagData = (LONG)libPtr->baseField;\
+  break;\
+ case (code << SBTB_CODE) | SBTF_SET: /* set */\
+  libPtr->taskField = FindTask(NULL);\
   LONG_ASSIGN(libPtr->baseField, *(tagData));\
   break
 
@@ -718,11 +730,50 @@ AROS_LH1(ULONG, SocketBaseTagList,
 
                 CASE_LONG(SBTC_BREAKMASK,  sigIntrMask);
 
-                CASE_LONG(SBTC_SIGIOMASK,  sigIOMask);
+                CASE_SIGMASK(SBTC_SIGIOMASK,  sigIOMask, sigIOTask);
 
-                CASE_LONG(SBTC_SIGURGMASK, sigUrgMask);
+                CASE_SIGMASK(SBTC_SIGURGMASK, sigUrgMask, sigUrgTask);
 
-                CASE_LONG(SBTC_SIGEVENTMASK, sigEventMask);
+                CASE_SIGMASK(SBTC_SIGEVENTMASK, sigEventMask, sigEventTask);
+
+            /*
+             * Let every task of the program call through this base, not
+             * only its opener. Each caller sleeps on its own, and its
+             * errno is best kept through SBTC_ERROR_HOOK.
+             */
+            case(SBTC_CAN_SHARE_LIBRARY_BASES << SBTB_CODE):  /* get */
+                *tagData = (IPTR)libPtr->shared;
+                break;
+            case(SBTC_CAN_SHARE_LIBRARY_BASES << SBTB_CODE) | SBTF_SET:  /* set */
+                if(*tagData == 0) {
+                    if(libPtr->shared)	/* the opener may be gone */
+                        return errIndex;
+                } else if(!libPtr->shared && !libPtr->hookBase)
+                    api_sharebase(libPtr);
+                break;
+
+            case(SBTC_ERROR_HOOK << SBTB_CODE):  /* get */
+                *tagData = (IPTR)libPtr->errorHook;
+                break;
+            case(SBTC_ERROR_HOOK << SBTB_CODE) | SBTF_SET:  /* set */
+                libPtr->errorHook = (struct Hook *)*tagData;
+                break;
+
+                CASE_LONG(SBTC_SIG_RECONFIG_MASK,       sigReconfigMask);
+
+                CASE_LONG(SBTC_SIG_ADDRESS_CHANGE_MASK, sigAddrChangeMask);
+
+            case(SBTC_RECONFIG_STATE << SBTB_CODE):  /* get */
+                *tagData = (IPTR)api_reconfig_state;
+                break;
+
+            case(SBTC_RECONFIG_GENERATION << SBTB_CODE):  /* get */
+                *tagData = (IPTR)api_reconfig_generation;
+                break;
+
+            case(SBTC_RECONFIG_ACK << SBTB_CODE) | SBTF_SET:  /* set: consumer quiesced */
+                api_reconfig_acked++;
+                break;
 
             case(SBTC_ERRNO << SBTB_CODE):  /* get */
                 *tagData = (IPTR)readErrnoValue(libPtr);
@@ -742,8 +793,12 @@ AROS_LH1(ULONG, SocketBaseTagList,
                 *tagData = (IPTR)libPtr->dTableSize;
                 break;
             case(SBTC_DTABLESIZE << SBTB_CODE) | SBTF_SET:  /* set */
-                if((tmp = (WORD) * tagData) > 0)
+                if((tmp = (WORD) * tagData) > 0) {
+                    /* fd hooks of other tasks use the table under it */
+                    ObtainSyscallSemaphore(libPtr);
                     setdtablesize(libPtr, tmp);
+                    ReleaseSyscallSemaphore(libPtr);
+                }
                 break;
 
                 CASE_IPTR(SBTC_FDCALLBACK,   fdCallback);

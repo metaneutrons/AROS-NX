@@ -10,7 +10,14 @@ from pathlib import Path
 
 
 def defaults():
-    """Fixed native device/unit and DHCP; no private configuration inputs."""
+    """Fixed native device/unit and DHCP; no private configuration inputs.
+
+    DHCP is an external service: the stack starts SYS:System/Network/Services/
+    dhcpd from db/services.d/dhcp (staged by make-wifi-stage.py), and dhcpd runs
+    the client from AROSTCP/dhcp/client or its built-in default
+    SYS:System/Network/AROSTCP/C/dhclient. The stack no longer reads DHCLIENT.
+    The PATH_DHCLIENT_* variables below are read by dhclient itself.
+    """
     root = "Prefs/Env-Archive/"
     return {
         root + "AROSTCP/Config": "ENV:AROSTCP/db",
@@ -24,8 +31,7 @@ def defaults():
             "IP=DHCP UP DEFER\n",
         root + "AROSTCP/db/general.config":
             "USELOOPBACK=YES\nDEBUGSANA=NO\nUSENS=SECOND\nGATEWAY=NO\n"
-            "HOSTNAME=arosp4\nLOG FILTERFILE=5\nGUI PANEL=MUI\nOPENGUI=NO\n"
-            "DHCLIENT=SYS:System/Network/AROSTCP/C/dhclient\n",
+            "HOSTNAME=arosp4\nLOG FILTERFILE=5\nGUI PANEL=MUI\nOPENGUI=NO\n",
         root + "PATH_DHCLIENT_DB": "/T/dhclient.leases",
         root + "PATH_DHCLIENT_PID": "/T/dhclient.pid",
         root + "PATH_DHCLIENT_CONF": "ENV:AROSTCP/db/dhclient.conf",

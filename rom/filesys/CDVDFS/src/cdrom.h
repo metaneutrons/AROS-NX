@@ -1,8 +1,10 @@
+/* Copyright (C) 2026, The AROS Development Team. All rights reserved. */
 /* cdrom.h: */
 
 /*
  * History:
  *
+ * 29-Oct-26 aros      Remember cache allocation requirements for recovery.
  * 06-Mar-09 error     - Removed madness, fixed insanity. Cleanup started
  */
 
@@ -17,6 +19,17 @@
 
 #include <inttypes.h>
 
+/*
+ * Storage class for small static helpers used by several code paths. On
+ * m68k the handler lives in the Kickstart ROM, so keep one out of line copy;
+ * elsewhere inline them into every caller as the open coded original was.
+ */
+#if defined(__mc68000__)
+#define CDVDFS_SHARED static __attribute__((noinline))
+#else
+#define CDVDFS_SHARED static inline __attribute__((always_inline))
+#endif
+
 #define VERSION "CDROM-Handler 1.15 (03.11.94)"
 
 #define SCSI_BUFSIZE 2048
@@ -27,12 +40,14 @@ typedef struct SectorCacheSlot {
   long current_sector;
   uint32_t last_used;
   unsigned short buffer_sector;
-  unsigned short sector_count;
+  unsigned short sector_count; /* Allocated capacity and alignment */
+  unsigned short valid_sectors;
 } SectorCacheSlot;
 
 typedef struct CDROM {
   struct CDVDBase *global;
   unsigned char 	*buffer;
+  uint32_t buffer_bytes; /* Valid bytes starting at buffer */
   unsigned char 	*buffer_data;
   unsigned char 	*buffer_file2;
   unsigned char 	*buffer_metadata;
@@ -58,6 +73,8 @@ typedef struct CDROM {
   short			device_open;
   struct IOStdReq *iochangeint;
   struct Interrupt changeint;
+
+  uint32_t cache_memory_type;
 
 } CDROM;
 
@@ -92,7 +109,7 @@ CDROM *Open_CDROM
 	(
 		struct CDVDBase *global,
 		char *p_device,
-		int p_scsi_id,
+		IPTR p_scsi_id,
 		uint32_t p_memory_type,
 		int p_std_buffers,
 		int p_file_buffers
@@ -102,8 +119,11 @@ int Read_Chunk(CDROM *p_cd, long p_sector);
 int Read_File_Chunk(CDROM *p_cd, long p_sector);
 void Cleanup_CDROM(CDROM *p_cd);
 int Test_Unit_Ready(CDROM *p_cd);
+#ifndef AROS_KERNEL
+/* only used by the stand-alone test program */
 int Mode_Select(CDROM *p_cd, int p_on, int p_block_length);
 int Inquire(CDROM *p_cd, t_inquiry_data *p_data);
+#endif
 t_toc_data *Read_TOC
 	(
 		CDROM *p_cd,

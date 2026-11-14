@@ -84,6 +84,14 @@ Object *optObjCheckCreateWork = NULL;
 Object *sys_size = NULL;
 Object *work_size = NULL;
 Object *optObjCheckEFI = NULL;
+#ifdef INSTALL_BL_PC_EFI
+Object *optObjCycleBootMode = NULL;
+#endif
+Object *optObjCheckFormatESP = NULL;
+Object *optObjCheckCopyESP = NULL;
+Object *bootopt_grubgroup = NULL;
+Object *bootopt_efigroup = NULL;
+Object *bootopt_esp = NULL;
 Object *optObjEFIVolumeName = NULL;
 Object *optObjDestVolumeName = NULL;
 Object *sys_devname = NULL, *work_devname = NULL;
@@ -189,6 +197,10 @@ int main(int argc, char *argv[])
         NULL
     };
     
+#ifdef INSTALL_BL_PC_EFI
+    static char *opt_bootmodes[] = { "BIOS (GRUB)", "UEFI", NULL };
+#endif
+
     static char *opt_fstypes[] = {
         "FFS-Intl",
         "SFS",
@@ -352,6 +364,24 @@ int main(int argc, char *argv[])
             MUIA_InstallOption_Obj, (IPTR)(ImageObject, CHECKBUTTONCOMMON
                 MUIA_ShortHelp, __(MSG_HELP_EFIESP),
                 MUIA_Selected, FALSE,
+            End),
+        TAG_DONE);
+
+    optObjCheckFormatESP = Install_MakeOption(InstallObj,
+            MUIA_InstallOption_ID, (IPTR)"espformat",
+            MUIA_InstallOption_ValueTag, MUIA_Selected,
+            MUIA_InstallOption_Obj, (IPTR)(ImageObject, CHECKBUTTONCOMMON
+                MUIA_ShortHelp, __(MSG_HELP_EFIFORMAT),
+                MUIA_Selected, FALSE,
+            End),
+        TAG_DONE);
+
+    optObjCheckCopyESP = Install_MakeOption(InstallObj,
+            MUIA_InstallOption_ID, (IPTR)"espcopy",
+            MUIA_InstallOption_ValueTag, MUIA_Selected,
+            MUIA_InstallOption_Obj, (IPTR)(ImageObject, CHECKBUTTONCOMMON
+                MUIA_ShortHelp, __(MSG_HELP_EFICOPY),
+                MUIA_Selected, TRUE,
             End),
         TAG_DONE);
 
@@ -632,6 +662,25 @@ int main(int argc, char *argv[])
             End),
         TAG_DONE);
 
+#ifdef INSTALL_BL_PC_EFI
+    optObjCycleBootMode = Install_MakeOption(InstallObj,
+            MUIA_InstallOption_ID, (IPTR)"bootmode",
+            MUIA_InstallOption_ValueTag, MUIA_Cycle_Active,
+            MUIA_InstallOption_Obj, (IPTR)(CycleObject,
+                MUIA_CycleChain, 1,
+                MUIA_Cycle_Entries, opt_bootmodes,
+                MUIA_Cycle_Active, BootLoaderType == BOOTLOADER_EFI,
+                MUIA_Disabled, BIOSBootLoaderType == BOOTLOADER_NONE ||
+                    !BootLoaderData[BOOTLOADER_EFI].match,
+            End),
+        TAG_DONE);
+    if (BootLoaderType == BOOTLOADER_EFI)
+    {
+        OPTOSET(optObjCheckEFI, MUIA_Selected, TRUE);
+        OPTOSET(optObjCyclePartScheme, MUIA_Cycle_Active, 2);
+    }
+#endif
+
     optObjCheckBootloader = Install_MakeOption(InstallObj, 
             MUIA_InstallOption_ID, (IPTR)"reboot",
             MUIA_InstallOption_ValueTag, MUIA_Selected,
@@ -813,6 +862,10 @@ int main(int argc, char *argv[])
                                             Child, (IPTR) LLabel(_(MSG_INSTALLDEVEL)),
                                             Child, (IPTR) optObjCheckBootloader,
                                             Child, (IPTR) LLabel(_(MSG_INSTALLBOOT)),
+#ifdef INSTALL_BL_PC_EFI
+                                            Child, (IPTR) optObjCycleBootMode,
+                                            Child, (IPTR) LLabel("BIOS / UEFI"),
+#endif
                                         End,
                                         Child, (IPTR) HVSpace,
                                         Child, (IPTR) HVSpace,
@@ -873,7 +926,29 @@ int main(int argc, char *argv[])
 
                                 /* Bootloader options */
                                 Child, (IPTR) VGroup,
-                                    Child, (IPTR) VGroup,
+                                    Child, (IPTR) (bootopt_efigroup = VGroup,
+                                        MUIA_ShowMe, FALSE,
+                                        Child, (IPTR) HVSpace,
+                                        Child, (IPTR) CLabel(_(MSG_EFIOPTIONS)),
+                                        Child, (IPTR) HVSpace,
+                                        Child, (IPTR) ColGroup(3),
+                                            Child, (IPTR) LLabel(_(MSG_EFIESPIS)),
+                                            Child, (IPTR) (bootopt_esp = TextObject,
+                                                MUIA_Text_Contents, (IPTR)" ",
+                                            End),
+                                            Child, (IPTR) HVSpace,
+
+                                            Child, (IPTR) optObjCheckFormatESP,
+                                            Child, (IPTR) LLabel(_(MSG_EFIFORMAT)),
+                                            Child, (IPTR) HVSpace,
+
+                                            Child, (IPTR) optObjCheckCopyESP,
+                                            Child, (IPTR) LLabel(_(MSG_EFICOPY)),
+                                            Child, (IPTR) HVSpace,
+                                        End,
+                                        Child, (IPTR) HVSpace,
+                                    End),
+                                    Child, (IPTR) (bootopt_grubgroup = VGroup,
                                         Child, (IPTR) HVSpace,
                                         Child, (IPTR) CLabel(_(MSG_GRUBOPTIONS)),
                                         Child, (IPTR) HVSpace,
@@ -919,7 +994,7 @@ int main(int argc, char *argv[])
                                             Child, (IPTR) HVSpace,
                                         End,
                                         Child, (IPTR) HVSpace,
-                                    End,
+                                    End),
                                 End,
 
                                 Child, (IPTR) VGroup,
@@ -1160,6 +1235,15 @@ int main(int argc, char *argv[])
                 (IPTR)app, 2, MUIM_Application_ReturnID, MUIV_Application_ReturnID_Quit);
 
     D(bug("[INST-APP] Installer notifications configured\n"));
+
+#if defined(INSTALL_BL_EFI)
+    /* The GRUB fields mean nothing to a firmware that loads an EFI stub */
+    if (BootLoaderType == BOOTLOADER_EFI)
+    {
+        SET(bootopt_grubgroup, MUIA_ShowMe, FALSE);
+        SET(bootopt_efigroup, MUIA_ShowMe, TRUE);
+    }
+#endif
 
     SET(wnd, MUIA_Window_Open, TRUE);
     {

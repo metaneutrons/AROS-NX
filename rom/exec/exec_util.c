@@ -1,5 +1,5 @@
 /*
-    Copyright (C) 1995-2023, The AROS Development Team. All rights reserved.
+    Copyright (C) 1995-2026, The AROS Development Team. All rights reserved.
 
     Desc: Exec utility functions.
 */
@@ -133,6 +133,18 @@ Exec_InitETask(struct Task *task, struct Task *parent, struct ExecBase *SysBase)
         void *aff = KrnAllocCPUMask();
         void *paff = NULL;
 
+        /*
+         * A NULL mask is not valid: no CPU would dispatch the task.
+         * Fail the ETask, as a failed ETask allocation does.
+         */
+        if (!aff)
+        {
+            task->tc_UnionETask.tc_ETask = NULL;
+            task->tc_Flags &= ~TF_ETASK;
+            FreeMem(et, sizeof(struct IntETask));
+            return FALSE;
+        }
+
         /* Inherit the parent's mask, not the creating core, or affinity
          * narrows to one core per generation. SetTaskAffinity() rewrites
          * the mask in place, so copy it under the parent's lock. */
@@ -250,11 +262,15 @@ Exec_CleanupETask(struct Task *task, struct ExecBase *SysBase)
     Forbid();
 
 #if defined(__AROSEXEC_SMP__)
-    if ((PrivExecBase(SysBase)->IntFlags & EXECF_CPUAffinity) && (IntETask(et)->iet_CpuAffinity))
-    {
-        if ((IPTR)IntETask(et)->iet_CpuAffinity != TASKAFFINITY_ANY)
-            KrnFreeCPUMask(IntETask(et)->iet_CpuAffinity);
-    }
+    /*
+     * EXECF_CPUAffinity says whether the scheduler honours the masks, not
+     * who owns them: TASKTAG_AFFINITY and SetTaskAffinity() give a task a
+     * mask while the flag is still clear, and it stays clear when SMP
+     * bring-up fails. The field is NULL unless one of them stored into it.
+     */
+    if (IntETask(et)->iet_CpuAffinity &&
+        ((IPTR)IntETask(et)->iet_CpuAffinity != TASKAFFINITY_ANY))
+        KrnFreeCPUMask(IntETask(et)->iet_CpuAffinity);
 #endif
 
 #if defined(__AROSEXEC_SMP__)
@@ -464,4 +480,18 @@ BOOL Exec_CheckTask(struct Task *task, struct ExecBase *SysBase)
 
     return FALSE;
 #endif
+}
+
+/* The varargs NewRawDoFmt() used throughout exec, see exec_util.h */
+STRPTR Exec_NewRawDoFmt(struct ExecBase *SysBase, CONST_STRPTR FormatString,
+                        VOID_FUNC PutChProc, APTR PutChData, ...)
+{
+    STRPTR retval;
+    va_list args;
+
+    va_start(args, PutChData);
+    retval = VNewRawDoFmt(FormatString, PutChProc, PutChData, args);
+    va_end(args);
+
+    return retval;
 }

@@ -1,5 +1,5 @@
 /*
-    Copyright (C) 1995-2004, The AROS Development Team. All rights reserved.
+    Copyright (C) 1995-2026, The AROS Development Team. All rights reserved.
 
     Desc:
 */
@@ -10,6 +10,44 @@
 #include <proto/layers.h>
 #include "basicfuncs.h"
 #include "layers_intern.h"
+
+/*
+ * Layer _l gets 'hide' in front of it: back up what it loses of it, or
+ * just take it out of its VisibleRegion.
+ */
+static void _HideFromLayer(struct Layer *_l, struct Region *hide, LIBBASETYPEPTR LayersBase)
+{
+  if (IS_VISIBLE(_l) && DO_OVERLAP(&_l->visibleshape->bounds, &hide->bounds))
+    _BackupPartsOfLayer(_l, hide, 0, FALSE, LayersBase);
+  else
+    ClearRegionRegion(hide, _l->VisibleRegion);
+}
+
+/*
+ * Hand the VisibleRegion 'show' down the layers from 'first' back to
+ * 'last', showing what they gain of it.
+ */
+static void _ShowLayerRange(struct Layer *_l, struct Layer *last, struct Region *show, LIBBASETYPEPTR LayersBase)
+{
+  while (1)
+  {
+    if (IS_VISIBLE(_l) && DO_OVERLAP(&_l->visibleshape->bounds, &show->bounds))
+    {
+      ClearRegion(_l->VisibleRegion);
+      _ShowPartsOfLayer(_l, show, LayersBase);
+    }
+    else
+      SetRegion(show, _l->VisibleRegion);
+
+    if (_l == last)
+      break;
+
+    if (IS_VISIBLE(_l))
+      ClearRegionRegion(OCCLUDESHAPE(_l), show);
+
+    _l = _l->back;
+  }
+}
 
 int _MoveLayerBehind(struct Layer *l,
                      struct Layer *lfront,
@@ -53,7 +91,7 @@ int _MoveLayerBehind(struct Layer *l,
      * the visible region
      */
     if (l->parent == _l->parent && IS_VISIBLE(_l))
-      OrRegionRegion(_l->visibleshape, hide);
+      OrRegionRegion(OCCLUDESHAPE(_l), hide);
 
     if (_l == lfront)
       break;
@@ -71,10 +109,7 @@ int _MoveLayerBehind(struct Layer *l,
   _l = first;
   while (1)
   {
-    if (IS_VISIBLE(_l) && DO_OVERLAP(&_l->visibleshape->bounds, &hide->bounds))
-      _BackupPartsOfLayer(_l, hide, 0, FALSE, LayersBase);
-    else
-      ClearRegionRegion(hide, _l->VisibleRegion);
+    _HideFromLayer(_l, hide, LayersBase);
     
     if (_l == l)
       break;
@@ -87,26 +122,7 @@ int _MoveLayerBehind(struct Layer *l,
    * Show the layers that appear now.
    * Start with the layer that is behind the layer l.
    */
-  _l = lbackold;
-
-  while (1)
-  {
-    if (IS_VISIBLE(_l) && DO_OVERLAP(&_l->visibleshape->bounds, &show.bounds))
-    {
-      ClearRegion(_l->VisibleRegion);
-      _ShowPartsOfLayer(_l, &show, LayersBase);
-    }
-    else
-      SetRegion(&show, _l->VisibleRegion);
-      
-    if (_l == lfront)
-      break;
-
-    if (IS_VISIBLE(_l))
-      ClearRegionRegion(_l->visibleshape, &show);
-
-    _l = _l->back;
-  }
+  _ShowLayerRange(lbackold, lfront, &show, LayersBase);
 
   ClearRegion(&show);
 
@@ -119,6 +135,8 @@ int _MoveLayerBehind(struct Layer *l,
 
   first->front = lfront;
   lfront->back = first;
+
+  UPDATE_SURFACES(l->LayerInfo);
 
   return TRUE;
 }
@@ -156,7 +174,7 @@ int _MoveLayerToFront(struct Layer * l,
    * family.
    */
   if (IS_VISIBLE(l))
-    backupr = l->visibleshape;
+    backupr = OCCLUDESHAPE(l);
   else
   {
     _l = l;
@@ -170,7 +188,7 @@ int _MoveLayerToFront(struct Layer * l,
           backupr_allocated = TRUE;
         }
         if (backupr)
-          OrRegionRegion(_l->visibleshape, backupr);
+          OrRegionRegion(OCCLUDESHAPE(_l), backupr);
       }
       if (_l == first)
         break;
@@ -195,10 +213,7 @@ int _MoveLayerToFront(struct Layer * l,
      */
     do
     {
-      if (IS_VISIBLE(_l) && DO_OVERLAP(&backupr->bounds, &_l->visibleshape->bounds))
-        _BackupPartsOfLayer(_l, backupr, 0, FALSE, LayersBase);
-      else
-        ClearRegionRegion(backupr, _l->VisibleRegion);
+      _HideFromLayer(_l, backupr, LayersBase);
 
       _l = _l->back;
     }
@@ -212,26 +227,7 @@ int _MoveLayerToFront(struct Layer * l,
      * Now I must make the layer family of l visible
      * (lfirst to and including l)
      */
-    _l = first;
-    
-    while (1)
-    {
-      if (IS_VISIBLE(_l) && DO_OVERLAP(&_l->visibleshape->bounds, &r.bounds))
-      {
-        ClearRegion(_l->VisibleRegion);
-        _ShowPartsOfLayer(_l, &r, LayersBase);
-      }
-      else
-        SetRegion(&r, _l->VisibleRegion);
-
-      if (_l == l)
-        break;
-
-      if (IS_VISIBLE(_l))
-        ClearRegionRegion(_l->visibleshape, &r);
-
-      _l = _l->back;
-    }
+    _ShowLayerRange(first, l, &r, LayersBase);
   }
   ClearRegion(&r);
 
@@ -248,6 +244,8 @@ int _MoveLayerToFront(struct Layer * l,
 
   l->back = lbehind;
   lbehind->front = l;
+
+  UPDATE_SURFACES(l->LayerInfo);
 
   return TRUE;
 }

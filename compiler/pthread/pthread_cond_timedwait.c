@@ -123,6 +123,7 @@ int _pthread_cond_timedwait(pthread_cond_t *cond, pthread_mutex_t *mutex, const 
 
     // prepare a waiter node
     waiter.task = task;
+    waiter.signalled = FALSE;
     signal = AllocSignal(-1);
     if (signal == -1)
     {
@@ -144,10 +145,16 @@ int _pthread_cond_timedwait(pthread_cond_t *cond, pthread_mutex_t *mutex, const 
     pthread_mutex_lock(mutex);
     mutex->incond--;
 
-    // remove the node from the list
-    ObtainSemaphore(&cond->semaphore);
-    Remove((struct Node *)&waiter);
-    ReleaseSemaphore(&cond->semaphore);
+    // remove the node from the list, unless a signal took it off already;
+    // a signalled waiter leaves the condition alone, as POSIX lets a
+    // broadcast be followed by destroying it
+    if (!waiter.signalled)
+    {
+        ObtainSemaphore(&cond->semaphore);
+        if (!waiter.signalled)
+            Remove((struct Node *)&waiter);
+        ReleaseSemaphore(&cond->semaphore);
+    }
 
     if (waiter.sigbit != SIGB_COND_FALLBACK)
         FreeSignal(waiter.sigbit);
@@ -172,7 +179,66 @@ int _pthread_cond_timedwait(pthread_cond_t *cond, pthread_mutex_t *mutex, const 
     return 0;
 }
 
-int pthread_cond_timedwait(pthread_cond_t *cond, pthread_mutex_t *mutex, const struct timespec *abstime)
+/****************************************************************************
+    NAME */
+        int pthread_cond_timedwait(
+
+/*  SYNOPSIS */
+        pthread_cond_t *cond,
+        pthread_mutex_t *mutex,
+        const struct timespec *abstime)
+
+/*  FUNCTION
+        Wait on cond as pthread_cond_wait() does, with an absolute deadline
+        measured against the clock selected at condition initialization.
+        Reacquire mutex before returning from the wait, including on timeout.
+        Test the protected predicate after every return; a zero result does
+        not certify that a condition signal or predicate change occurred.
+
+    INPUTS
+        cond - Initialized condition variable. Defaults to CLOCK_REALTIME;
+            CLOCK_MONOTONIC is selected through condition attributes.
+        mutex - Initialized mutex owned exactly once by the caller. Use the
+            same mutex for the predicate and concurrent waits on cond.
+        abstime - Absolute deadline with tv_nsec in 0..999999999. This
+            implementation also accepts NULL for an untimed wait. The value
+            is read during setup and is not retained after the call.
+
+    RESULT
+        0 after a nontimeout wake; ETIMEDOUT if the timer signal was observed.
+        EINVAL for NULL cond/mutex, an invalid nanosecond field, failure to open
+        timer.device, or failure to read the selected clock. Setup errors occur
+        before releasing mutex. Errors are returned directly. Cancellation can
+        exit the worker after the mutex has been reacquired.
+
+    NOTES
+        Include <pthread.h>; link with pthread. Call from the initial program
+        task or a registered worker. Keep both objects valid through all waits.
+        The wait creates a timer request and closes it before returning. Reacquiring
+        mutex may block past the deadline; this is not a bound on return time.
+        Install cancellation cleanup that releases mutex.
+
+        The deadline is converted once to a relative timer interval. Later
+        changes to the realtime clock do not adjust it. Nonpositive intervals
+        are changed to 1 ms. Positive fractions are truncated to microseconds,
+        with a minimum timer request of 1 microsecond.
+
+    BUGS
+        If timeout, condition and cancellation signals arrive together, timeout
+        takes precedence and cancellation is not tested on that return.
+        Mutex lock/unlock failures are ignored. Multiple recursive acquisitions
+        do not fully release mutex. Signal-allocation failure uses CTRL_D for
+        the timer and CTRL_E for the condition; those bits are not cleared by
+        the fallback setup and can collide with application signal use.
+        Explicit initialization before sharing avoids unsynchronized lazy init.
+
+    SEE ALSO
+        pthread_cond_wait(),
+        pthread_cond_init(),
+        pthread_cond_signal(),
+        pthread_cond_broadcast()
+
+*****************************************************************************/
 {
     D(bug("%s(%p, %p, %p)\n", __FUNCTION__, cond, mutex, abstime));
 

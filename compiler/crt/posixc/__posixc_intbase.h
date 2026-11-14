@@ -27,6 +27,7 @@ struct __random_state;
 struct __env_item;
 struct _fdesc;
 struct vfork_data;
+struct __flock_registry;
 
 struct PosixCIntBase
 {
@@ -96,8 +97,8 @@ struct PosixCIntBase
     int cd_changed;
     BPTR cd_lock;
 
-    /* flock.c */
-    struct MinList _file_locks, *file_locks;
+    /* flock.c: registry shared by all bases of this library */
+    struct __flock_registry *flock_registry;
 
     /* umask */
     mode_t umask;
@@ -111,6 +112,18 @@ struct PosixCIntBase
     /* set(e)gid.c/get(e)gid.c */
     gid_t gid; /* Real group id of process */
     gid_t egid; /* Effective group id of process */
+
+    /* __upath.c, at the end to keep the offsets above: a program linked
+       against the global PosixCBase shares it with its pthreads; those Tasks
+       convert into their own buffers (upath_others), upathbuf stays with the
+       Task that opened the base. */
+    struct Task *upath_task;
+    struct MinList upath_others;
+    struct SignalSemaphore upath_sem;
+
+    /* __threadhook.c: stdc/stdcio bases opened by posixc itself */
+    struct StdCBase *own_stdcbase;
+    struct StdCIOBase *own_stdciobase;
 };
 
 /* flags; values of flags are power of two so they can be ORed together */
@@ -126,5 +139,11 @@ struct PosixCIntBase
    execution of child code, even though that it's actually executed by parent
    process until execve() is called. */
 #define PRETEND_CHILD 0x00000004
+
+/* __threadhook.c: picks the malloc pool of the stdc bases this task opens */
+void __posixc_inherit_mempool(struct StdCBase *StdCBase, int inherit);
+
+/* __upath.c: frees the path buffers of other Tasks (upath_others) */
+void __upath_free_others(struct PosixCIntBase *PosixCBase);
 
 #endif //__POSIXC_INTBASE_H

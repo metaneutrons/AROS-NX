@@ -6,7 +6,7 @@ include $(SRCDIR)/config/aros.cfg
 
 CUR_MESADIR := src/gallium/auxiliary/gallivm
 include $(SRCDIR)/$(CURDIR)/../mesa.cfg
-include $(SRCDIR)/$(CURDIR)/gallivm-26.0.0.sources
+include $(SRCDIR)/$(CURDIR)/gallivm-26.2.5.sources
 
 ifeq ($(OPT_LLVM),)
 ifneq ($(TARGET_LLVM_VER),)
@@ -20,8 +20,8 @@ LLVM_VERSION_MINOR := $(word 2,$(subst ., ,$(OPT_LLVM)))
 LLVM_VERSION_HEX := 0x$(shell printf "%02x%02x" $(LLVM_VERSION_MAJOR) $(LLVM_VERSION_MINOR))
 
 # ORCJIT has a different inventory and requires LLVM 15 or newer.
-ifneq ($(OPT_MESAGL),26.0.0)
-$(error Gallivm requires the reviewed Mesa 26.0.0 source inventory)
+ifneq ($(OPT_MESAGL),26.2.5)
+$(error Gallivm requires the reviewed Mesa 26.2.5 source inventory)
 endif
 
 #MM mesa3d-linklib-galliumvm : workbench-libs-llvm mesa3d-linklib-compiler-generated mesa3d-linklib-mesa-generated mesa3d-linklib-mesautil-generated

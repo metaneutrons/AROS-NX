@@ -56,7 +56,7 @@
 #define RES_STAYOPEN	0x0100		/* Keep TCP socket open */
 #define RES_DNSRCH	0x0200		/* search up local domain tree */
 
-#define RES_DEFAULT	(RES_RECURSE | RES_DEFNAMES | RES_INIT)
+#define RES_DEFAULT	(RES_RECURSE | RES_DEFNAMES | RES_DNSRCH | RES_INIT)
 
 #define AROSTCP_RES_DISABLED 0x8000       /* Implements MiamiDisallowDNS() */
 
@@ -68,7 +68,13 @@ struct state {
 	u_short	id;			/* current packet id */
 	ULONG   dbserial;
         char **dnsrch;
-        struct in_addr *nsaddr_list;
+        /*
+         * Nameserver addresses, one fully-formed sockaddr each (AF_INET or
+         * AF_INET6, port already set), terminated by an entry whose ss_family
+         * is 0.  A sockaddr_storage element carries either family so IPv6
+         * nameservers are supported alongside IPv4.
+         */
+        struct sockaddr_storage *nsaddr_list;
 };
 
 #ifndef AMITCP /* AmiTCP has this in the SocketBase */ 

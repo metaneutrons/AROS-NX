@@ -1,5 +1,5 @@
 /*
-    Copyright (C) 1995-2020, The AROS Development Team. All rights reserved.
+    Copyright (C) 1995-2026, The AROS Development Team. All rights reserved.
         
     Desc: Iprefs
 */
@@ -289,10 +289,10 @@ static void PreparePatches(void)
 
     InitSemaphore(&sem->sem);
     sem->sem.ss_Link.ln_Name = sem->semname;
-    strcpy(sem->semname, IPREFS_SEM_NAME);
+    strcpy(sem->semname, IPREFS_SEMAPHORE_NAME);
 
     Forbid();
-    if(!(iprefssem = (struct IPrefsSem *)FindSemaphore(IPREFS_SEM_NAME)))
+    if(!(iprefssem = (struct IPrefsSem *)FindSemaphore(IPREFS_SEMAPHORE_NAME)))
     {
         iprefssem = sem;
         AddSemaphore(&iprefssem->sem);
@@ -357,7 +357,7 @@ static void HandleAll(void)
 
 
 int __nocommandline = 1;
-STRPTR __detached_name = IPREFS_SEM_NAME;
+STRPTR __detached_name = IPREFS_SEMAPHORE_NAME;
 
 int main(void)
 {
@@ -370,6 +370,11 @@ int main(void)
     StartNotifications();
     PreparePatches();
 
+    /* Hold the public IPrefs semaphore while the saved preferences are
+       applied. A desktop obtains it shared before it opens the Workbench
+       screen, so the screen comes up with the final mode and fonts. */
+    ObtainSemaphore(&iprefssem->sem);
+
     Detach();  // No more console I/O beyond this point.
 
     /* The initial load runs from the startup sequence, where there is
@@ -379,6 +384,8 @@ int main(void)
     myproc->pr_WindowPtr = (APTR)-1;
     HandleNotify();
     myproc->pr_WindowPtr = oldwindowptr;
+
+    ReleaseSemaphore(&iprefssem->sem);
 
     HandleAll();
     Cleanup(NULL);

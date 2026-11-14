@@ -104,12 +104,13 @@ BOOL CmdStartup(struct Handler *handler, STRPTR name, struct DeviceNode *dev_nod
    if(error == 0)
    {
       handler->proc_port = proc_port;
-      handler->block_count = MEMBLOCKS(StrSize(default_vol_name)) +
-         MEMBLOCKS(sizeof(struct Handler));
+      handler->block_count = MemBlocks(StrSize(default_vol_name)) +
+         MemBlocks(sizeof(struct Handler));
       handler->min_block_size = MIN_BLOCK_SIZE;
       handler->max_block_size = MAX_BLOCK_SIZE;
       NewList((APTR)&handler->examinations);
 
+      /* Publish before allocating: DOS clears this if startup fails. */
       dev_node->dn_Task = proc_port;
 
       /* Create pools for zeroed, non-zeroed and public zeroed memory */
@@ -117,21 +118,24 @@ BOOL CmdStartup(struct Handler *handler, STRPTR name, struct DeviceNode *dev_nod
       handler->clear_pool = CreatePool(MEMF_CLEAR, CLEAR_PUDDLE_SIZE,
          CLEAR_PUDDLE_THRESH);
       if(handler->clear_pool == NULL)
-         error = IoErr();
+         error = ERROR_NO_FREE_STORE;
       handler->muddy_pool = CreatePool(MEMF_ANY, MUDDY_PUDDLE_SIZE,
          MUDDY_PUDDLE_THRESH);
       if(handler->muddy_pool == NULL)
-         error = IoErr();
+         error = ERROR_NO_FREE_STORE;
       handler->public_pool = CreatePool(MEMF_PUBLIC | MEMF_CLEAR,
          PUBLIC_PUDDLE_SIZE, PUBLIC_PUDDLE_THRESH);
       if(handler->public_pool == NULL)
-         error = IoErr();
+         error = ERROR_NO_FREE_STORE;
 
       /* Create a volume dos node */
 
-      volume = MyMakeDosEntry(handler, default_vol_name, DLT_VOLUME);
-      if(volume == NULL)
-         error = IoErr();
+      if(error == 0)
+      {
+         volume = MyMakeDosEntry(handler, default_vol_name, DLT_VOLUME);
+         if(volume == NULL)
+            error = IoErr();
+      }
    }
 
    if(error == 0)
@@ -155,7 +159,7 @@ BOOL CmdStartup(struct Handler *handler, STRPTR name, struct DeviceNode *dev_nod
       port = CreateMsgPort();
       handler->notify_port = port;
       if(port == NULL)
-         error = IoErr();
+         error = ERROR_NO_FREE_STORE;
    }
 
    /* Create the root directory and get a shared lock on it */
@@ -215,12 +219,10 @@ BOOL CmdDie(struct Handler *handler)
    LONG error = 0;
 
    root_dir = handler->root_dir;
-   if(IsListEmpty(&root_dir->elements)
-      && IsListEmpty(&handler->notifications)
-      && IsListEmpty(&root_dir->notifications)
-      && root_dir->lock->lock_count == 1)
-      DeleteHandler(handler);
-   else
+   if(!IsListEmpty(&root_dir->elements)
+      || !IsListEmpty(&handler->notifications)
+      || !IsListEmpty(&root_dir->notifications)
+      || root_dir->lock->lock_count != 1)
       error = ERROR_OBJECT_IN_USE;
 
    /* Return success indicator */
@@ -464,7 +466,7 @@ BOOL CmdFHFromLock(struct Handler *handler, struct FileHandle *handle,
          AddTail((struct List *)&lock->openings, (struct Node *)opening);
       }
       else
-         error = IoErr();
+         error = ERROR_NO_FREE_STORE;
    }
 
    /* Put address of opening in file handle */
@@ -533,12 +535,10 @@ BOOL CmdEnd(struct Handler *handler, struct Opening *opening)
          error = ERROR_DISK_WRITE_PROTECTED;
    }
 
-   if(error == 0)
-   {
-      Remove((APTR)opening);
-      CmdFreeLock(handler, lock);
-      FreePooled(handler->clear_pool, opening, sizeof(struct Opening));
-   }
+   /* Close releases the opening even if metadata updates are prohibited. */
+   Remove((APTR)opening);
+   CmdFreeLock(handler, lock);
+   FreePooled(handler->clear_pool, opening, sizeof(struct Opening));
 
    /* Return success indicator */
 
@@ -1199,7 +1199,7 @@ struct Lock *CmdCreateDir(struct Handler *handler,
 
    /* Find parent directory and possible name clash */
 
-   dir = GetHardObject(handler, lock, name, &parent);
+   dir = GetObjectNoFollow(handler, lock, name, &parent);
    lock = NULL;
 
    /* Create a new directory */
@@ -1227,7 +1227,7 @@ struct Lock *CmdCreateDir(struct Handler *handler,
                else
                {
                   error = IoErr();
-                  DeleteObject(handler, dir);
+                  AttemptDeleteObject(handler, dir, FALSE);
                }
             }
             else
@@ -1332,9 +1332,10 @@ BOOL CmdExamineFH(struct Handler *handler, struct Opening *opening,
 *	CmdExamineNext --
 *
 *   SYNOPSIS
-*	success = CmdExamineNext(handler, info)
+*	success = CmdExamineNext(handler, lock, info)
 *
-*	BOOL CmdExamineNext(struct Handler *, struct FileInfoBlock *);
+*	BOOL CmdExamineNext(struct Handler *, struct Lock *,
+*	   struct FileInfoBlock *);
 *
 *   FUNCTION
 *
@@ -1354,7 +1355,8 @@ BOOL CmdExamineFH(struct Handler *handler, struct Opening *opening,
 *
 */
 
-BOOL CmdExamineNext(struct Handler *handler, struct FileInfoBlock *info)
+BOOL CmdExamineNext(struct Handler *handler, struct Lock *lock,
+   struct FileInfoBlock *info)
 {
    struct Examination *examination;
    BOOL flag = info->fib_DiskKey & 0x1L;
@@ -1363,13 +1365,30 @@ BOOL CmdExamineNext(struct Handler *handler, struct FileInfoBlock *info)
    examination = (struct Examination *)info->fib_DiskKey;
    if (!flag)
    {
+      /* A finished scan clears the key. It must not start again */
+      if(info->fib_DiskKey == 0)
+      {
+         SetIoErr(ERROR_NO_MORE_ENTRIES);
+         return FALSE;
+      }
+
       /* This is a first call into ExNext, turn Object into Examination */
       /* This is done only for ExNext calls, doing it for every Examine call would
          leave a growing list of abandoned and not freed examinations, as there is
          no quarantee that ExNext will be called after Examine */
       examination = AllocPooled(handler->clear_pool, sizeof(struct Examination));
+      if(examination == NULL)
+      {
+         SetIoErr(ERROR_NO_FREE_STORE);
+         return FALSE;
+      }
       AddTail((APTR)&handler->examinations, (APTR)examination);
-      examination->next_object = (struct Object *)info->fib_DiskKey;
+
+      /* Nothing tracks the key left by Examine, so the entry it names may
+         have been deleted since. Start from the directory's first entry */
+      lock = FIXLOCK(handler, lock);
+      examination->next_object = (APTR)((struct Object *)
+         ((struct FileLock *)lock)->fl_Key)->elements.mlh_Head;
       info->fib_DiskKey = (IPTR)examination;
    }
 
@@ -1443,7 +1462,8 @@ BOOL CmdExamineAll(struct Handler *handler, struct Lock *lock,
 
    /* Check we support the requested format */
 
-   if(type > ED_COMMENT)
+   lock = FIXLOCK(handler, lock);
+   if(type < ED_NAME || type > ED_COMMENT)
       error = ERROR_BAD_NUMBER;
 
    /* ExAll must be called on directories */
@@ -1461,7 +1481,7 @@ BOOL CmdExamineAll(struct Handler *handler, struct Lock *lock,
    }
    else
    {
-      object = (APTR)((struct FileLock *)lock)->fl_Key;
+      object = GetRealObject((APTR)((struct FileLock *)lock)->fl_Key);
       object = (APTR)object->elements.mlh_Head;
    }
 
@@ -1474,10 +1494,7 @@ BOOL CmdExamineAll(struct Handler *handler, struct Lock *lock,
          struct_size = examine_sizes[type - 1];
          name = ((struct Node *)object)->ln_Name;
          name_size = StrSize(name);
-         if(((struct Node *)object)->ln_Pri == ST_SOFTLINK)
-            comment = &((struct Node *)object)->ln_Type;
-         else
-            comment = object->comment;
+         comment = object->comment;
          if(comment)
             comment_size = StrSize(comment);
          else
@@ -1556,7 +1573,10 @@ BOOL CmdExamineAll(struct Handler *handler, struct Lock *lock,
             }
          }
          else if(match)
+         {
             error = ERROR_NO_FREE_STORE;
+            break; /* Retry this entry in the next buffer. */
+         }
       }
       else
          error = ERROR_NO_MORE_ENTRIES;
@@ -1577,7 +1597,7 @@ BOOL CmdExamineAll(struct Handler *handler, struct Lock *lock,
       if(examination != NULL)
          AddTail((APTR)&handler->examinations, (APTR)examination);
       else
-         error = IoErr();
+         error = ERROR_NO_FREE_STORE;
    }
 
    if(error == 0)
@@ -1641,6 +1661,7 @@ VOID CmdExamineAllEnd(struct Handler *handler, struct Lock *lock,
       Remove((APTR)examination);
       FreePooled(handler->clear_pool, examination,
          sizeof(struct Examination));
+      control->eac_LastKey = 0;
    }
 
    return;
@@ -1688,9 +1709,9 @@ BOOL CmdInfo(struct Handler *handler, struct InfoData *info_data)
       disk_state = ID_VALIDATED;
    info_data->id_DiskState = disk_state;
    info_data->id_NumBlocks = handler->block_count
-      + MEMBLOCKS(AvailMem(MEMF_ANY));
+      + MemBlocks(AvailMem(MEMF_ANY));
    info_data->id_NumBlocksUsed = handler->block_count;
-   info_data->id_BytesPerBlock = MEM_BLOCKSIZE;
+   info_data->id_BytesPerBlock = RAM_BLOCKSIZE;
    info_data->id_DiskType = ID_DOS_DISK;
    info_data->id_VolumeNode = MKBADDR(handler->volume);
    info_data->id_InUse = DOSBOOL(handler->lock_count > 1);
@@ -1736,7 +1757,7 @@ BOOL CmdSetProtect(struct Handler *handler, struct Lock *lock,
 
    /* Set new protection flags if object isn't in use */
 
-   object = GetHardObject(handler, lock, name, NULL);
+   object = GetObjectNoFollow(handler, lock, name, NULL);
    if(object != NULL)
    {
       if(handler->locked)
@@ -1803,7 +1824,7 @@ BOOL CmdSetComment(struct Handler *handler, struct Lock *lock,
 
    /* Get object */
 
-   object = GetHardObject(handler, lock, name, NULL);
+   object = GetObjectNoFollow(handler, lock, name, NULL);
    if(object == NULL)
       error = IoErr();
    else
@@ -1832,9 +1853,8 @@ BOOL CmdSetComment(struct Handler *handler, struct Lock *lock,
    if(error == 0)
    {
       block_diff = SetString(handler, &object->comment, comment);
-      if(block_diff == -1)
-         error = IoErr();
-      else
+      error = IoErr();
+      if(error == 0)
       {
          object->block_count += block_diff;
          handler->block_count += block_diff;
@@ -1894,20 +1914,27 @@ BOOL CmdRenameObject(struct Handler *handler, struct Lock *old_lock,
 
    /* Get object to be moved */
 
-   object = GetHardObject(handler, old_lock, old_name, NULL);
+   object = GetObjectNoFollow(handler, old_lock, old_name, NULL);
    if(object == NULL)
       error = IoErr();
 
    /* Get destination directory and check if a different object already has
       the target name */
 
-   duplicate = GetHardObject(handler, new_lock, new_name, &parent);
+   duplicate = GetObjectNoFollow(handler, new_lock, new_name, &parent);
    if(duplicate && duplicate != object)
       error = ERROR_OBJECT_EXISTS;
    if(parent == NULL)
+   {
       error = IoErr();
+      if(error == 0)
+         error = ERROR_OBJECT_EXISTS;
+   }
 
    /* Check for a circular rename */
+
+   if(parent != NULL)
+      parent = GetRealObject(parent);
 
    for(p = parent; p != NULL; p = p->parent)
    {
@@ -1944,10 +1971,10 @@ BOOL CmdRenameObject(struct Handler *handler, struct Lock *old_lock,
       {
          /* Remove object from old parent and place it in new parent */
 
+         AdjustExaminations(handler, object);
          Remove((struct Node *)object);
          AddTail((struct List *)&parent->elements, (struct Node *)object);
          object->parent = parent;
-         AdjustExaminations(handler, object);
       }
 
       if(object != duplicate)
@@ -1955,8 +1982,13 @@ BOOL CmdRenameObject(struct Handler *handler, struct Lock *old_lock,
          /* Update notifications */
 
          NotifyAll(handler, object, FALSE);
-         UnmatchNotifyRequests(handler, object);
-         MatchNotifyRequests(handler);
+         if(object->node.ln_Pri > 0 && object->node.ln_Pri != ST_SOFTLINK)
+            RematchNotifyRequests(handler);
+         else
+         {
+            UnmatchNotifyRequests(handler, object);
+            MatchNotifyRequests(handler);
+         }
       }
 
       NotifyAll(handler, object, FALSE);
@@ -2001,23 +2033,34 @@ BOOL CmdRenameObject(struct Handler *handler, struct Lock *old_lock,
 BOOL CmdRenameDisk(struct Handler *handler, STRPTR new_name)
 {
    LONG error = 0;
+   struct Object renamed;
+   struct Object *root = handler->root_dir;
+   PINT block_diff;
 
-   /* Check volume isn't write-protected */
+   renamed.node.ln_Name = NULL;
+   renamed.block_count = 0;
 
    if(handler->locked)
       error = ERROR_DISK_WRITE_PROTECTED;
 
-   /* Rename volume's DOS entry and root directory */
+   /* Prepare the root name without changing the published directory. */
+   if(error == 0 && !SetName(handler, &renamed, new_name))
+      error = IoErr();
+   if(error == 0 && !MyRenameDosEntry(handler, handler->volume, new_name))
+      error = IoErr();
 
    if(error == 0)
-      if(!SetName(handler, handler->root_dir, new_name))
-         error = IoErr();
-
-   if(error == 0)
-      if(!MyRenameDosEntry(handler, handler->volume, new_name))
-         error = IoErr();
-
-   /* Return success indicator */
+   {
+      block_diff = SetString(handler, (TEXT **)&root->node.ln_Name, NULL);
+      root->node.ln_Name = renamed.node.ln_Name;
+      root->block_count += renamed.block_count + block_diff;
+      handler->block_count += block_diff;
+   }
+   else
+   {
+      SetString(handler, (TEXT **)&renamed.node.ln_Name, NULL);
+      handler->block_count -= renamed.block_count;
+   }
 
    SetIoErr(error);
    return error == 0;
@@ -2070,7 +2113,7 @@ BOOL CmdSetDate(struct Handler *handler, struct Lock *lock, STRPTR name,
 
    if(error == 0)
    {
-      object = GetHardObject(handler, lock, name, NULL);
+      object = GetObjectNoFollow(handler, lock, name, NULL);
       if(object != NULL)
       {
          error = ramSecCheckProperty(handler, object);
@@ -2310,7 +2353,7 @@ BOOL CmdMakeLink(struct Handler *handler, struct Lock *lock, STRPTR name,
 
    /* Find parent directory and possible name clash */
 
-   link = GetHardObject(handler, lock, name, &parent);
+   link = GetObjectNoFollow(handler, lock, name, &parent);
    if(link != NULL)
       error = ERROR_OBJECT_EXISTS;
    else if(parent == NULL)
@@ -2373,13 +2416,14 @@ BOOL CmdMakeLink(struct Handler *handler, struct Lock *lock, STRPTR name,
       {
          block_diff =
             SetString(handler, (APTR)&link->soft_link_target, reference);
-         if(block_diff == -1)
-            error = IoErr();
-         else
+         error = IoErr();
+         if(error == 0)
          {
             link->block_count += block_diff;
             handler->block_count += block_diff;
          }
+         else
+            AttemptDeleteObject(handler, link, FALSE);
       }
    }
 
@@ -2468,16 +2512,20 @@ LONG CmdReadLink(struct Handler *handler, struct Lock *lock,
 
    if(error == 0)
    {
-      /* Add link target to link's parent path */
+      /* Add link target to link's parent path (SetString() stores an
+         empty target as NULL) */
 
-      if(AddPart(buffer, link->soft_link_target, buffer_size))
+      p = link->soft_link_target;
+      if(p == NULL)
+         p = "";
+      if(AddPart(buffer, p, buffer_size))
       {
          /* Add remainder of original path after link */
 
          if(pos != -1)
          {
             if(!AddPart(buffer, name + pos, buffer_size))
-               error = ERROR_LINE_TOO_LONG;
+               error = ERROR_BUFFER_OVERFLOW;
          }
       }
       else
@@ -2632,10 +2680,11 @@ BOOL CmdAddNotify(struct Handler *handler, struct NotifyRequest *request)
    notification = AllocPooled(handler->clear_pool,
       sizeof(struct Notification));
    if(notification == NULL)
-      error = IoErr();
+      error = ERROR_NO_FREE_STORE;
 
    if(error == 0)
    {
+      handler->notification_count++;
       notification->request = request;
       request->nr_Flags &= ~NRF_MAGIC;
 
@@ -2693,6 +2742,7 @@ BOOL CmdRemoveNotify(struct Handler *handler, struct NotifyRequest *request)
 
    notification = FindNotification(handler, request);
    Remove((APTR)notification);
+   handler->notification_count--;
    FreePooled(handler->clear_pool, notification,
       sizeof(struct Notification));
 

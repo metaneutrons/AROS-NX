@@ -1,5 +1,5 @@
 /*
-    Copyright (C) 1995-2023, The AROS Development Team. All rights reserved.
+    Copyright (C) 1995-2026, The AROS Development Team. All rights reserved.
 */
 
 #define __KERNEL_NOLIBBASE__
@@ -33,6 +33,7 @@ extern APTR PlatformAllocIDT(struct KernelBase *, apicid_t);
 #if defined(__AROSEXEC_SMP__)
 extern void cpu_PrepareExec(struct ExecBase *);
 extern struct Task *cpu_InitBootStrap(apicid_t);
+extern void cpu_DisposeBootStrap(struct Task *);
 extern void cpu_BootStrap(struct Task *);
 #endif
 
@@ -115,7 +116,8 @@ static void smp_Entry(IPTR stackBase, spinlock_t *apicReadyLock, struct KernelBa
 
     D(bug("[Kernel:SMP] %s[%03u]: TLS configured\n", __func__, apicCPUNo));
 
-    if ((apicBSTask = cpu_InitBootStrap(apicCPUNo)) != NULL)
+    /* Built for this core by the boot CPU (smp_Wake) */
+    if ((apicBSTask = apicCPU->cpu_BSTask) != NULL)
     {
         D(bug("[Kernel:SMP] %s[%03u]: AP Bootstrap Task @ 0x%p\n", __func__, apicCPUNo, apicBSTask));
         apicBSTask->tc_SPLower = NULL;
@@ -248,9 +250,9 @@ static int smp_Wake(struct KernelBase *KernelBase)
         apicData->cores[cpuNo].cpu_TLS = PlatformAllocTLS(KernelBase, apicData->cores[cpuNo].cpu_LocalID);
 #if defined(__AROSEXEC_SMP__)
         apicTLS = apicData->cores[cpuNo].cpu_TLS;
-        apicTLS->ScheduleData = AllocMem(sizeof(struct X86SchedulerPrivate), MEMF_PUBLIC);
-        core_InitScheduleData(apicTLS->ScheduleData);
-        D(bug("[Kernel:SMP] %s: Scheduling Data @ 0x%p\n", __func__, apicTLS->ScheduleData));
+        /* PlatformAllocTLS() cleared the block, scheduling data and all */
+        core_InitScheduleData(&apicTLS->Sched);
+        D(bug("[Kernel:SMP] %s: Scheduling Data @ 0x%p\n", __func__, &apicTLS->Sched));
 #endif
         apicData->cores[cpuNo].cpu_IDT = PlatformAllocIDT(KernelBase, apicData->cores[cpuNo].cpu_LocalID);
 
@@ -262,6 +264,15 @@ static int smp_Wake(struct KernelBase *KernelBase)
         D(bug("[Kernel:SMP] %s: Allocated STACK for APIC ID %03u @ 0x%p ..\n", __func__, apicData->cores[cpuNo].cpu_LocalID, _APICStackBase));
         if (!_APICStackBase)
                 return 0;
+
+#if defined(__AROSEXEC_SMP__)
+        /* The core itself must not allocate before it has a task */
+        if ((apicData->cores[cpuNo].cpu_BSTask = cpu_InitBootStrap(cpuNo)) == NULL)
+        {
+            FreeMem(_APICStackBase, STACK_SIZE * 3);
+            continue;
+        }
+#endif
 
         /* Pass some vital information to the
          * waking CPU */
@@ -278,6 +289,15 @@ static int smp_Wake(struct KernelBase *KernelBase)
 
         /* Start IPI sequence */
         wakeresult = krnSysCallCPUWake(&apicWake);
+#if defined(__AROSEXEC_SMP__)
+        /* Not started: nothing will use its bootstrap task. (A core that
+         * times out below may still come up, and then it owns it.) */
+        if (wakeresult)
+        {
+            cpu_DisposeBootStrap(apicData->cores[cpuNo].cpu_BSTask);
+            apicData->cores[cpuNo].cpu_BSTask = NULL;
+        }
+#endif
 
         /* wakeresult != 0 means error */
         if (!wakeresult)

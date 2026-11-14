@@ -2,7 +2,7 @@
 #define GRAPHICS_CLIP_H
 
 /*
-    Copyright © 1995-2017, The AROS Development Team. All rights reserved.
+    Copyright © 1995-2026, The AROS Development Team. All rights reserved.
     $Id$
 
     Desc: Clip descriptions.
@@ -120,6 +120,25 @@ struct ClipRect
 cliprects */
 #define ALIGN_CLIPRECT  16
 #define ALIGN_OFFSET(x) ((x) & (ALIGN_CLIPRECT-1))
+
+/* PRIVATE (AROS): where the ClipRect's content lies in cr->BitMap. The
+   screen point (x,y) of the ClipRect is at (x - bounds.MinX + CR_BMOFFX(cr),
+   y - bounds.MinY + CR_BMOFFY(cr)). A ClipRect with a bitmap of its own uses
+   (ALIGN_OFFSET(bounds.MinX), 0); one with CR_SHAREDBITMAP set is a view into
+   a bitmap owned elsewhere (another ClipRect or the layer) and must not
+   free it. */
+#define CR_SHAREDBITMAP     4
+#define CR_BMOFFX(cr)       ((WORD)(IPTR)(cr)->_p1)
+#define CR_BMOFFY(cr)       ((WORD)(IPTR)(cr)->_p2)
+#define CR_SETBMOFF(cr, x, y) \
+    do { (cr)->_p1 = (void *)(IPTR)(WORD)(x); (cr)->_p2 = (void *)(IPTR)(WORD)(y); } while (0)
+
+/* AROS: the layer renders into a surface bitmap of its own (one hidden
+   ClipRect covering the layer, CR_SHAREDBITMAP view into the surface) and
+   the display composes that surface onto the screen. It never owns screen
+   bitmap pixels. Set together with LAYERSMART by CreateLayerTagList()
+   for LA_Composited; bit 3 is unused by AmigaOS, MorphOS and AROS. */
+#define LAYERCOMPOSITED     (1<<3)
 
 
 /*

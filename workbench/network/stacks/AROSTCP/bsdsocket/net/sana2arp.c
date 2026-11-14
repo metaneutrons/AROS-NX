@@ -48,7 +48,12 @@
 #include "ipfilter.h"
 #include <netinet/in.h>
 #include <netinet/in_systm.h>
-#include <netinet/in_var.h>
+/* the stack's own, not the public <netinet/in_var.h>: it declares
+ * in_mcast_macaddr() */
+#include "../netinet/in_var.h"
+#ifndef AROSTCP_NETINET_IN_VAR_H
+#error "the stack's netinet/in_var.h was not the one included"
+#endif
 #include <netinet/ip.h>
 
 #include <net/if_sana.h>
@@ -66,8 +71,11 @@ struct	arptab {
     u_char         at_hwaddr[MAXADDRSANA]; /* hardware address */
     u_char         at_timer;	/* minutes since last reference */
     u_char         at_flags;	/* flags */
-    struct mbuf   *at_hold;	/* last packet until resolved/timeout */
+    u_char         at_holdlen;	/* packets in at_hold */
+    struct mbuf   *at_hold;	/* packets until resolved/timeout (m_nextpkt) */
+    ULONG          at_asked;	/* when the last request went out (seconds) */
 };
+
 
 /*
  * Global constant for ARP entry allocation
@@ -92,6 +100,73 @@ extern struct ifnet loif;
 int	useloopback = 0;	/* use loopback interface for local traffic */
 
 static void arpwhohas(register struct sana_softc *ssc, struct in_addr *addr);
+
+/*
+ * While an address is resolved, up to ARP_MAXHOLD packets are kept for it,
+ * oldest dropped first, as FreeBSD's net.link.ether.inet.maxhold: one is
+ * enough for RFC 1122 section 2.3.2.2, but with one only the last fragment
+ * of a datagram fragmented on its way out was sent. Requests for it go
+ * out at most once a second (section 2.3.2.1: a guard against ARP floods
+ * MUST be there), not once for every packet.
+ */
+#define ARP_MAXHOLD	16
+
+static ULONG
+arp_now(void)
+{
+    struct timeval tv;
+
+    GetSysTime(&tv);
+    return tv.tv_secs;
+}
+
+/* Queue m for at; ARP TABLE MUST BE LOCKED. */
+static void
+arp_hold(struct arptab *at, struct mbuf *m)
+{
+    struct mbuf **mp;
+
+    if(at->at_holdlen >= ARP_MAXHOLD && at->at_hold != NULL) {
+        struct mbuf *old = at->at_hold;
+
+        at->at_hold = old->m_nextpkt;
+        old->m_nextpkt = NULL;
+        m_freem(old);
+        at->at_holdlen--;
+    }
+    m->m_nextpkt = NULL;
+    for(mp = &at->at_hold; *mp != NULL; mp = &(*mp)->m_nextpkt)
+        ;
+    *mp = m;
+    at->at_holdlen++;
+}
+
+/* Drop at's queued packets; ARP TABLE MUST BE LOCKED. */
+static void
+arp_hold_free(struct arptab *at)
+{
+    struct mbuf *m, *next;
+
+    for(m = at->at_hold; m != NULL; m = next) {
+        next = m->m_nextpkt;
+        m->m_nextpkt = NULL;
+        m_freem(m);
+    }
+    at->at_hold = NULL;
+    at->at_holdlen = 0;
+}
+
+/* Ask for at's address, unless that was done less than a second ago. */
+static void
+arp_ask(struct sana_softc *ssc, struct arptab *at, struct in_addr *destip)
+{
+    ULONG now = arp_now();
+
+    if(at->at_asked != 0 && now - at->at_asked < 1)
+        return;
+    at->at_asked = now;
+    arpwhohas(ssc, destip);
+}
 static void in_arpinput(register struct sana_softc *ssc, struct mbuf *m);
 static char *sana_sprintf(register u_char *ap, int len);
 
@@ -153,15 +228,14 @@ arpentries_notify(void *dummy, LONG value)
 static void
 arptfree(register struct arptable *atb, register struct arptab *at)
 {
-    if(at->at_hold)
-        m_freem(at->at_hold);
+    arp_hold_free(at);
 
     Remove((struct Node *)at);
 
     if(at->at_flags & ATF_PERM) {
         bsd_free(at, M_ARPENT);
     } else {
-        at->at_hold = NULL;
+        at->at_asked = 0;
         at->at_timer = at->at_flags = 0;
         at->at_iaddr.s_addr = 0;
         at->at_succ = atb->atb_free;
@@ -246,7 +320,7 @@ arptimer()
 {
     struct sana_softc *ssc;
     register struct arptable *atab;
-    register struct arptab *at;
+    register struct arptab *at, *next;
     register int i;
 
     for(ssc = ssq; ssc; ssc = ssc->ss_next) {
@@ -256,9 +330,10 @@ arptimer()
         ARPTAB_LOCK(atab);
 
         for(i = 0; i < ARPTAB_HSIZE; i++) {
+            /* next is taken first: arptfree() moves at onto the free list */
             for(at = (struct arptab *)atab->atb_entries[i].mlh_Head;
-                    at->at_succ;
-                    at = at->at_succ) {
+                    (next = at->at_succ) != NULL;
+                    at = next) {
                 if(at->at_flags == 0 || (at->at_flags & ATF_PERM))
                     continue;
                 if(++at->at_timer < ((at->at_flags & ATF_COM) ?
@@ -584,6 +659,23 @@ arpresolve(register struct sana_softc *ssc,
         return 1;
     }
 
+#ifdef ENABLE_MULTICAST
+    /*
+     * A group has no ARP entry. On Ethernet it has an address of its own;
+     * anywhere else ip_output() has already refused the packet, as the
+     * interface has no IFF_MULTICAST.
+     */
+    if(IN_MULTICAST(ntohl(destip->s_addr))) {
+        if(!sana_ether_mcast(&ssc->ss_if)) {
+            m_freem(m);
+            *error = ENETUNREACH;
+            return 0;
+        }
+        in_mcast_macaddr(destip, desten);
+        return 1;
+    }
+#endif
+
     /* if for us, use software loopback driver if up */
     for(register struct in_ifaddr *ia = in_ifaddr; ia; ia = ia->ia_next)
         if((ia->ia_ifp == &ssc->ss_if) &&
@@ -630,7 +722,7 @@ arpresolve(register struct sana_softc *ssc,
         if(!(atb = ssc->ss_arp.table)) {
             __log(LOG_ERR, "arpresolve: memory exhausted");
             *error = ENOBUFS;
-            m_free(m);
+            m_freem(m);
             return 0;
         }
     }
@@ -640,12 +732,12 @@ arpresolve(register struct sana_softc *ssc,
     if(at == 0) {		/* not found */
         at = arptnew(destip->s_addr, atb, FALSE);
         if(at) {
-            at->at_hold = m;
-            arpwhohas(ssc, destip);
+            arp_hold(at, m);
+            arp_ask(ssc, at, destip);
         } else {
             __log(LOG_ERR, "arpresolve: no free entry");
             *error = ENETUNREACH;
-            m_free(m);
+            m_freem(m);
         }
         ARPTAB_UNLOCK(atb);
         return 0;
@@ -658,13 +750,11 @@ arpresolve(register struct sana_softc *ssc,
         return 1;
     }
     /*
-     * There is an arptab entry, but no address response yet.
-     * Replace the held mbuf with this latest one.
+     * There is an arptab entry, but no address response yet: queue the
+     * packet, and ask again if the last request is a second old.
      */
-    if(at->at_hold)
-        m_freem(at->at_hold);
-    at->at_hold = m;
-    arpwhohas(ssc, destip);	/* ask again */
+    arp_hold(at, m);
+    arp_ask(ssc, at, destip);
     ARPTAB_UNLOCK(atb);
     return 0;
 }
@@ -823,11 +913,19 @@ in_arpinput(register struct sana_softc *ssc,
 #endif
             at->at_flags |= ATF_COM;
             if(at->at_hold) {
+                /* the address is known: send what was queued, in order */
+                struct mbuf *held = at->at_hold, *next;
+
+                at->at_hold = NULL;
+                at->at_holdlen = 0;
                 sin.sin_family = AF_INET;
                 sin.sin_addr = isaddr;
-                (*ssc->ss_if.if_output)(&ssc->ss_if, at->at_hold,
-                                        (struct sockaddr *)&sin, (struct rtentry *)0);
-                at->at_hold = 0;
+                for(; held != NULL; held = next) {
+                    next = held->m_nextpkt;
+                    held->m_nextpkt = NULL;
+                    (*ssc->ss_if.if_output)(&ssc->ss_if, held,
+                                            (struct sockaddr *)&sin, (struct rtentry *)0);
+                }
             }
         }
         if(at == 0 && itaddr.s_addr == myaddr.s_addr) {
@@ -897,8 +995,24 @@ out:
     return;
 }
 
+static int arpioctl_locked(int cmd, caddr_t data);
+
+/*
+ * The daemon takes spl before ARPTAB_LOCK, and arptfree() frees at splimp,
+ * so the ioctls must hold spl first too or the two orders deadlock.
+ */
 int
-arpioctl(cmd, data)
+arpioctl(int cmd, caddr_t data)
+{
+    spl_t s = splimp();
+    int error = arpioctl_locked(cmd, data);
+
+    splx(s);
+    return (error);
+}
+
+static int
+arpioctl_locked(cmd, data)
 int cmd;
 caddr_t data;
 {

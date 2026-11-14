@@ -11,6 +11,7 @@
 #include <oop/oop.h>
 
 #include "graphics_intern.h"
+#include "amigagfx_intern.h"
 #include "gfxfuncsupport.h"
 
 #include <hidd/amigavideo.h>
@@ -62,7 +63,7 @@
     INTERNALS
 
     HISTORY
-
+        08-Oct-26 Resolve unbuilt raw ViewPorts to the native chipset display.
 
 ******************************************************************************/
 {
@@ -85,10 +86,21 @@
     {
         sprite->x = x;
         sprite->y = y;
+        mdd = &CDD(GfxBase)->mdisplay;
+    }
+
+    /* Before MakeVPort(), a raw bitmap has no associated display.
+     * Like a NULL ViewPort, it refers to the native chipset. The common
+     * software renderer does not implement Amiga sprites. */
+    if (mdd == &CDD(GfxBase)->mdisplay)
+    {
         for (mdd = CDD(GfxBase)->mdisplay.display_next; mdd; mdd = mdd->display_next)
             if (mdd->display_flags & DF_ExternalPlanar)
                 break;
     }
+
+    if (!mdd)
+        return;
 
     /* SimpleSprite buffers are live DMA streams, sometimes containing
      * several chained images. Keep the caller's memory rather than turning
@@ -144,7 +156,7 @@
 
     if (gfxhidd) {
         if (sprite->num) {
-            OOP_MethodID HiddAmigaGfxBase = OOP_GetMethodID(IID_Hidd_AmigaGfx, 0);
+            OOP_MethodID HiddAmigaGfxBase = gfx_AmigaGfxBase(GfxBase);
             HIDD_AMIGAGFX_SetSpritePos(gfxhidd, sprite->x, sprite->y, sprite->num);
         } else if (display)
             HIDD_Display_SetCursorPos(display, sprite->x, sprite->y);

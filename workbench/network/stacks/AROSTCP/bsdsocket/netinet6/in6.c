@@ -45,6 +45,7 @@
 #include <net/rtsock_protos.h>
 
 #include <devices/sana2.h>
+#include <protos/kern/kern_random_protos.h>
 
 struct in6_ifaddr *in6_ifaddr = NULL;
 struct ifqueue    ip6intrq    = {0};
@@ -75,13 +76,26 @@ in6_addrscope(struct in6_addr *addr)
 /* ------------------------------------------------------------------
  * in6_control - ioctl handler for IPv6 interface addresses.
  * ------------------------------------------------------------------ */
+static int in6_control_locked(struct socket *, int, caddr_t, struct ifnet *);
+
+/* The address lists are walked by ip6_input, so they change at splimp */
 int
 in6_control(struct socket *so, int cmd, caddr_t data, struct ifnet *ifp)
+{
+    spl_t s = splimp();
+    int error = in6_control_locked(so, cmd, data, ifp);
+
+    splx(s);
+    return (error);
+}
+
+static int
+in6_control_locked(struct socket *so, int cmd, caddr_t data, struct ifnet *ifp)
 {
     struct in6_ifreq  *ifr  = (struct in6_ifreq *)data;
     struct in6_aliasreq *ifra = (struct in6_aliasreq *)data;
     struct in6_ifaddr *ia   = NULL, *oia;
-    int error = 0;
+    int error = 0, isnew = 0;
 
     /* locate existing IPv6 address for this interface */
     if(ifp) {
@@ -117,6 +131,7 @@ in6_control(struct socket *so, int cmd, caddr_t data, struct ifnet *ifp)
             m = m_getclr(M_WAIT, MT_IFADDR);
             if(m == NULL)
                 return ENOBUFS;
+            isnew = 1;
             if((oia = in6_ifaddr) != NULL) {
                 for(; oia->ia_next; oia = oia->ia_next)
                     ;
@@ -166,6 +181,18 @@ in6_control(struct socket *so, int cmd, caddr_t data, struct ifnet *ifp)
         if(ia == NULL)
             return EADDRNOTAVAIL;
         break;
+
+    case SIOCGIFAFLAG_IN6:
+        /* the flags of the address given, on this interface (KAME) */
+        for(; ia; ia = ia->ia_next)
+            if(ia->ia6_ifp == ifp &&
+                    IN6_ARE_ADDR_EQUAL(&ia->ia_addr.sin6_addr,
+                                       &ifr->ifr_ifru.ifru_addr.sin6_addr))
+                break;
+        if(ia == NULL)
+            return EADDRNOTAVAIL;
+        ifr->ifr_ifru.ifru_flags6 = ia->ia6_ifaflags;
+        return 0;
 
     default:
         if(ifp == NULL || ifp->if_ioctl == NULL)
@@ -223,9 +250,25 @@ done_plen:
             if(error)
                 return error;
         }
-        ia->ia6_flags    = ifra->ifra_flags;
+        /*
+         * The request's IN6_IFF_* flags are the address's, in ia6_ifaflags;
+         * ia6_flags is the generic ifaddr's, where in6_ifinit() has just set
+         * IFA_ROUTE for in6_ifscrub() to find. The states the stack keeps -
+         * tentative, duplicated, deprecated - are not the caller's to set.
+         */
+        ia->ia6_ifaflags = (ia->ia6_ifaflags & IN6_IFF_STACKSTATE) |
+                           (ifra->ifra_flags & ~IN6_IFF_STACKSTATE);
         ia->ia6_lifetime_vltime = ifra->ifra_lifetime.ia6t_vltime;
         ia->ia6_lifetime_pltime = ifra->ifra_lifetime.ia6t_pltime;
+        /*
+         * A new unicast address is tentative until duplicate address
+         * detection finds nobody else using it (RFC 4862 section 5.4), as the
+         * link-local is (in6_if_up()). Interfaces that cannot multicast
+         * cannot ask, and the loopback has nobody to ask.
+         */
+        if(isnew && !IN6_IS_ADDR_MULTICAST(&ia->ia_addr.sin6_addr) &&
+                (ifp->if_flags & (IFF_MULTICAST | IFF_LOOPBACK)) == IFF_MULTICAST)
+            nd6_dad_start(ia);
         rt_newaddrmsg(RTM_NEWADDR, &ia->ia_ifa, 0, NULL);
         return 0;
 
@@ -255,6 +298,67 @@ in6_ifscrub(struct ifnet *ifp, struct in6_ifaddr *ia)
     else
         rtinit(&ia->ia_ifa, RTM_DELETE, 0);
     ia->ia6_flags &= ~IFA_ROUTE;
+}
+
+/*
+ * in6_solicited_join - the address joins its solicited-node group,
+ * ff02::1:ffXX:XXXX from its last 24 bits (RFC 4291 section 2.7.1), which
+ * Neighbor Solicitations for it are sent to (RFC 4861 section 7.2.1). The
+ * membership belongs to the address: in6_purgeaddr() leaves it. Several
+ * addresses with the same last 24 bits share one group by reference count.
+ * An address given anew, on a record that already had one, moves its
+ * membership. Interfaces that cannot multicast do neighbour discovery
+ * without it.
+ */
+static void
+in6_solicited_join(struct ifnet *ifp, struct in6_ifaddr *ia)
+{
+    struct in6_ifaddr_priv *iap = IA6_PRIV(ia);
+    struct in6_addr maddr;
+
+    if((ifp->if_flags & IFF_MULTICAST) == 0)
+        return;
+    bzero(&maddr, sizeof(maddr));
+    maddr.s6_addr[0]  = 0xff;
+    maddr.s6_addr[1]  = 0x02;
+    maddr.s6_addr[11] = 0x01;
+    maddr.s6_addr[12] = 0xff;
+    maddr.s6_addr[13] = ia->ia_addr.sin6_addr.s6_addr[13];
+    maddr.s6_addr[14] = ia->ia_addr.sin6_addr.s6_addr[14];
+    maddr.s6_addr[15] = ia->ia_addr.sin6_addr.s6_addr[15];
+
+    if(iap->ia6p_solicited != NULL) {
+        if(iap->ia6p_solicited->in6m_ifp == ifp &&
+                IN6_ARE_ADDR_EQUAL(&iap->ia6p_solicited->in6m_addr, &maddr))
+            return;
+        in6_delmulti(iap->ia6p_solicited);
+        iap->ia6p_solicited = NULL;
+    }
+    iap->ia6p_solicited = in6_addmulti(&maddr, ifp);
+}
+
+/*
+ * in6_join_allnodes - the interface joins the all-nodes group, ff02::1
+ * (RFC 4291 section 2.8), once: Router Advertisements and MLD Queries are
+ * sent to it. The membership belongs to the interface and in6_ifdetach()
+ * releases it. No report is ever sent for this group (mld6.c). The IPv6
+ * counterpart of in_join_allhosts().
+ */
+static void
+in6_join_allnodes(struct ifnet *ifp)
+{
+    struct in6_multi *in6m;
+    struct in6_addr allnodes;
+
+    if((ifp->if_flags & IFF_MULTICAST) == 0)
+        return;
+    bzero(&allnodes, sizeof(allnodes));
+    allnodes.s6_addr[0]  = 0xff;
+    allnodes.s6_addr[1]  = 0x02;
+    allnodes.s6_addr[15] = 0x01;
+    IN6_LOOKUP_MULTI(allnodes, ifp, in6m);
+    if(in6m == NULL)
+        (void)in6_addmulti(&allnodes, ifp);
 }
 
 /* ------------------------------------------------------------------
@@ -287,6 +391,9 @@ in6_ifinit(struct ifnet *ifp, struct in6_ifaddr *ia,
         ia->ia_ifa.ifa_addr = (struct sockaddr *)&ia->ia_addr;
     }
 
+    /* the address is ours from here on: neighbours must be able to ask for it */
+    in6_solicited_join(ifp, ia);
+
     /* build prefix mask from prefix length */
     if(ia->ia6_plen > 0) {
         int i, plen = ia->ia6_plen;
@@ -318,8 +425,12 @@ in6_ifinit(struct ifnet *ifp, struct in6_ifaddr *ia,
         flags |= RTF_CLONING;
     }
 
-    if((error = rtinit(&ia->ia_ifa, RTM_ADD, flags)) == 0)
+    error = rtinit(&ia->ia_ifa, RTM_ADD, flags);
+    if(error == 0)
         ia->ia6_flags |= IFA_ROUTE;
+    else if(error == EEXIST)
+        error = 0;  /* prefix route already present (e.g. a reload re-applying
+                     * an interface's existing config) - that is not an error */
 
     return error;
 }
@@ -335,7 +446,27 @@ in6_purgeaddr(struct ifaddr *ifa)
     struct ifnet *ifp = ia->ia6_ifp;
     struct ifaddr *ifa2;
 
+    /* an address deleted during duplicate address detection must not be
+     * probed for, or written to, by the DAD timer once it is freed */
+    nd6_dad_stop(ia);
+
     in6_ifscrub(ifp, ia);
+
+    /*
+     * Routes hold no reference on their rt_ifa: the host routes cloned from
+     * the prefix route in6_ifscrub() just removed, and any other route that
+     * resolved through this address, would be left pointing at it once it is
+     * freed below, and deleting them later (rt_purgeif() on a reload, for
+     * one) would call ifa_rtrequest through freed memory. Delete them now,
+     * as in_control() does for an IPv4 address.
+     */
+    rt_purgeifa((struct ifaddr *)ia);
+
+    /* the address no longer answers neighbour solicitations */
+    if(IA6_PRIV(ia)->ia6p_solicited != NULL) {
+        in6_delmulti(IA6_PRIV(ia)->ia6p_solicited);
+        IA6_PRIV(ia)->ia6p_solicited = NULL;
+    }
 
     /* unlink from ifp address list */
     if((ifa2 = ifp->if_addrlist) == (struct ifaddr *)ia) {
@@ -372,11 +503,149 @@ in6_localaddr(struct in6_addr *in6)
     if(IN6_IS_ADDR_LOOPBACK(in6) || IN6_IS_ADDR_LINKLOCAL(in6))
         return 1;
 
+    /* on a link we have an address on, as in_localaddr() for IPv4 and KAME */
     for(ia = in6_ifaddr; ia; ia = ia->ia_next) {
-        if(IN6_ARE_ADDR_EQUAL(in6, &ia->ia_addr.sin6_addr))
+        int i;
+
+        for(i = 0; i < 16; i++)
+            if((in6->s6_addr[i] ^ ia->ia_addr.sin6_addr.s6_addr[i]) &
+                    ia->ia_prefixmask.sin6_addr.s6_addr[i])
+                break;
+        if(i == 16)
             return 1;
     }
     return 0;
+}
+
+/*
+ * in6_matchlen - the number of leading bits a and b have in common.
+ */
+static int
+in6_matchlen(const struct in6_addr *a, const struct in6_addr *b)
+{
+    int i, n = 0;
+
+    for(i = 0; i < 16; i++) {
+        u_int8_t x = a->s6_addr[i] ^ b->s6_addr[i];
+
+        if(x == 0) {
+            n += 8;
+            continue;
+        }
+        while(!(x & 0x80)) {
+            n++;
+            x <<= 1;
+        }
+        break;
+    }
+    return n;
+}
+
+/* the length of ia's prefix, from its prefix mask */
+static int
+in6_ia_plen(const struct in6_ifaddr *ia)
+{
+    int i, n = 0;
+
+    for(i = 0; i < 16; i++) {
+        u_int8_t x = ia->ia_prefixmask.sin6_addr.s6_addr[i];
+
+        while(x & 0x80) {
+            n++;
+            x <<= 1;
+        }
+        if(ia->ia_prefixmask.sin6_addr.s6_addr[i] != 0xff)
+            break;
+    }
+    return n;
+}
+
+/*
+ * in6_addrlabel - the label of an address in the default policy table of
+ * RFC 6724 section 2.1 (the longest prefix that matches).
+ */
+static int
+in6_addrlabel(const struct in6_addr *a)
+{
+    static const struct {
+        u_int8_t prefix[16];
+        int len, label;
+    } policy[] = {
+        { { 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,1 },           128,  0 },  /* ::1 */
+        { { 0,0,0,0, 0,0,0,0, 0,0,0xff,0xff, 0,0,0,0 },      96,  4 },  /* ::ffff:0:0/96 */
+        { { 0 },                                              96,  3 },  /* ::/96 */
+        { { 0x20,0x01,0,0 },                                  32,  5 },  /* 2001::/32 (Teredo) */
+        { { 0x20,0x02 },                                      16,  2 },  /* 2002::/16 (6to4) */
+        { { 0x3f,0xfe },                                      16, 12 },  /* 3ffe::/16 (6bone) */
+        { { 0xfe,0xc0 },                                      10, 11 },  /* fec0::/10 (site-local) */
+        { { 0xfc },                                            7, 13 },  /* fc00::/7 (ULA) */
+    };
+    int i, best = -1, label = 1;                /* ::/0 */
+
+    for(i = 0; i < (int)(sizeof(policy) / sizeof(policy[0])); i++)
+        if(policy[i].len > best &&
+                in6_matchlen(a, (const struct in6_addr *)policy[i].prefix) >= policy[i].len) {
+            best = policy[i].len;
+            label = policy[i].label;
+        }
+    return label;
+}
+
+/*
+ * in6_srcbetter - whether a is a better source address than b for dst, of
+ * scope dstscope, by the rules of RFC 6724 section 5 that apply to addresses
+ * of one interface:
+ *  1. the destination itself;
+ *  2. appropriate scope: of two scopes, the smaller one unless it is smaller
+ *     than the destination's (so a link-scope destination gets the
+ *     link-local, and a global one a global address);
+ *  3. a preferred address over a deprecated one;
+ *  6. one whose label is the destination's (so a ULA destination gets the
+ *     ULA, and a global one a global address rather than the ULA);
+ *  7. a temporary address over a public one (RFC 4941);
+ *  8. the longer prefix in common with the destination, counted no further
+ *     than the source's own prefix.
+ * Otherwise the earlier address stays.
+ */
+static int
+in6_srcbetter(struct in6_ifaddr *a, struct in6_ifaddr *b,
+              const struct in6_addr *dst, int dstscope)
+{
+    int sa = in6_addrscope(&a->ia_addr.sin6_addr);
+    int sb = in6_addrscope(&b->ia_addr.sin6_addr);
+    int da = (a->ia6_ifaflags & IN6_IFF_DEPRECATED) != 0;
+    int db = (b->ia6_ifaflags & IN6_IFF_DEPRECATED) != 0;
+    int ta = (a->ia6_ifaflags & IN6_IFF_TEMPORARY) != 0;
+    int tb = (b->ia6_ifaflags & IN6_IFF_TEMPORARY) != 0;
+    int ea = IN6_ARE_ADDR_EQUAL(&a->ia_addr.sin6_addr, dst);
+    int eb = IN6_ARE_ADDR_EQUAL(&b->ia_addr.sin6_addr, dst);
+    int la, lb, ma, mb, pa, pb, ldst;
+
+    if(ea != eb)
+        return ea;
+    if(sa != sb) {
+        if(sa < sb)
+            return sa >= dstscope;
+        return sb < dstscope;
+    }
+    if(da != db)
+        return db;
+    ldst = in6_addrlabel(dst);
+    la = in6_addrlabel(&a->ia_addr.sin6_addr) == ldst;
+    lb = in6_addrlabel(&b->ia_addr.sin6_addr) == ldst;
+    if(la != lb)
+        return la;
+    if(ta != tb)
+        return ta;
+    ma = in6_matchlen(&a->ia_addr.sin6_addr, dst);
+    mb = in6_matchlen(&b->ia_addr.sin6_addr, dst);
+    pa = in6_ia_plen(a);
+    pb = in6_ia_plen(b);
+    if(ma > pa)
+        ma = pa;
+    if(mb > pb)
+        mb = pb;
+    return ma > mb;
 }
 
 /* ------------------------------------------------------------------
@@ -386,39 +655,15 @@ struct in6_ifaddr *
 in6_ifawithifp(struct ifnet *ifp, struct in6_addr *dst)
 {
     struct in6_ifaddr *ia, *besta = NULL;
-    int bestscope = -1;
-    int dstscope  = in6_addrscope(dst);
+    int dstscope = in6_addrscope(dst);
 
     for(ia = in6_ifaddr; ia; ia = ia->ia_next) {
         if(ia->ia6_ifp != ifp)
             continue;
         if(ia->ia6_ifaflags & (IN6_IFF_TENTATIVE | IN6_IFF_DUPLICATED))
             continue;
-        /* skip deprecated addresses if we have a better candidate */
-        if((ia->ia6_ifaflags & IN6_IFF_DEPRECATED) && besta != NULL)
-            continue;
-        int sc = in6_addrscope(&ia->ia_addr.sin6_addr);
-        if(sc == dstscope) {
-            /*
-             * RFC 4941: prefer non-deprecated temporary addresses
-             * for outgoing connections (privacy).
-             */
-            if(besta == NULL || bestscope != dstscope) {
-                besta = ia;
-                bestscope = sc;
-            } else if((ia->ia6_ifaflags & IN6_IFF_TEMPORARY) &&
-                      !(ia->ia6_ifaflags & IN6_IFF_DEPRECATED) &&
-                      (!(besta->ia6_ifaflags & IN6_IFF_TEMPORARY) ||
-                       (besta->ia6_ifaflags & IN6_IFF_DEPRECATED))) {
-                besta = ia;
-                /* bestscope unchanged — already equals sc (== dstscope) */
-            }
-            continue;
-        }
-        if(sc > bestscope) {
-            bestscope = sc;
+        if(besta == NULL || in6_srcbetter(ia, besta, dst, dstscope))
             besta = ia;
-        }
     }
     return besta;
 }
@@ -450,7 +695,7 @@ in6_ifaof_ifpforlinklocal(struct ifnet *ifp)
  * compile time so growing the struct (or shrinking MSIZE) breaks the build
  * loudly instead of silently corrupting memory.
  */
-typedef char in6_ifaddr_fits_mbuf[(sizeof(struct in6_ifaddr) <= MLEN) ? 1 : -1];
+typedef char in6_ifaddr_fits_mbuf[(sizeof(struct in6_ifaddr_priv) <= MLEN) ? 1 : -1];
 
 void
 in6_if_up(struct ifnet *ifp)
@@ -572,33 +817,11 @@ in6_if_up(struct ifnet *ifp)
     (void)in6_ifinit(ifp, ia, &sin6, 0);
 
     /*
-     * Join required IPv6 multicast groups so the NIC accepts the
-     * corresponding Ethernet multicast MACs (RFC 4291 §2.8):
-     *  - ff02::1        (all-nodes) — needed to receive Router Advertisements
-     *  - ff02::1:ffXX:XXXX (solicited-node) — needed for NDP / DAD
+     * The NIC must accept the all-nodes group for Router Advertisements
+     * (RFC 4291 section 2.8). The link-local's solicited-node group, for
+     * neighbour discovery and DAD, was joined by in6_ifinit() above.
      */
-    D(bug("[AROSTCP:IN6] %s: joining multicast groups\n", __func__));
-    {
-        struct in6_addr maddr;
-
-        /* ff02::1 — all-nodes link-local multicast */
-        bzero(&maddr, sizeof(maddr));
-        maddr.s6_addr[0]  = 0xff;
-        maddr.s6_addr[1]  = 0x02;
-        maddr.s6_addr[15] = 0x01;
-        (void)in6_addmulti(&maddr, ifp);
-
-        /* ff02::1:ffXX:XXXX — solicited-node multicast for our link-local */
-        bzero(&maddr, sizeof(maddr));
-        maddr.s6_addr[0]  = 0xff;
-        maddr.s6_addr[1]  = 0x02;
-        maddr.s6_addr[11] = 0x01;
-        maddr.s6_addr[12] = 0xff;
-        maddr.s6_addr[13] = sin6.sin6_addr.s6_addr[13];
-        maddr.s6_addr[14] = sin6.sin6_addr.s6_addr[14];
-        maddr.s6_addr[15] = sin6.sin6_addr.s6_addr[15];
-        (void)in6_addmulti(&maddr, ifp);
-    }
+    in6_join_allnodes(ifp);
 
     /*
      * Initialize ND state for this interface and start DAD.
@@ -811,11 +1034,15 @@ in6_delmulti(struct in6_multi *in6m)
     if(--in6m->in6m_refcount > 0)
         return;
 
-    /* Send MLD Done before removing from list */
-    mld6_stop_listening(in6m);
+    /* a membership that outlived its interface has nobody to tell;
+     * see in6_ifdetach() */
+    if(in6m->in6m_ifp != NULL) {
+        /* Send MLD Done before removing from list */
+        mld6_stop_listening(in6m);
 
-    /* unregister Ethernet multicast address from the NIC */
-    sana_del_mcast6(in6m->in6m_ifp, &in6m->in6m_addr);
+        /* unregister Ethernet multicast address from the NIC */
+        sana_del_mcast6(in6m->in6m_ifp, &in6m->in6m_addr);
+    }
 
     for(p = &in6_multihead; *p; p = &(*p)->in6m_next) {
         if(*p == in6m) {
@@ -826,38 +1053,67 @@ in6_delmulti(struct in6_multi *in6m)
     FREE(in6m, M_IFADDR);
 }
 
+/*
+ * in6_ifdetach - the interface is going away for good: nothing may keep an
+ * IPv6 membership that names it. Another ifnet can be allocated at the same
+ * address later, and would then look as if it had joined already, so the
+ * device would never be told the group's address; and the MLD timer and
+ * in6_delmulti() would go on using the freed interface.
+ *
+ * By now its addresses are gone (sana_if_deconfigure()), and their
+ * solicited-node memberships with them. The interface's own membership of
+ * the all-nodes group, from in6_join_allnodes(), is released here. What
+ * sockets still hold cannot be freed under them: those entries are cut
+ * loose from the interface and go when their sockets drop them. Nothing is
+ * sent and the device is not asked to forget the addresses: it is offline
+ * and about to be closed. The IPv6 counterpart of in_ifdetach().
+ */
+void
+in6_ifdetach(struct ifnet *ifp)
+{
+    struct in6_multi *in6m, **p;
+    struct in6_addr allnodes;
+    spl_t s = splimp();
+
+    bzero(&allnodes, sizeof(allnodes));
+    allnodes.s6_addr[0]  = 0xff;
+    allnodes.s6_addr[1]  = 0x02;
+    allnodes.s6_addr[15] = 0x01;
+
+    p = &in6_multihead;
+    while((in6m = *p) != NULL) {
+        if(in6m->in6m_ifp != ifp) {
+            p = &in6m->in6m_next;
+            continue;
+        }
+        in6m->in6m_timer = 0;
+        in6m->in6m_state = MLD6_IDLE_MEMBER;
+        in6m->in6m_ifp = NULL;
+        if(IN6_ARE_ADDR_EQUAL(&in6m->in6m_addr, &allnodes) &&
+                --in6m->in6m_refcount == 0) {
+            *p = in6m->in6m_next;
+            FREE(in6m, M_IFADDR);
+            continue;
+        }
+        p = &in6m->in6m_next;
+    }
+    splx(s);
+}
+
 /* ==================================================================
  * IPv6 Privacy Extensions (RFC 4941) - Temporary Address Management
  * ================================================================== */
 
 /*
- * Generate a random interface identifier for temporary addresses (RFC 4941).
- * Uses AROS-available entropy sources.
+ * A random interface identifier for a temporary address (RFC 8981 section
+ * 3.3.1), from the C runtime's arc4random_buf() through kern_random.c: a
+ * xorshift generator seeded from the clock and the task address made them
+ * guessable, and a temporary address is there so that it cannot be.
  */
 static void
 in6_generate_random_iid(struct in6_addr *addr)
 {
-    u_int32_t *p = (u_int32_t *)&addr->s6_addr[8];
-    static u_int32_t rstate1 = 0, rstate2 = 0;
-
-    /* seed from available entropy if needed */
-    if(rstate1 == 0) {
-        struct timeval _tv;
-        GetSysTime(&_tv);
-        rstate1 = (u_int32_t)(IPTR)FindTask(NULL) ^ 0xdeadbeef;
-        rstate2 = (u_int32_t)(_tv.tv_sec * 1000000 + _tv.tv_usec) ^ 0xcafebabe;
-    }
-
-    /* xorshift64 */
-    rstate1 ^= rstate1 << 13;
-    rstate1 ^= rstate1 >> 7;
-    rstate1 ^= rstate1 << 17;
-    rstate2 ^= rstate2 << 13;
-    rstate2 ^= rstate2 >> 7;
-    rstate2 ^= rstate2 << 17;
-
-    p[0] = rstate1;
-    p[1] = rstate2;
+    kern_random(&addr->s6_addr[8], 8);
 
     /* clear the universal/local bit (RFC 4941 §3.2.1) - set to "local" */
     addr->s6_addr[8] &= ~0x02;
@@ -882,6 +1138,20 @@ in6_tmpifadd(struct ifnet *ifp, struct nd_prefix *pr)
 
     if(pr->ndpr_plen != 64)
         return 0;  /* SLAAC temporary addresses require /64 */
+
+    /*
+     * One temporary address per prefix at a time (RFC 4941 section 3.4): a
+     * Router Advertisement repeating the prefix makes another only once the
+     * current one is deprecated - its preferred lifetime has run out - or
+     * was found to be a duplicate.
+     */
+    for(struct in6_ifaddr *ia = in6_ifaddr; ia; ia = ia->ia_next) {
+        if(ia->ia6_ifp == ifp &&
+                (ia->ia6_ifaflags & IN6_IFF_TEMPORARY) &&
+                !(ia->ia6_ifaflags & (IN6_IFF_DEPRECATED | IN6_IFF_DUPLICATED)) &&
+                bcmp(&ia->ia_addr.sin6_addr, &pr->ndpr_prefix.sin6_addr, 8) == 0)
+            return 0;
+    }
 
     /* build the temporary address: prefix + random IID */
     bzero(&tmpaddr, sizeof(tmpaddr));
@@ -929,7 +1199,7 @@ in6_tmpifadd(struct ifnet *ifp, struct nd_prefix *pr)
         return error;
 
     /* find the newly created address and set temporary flags + lifetimes */
-    GetSysTime(&_tv);
+    GetUpTime(&_tv);
     for(newia = in6_ifaddr; newia; newia = newia->ia_next) {
         if(IN6_ARE_ADDR_EQUAL(&newia->ia_addr.sin6_addr, &tmpaddr) &&
            newia->ia6_ifp == ifp)
@@ -953,20 +1223,7 @@ in6_tmpifadd(struct ifnet *ifp, struct nd_prefix *pr)
               (unsigned long)preferred, (unsigned long)valid));
     }
 
-    /* join solicited-node multicast for the new address */
-    {
-        struct in6_addr maddr;
-        bzero(&maddr, sizeof(maddr));
-        maddr.s6_addr[0]  = 0xff;
-        maddr.s6_addr[1]  = 0x02;
-        maddr.s6_addr[11] = 0x01;
-        maddr.s6_addr[12] = 0xff;
-        maddr.s6_addr[13] = tmpaddr.s6_addr[13];
-        maddr.s6_addr[14] = tmpaddr.s6_addr[14];
-        maddr.s6_addr[15] = tmpaddr.s6_addr[15];
-        (void)in6_addmulti(&maddr, ifp);
-    }
-
+    /* its solicited-node group was joined by in6_ifinit() */
     return 0;
 }
 
@@ -980,17 +1237,20 @@ in6_tmpaddrtimer(void)
     struct in6_ifaddr *ia, *nia;
     struct timeval _tv;
 
-    GetSysTime(&_tv);
+    GetUpTime(&_tv);
 
+    /* temporary addresses (RFC 4941) and those stateless autoconfiguration
+     * made (RFC 4862 section 5.5.4): deprecated at the end of the preferred
+     * lifetime, removed at the end of the valid one */
     for(ia = in6_ifaddr; ia; ia = nia) {
         nia = ia->ia_next;
-        if(!(ia->ia6_ifaflags & IN6_IFF_TEMPORARY))
+        if(!(ia->ia6_ifaflags & (IN6_IFF_TEMPORARY | IN6_IFF_AUTOCONF)))
             continue;
 
         /* check valid lifetime expiry */
         if(ia->ia6_lifetime_expire &&
            (u_int32_t)_tv.tv_sec >= ia->ia6_lifetime_expire) {
-            D(bug("[AROSTCP:IN6] %s: removing expired temporary addr\n",
+            D(bug("[AROSTCP:IN6] %s: removing expired autoconfigured addr\n",
                   __func__));
             in6_purgeaddr((struct ifaddr *)ia);
             continue;

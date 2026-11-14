@@ -1,5 +1,5 @@
 /*
-    Copyright (C) 1995-2017, The AROS Development Team. All rights reserved.
+    Copyright (C) 1995-2026, The AROS Development Team. All rights reserved.
 
     Desc:
 */
@@ -150,7 +150,6 @@
                     /* Is the cliprect inside the bounds?... */
                     if (bounds.MinX <= bounds.MaxX && bounds.MinY <= bounds.MaxY)
                     {
-                        struct BitMap * bm;
                         WORD offsetX = bounds.MinX - L->bounds.MinX + L->Scroll_X; /* + scrollx is correct! */
                         WORD offsetY = bounds.MinY - L->bounds.MinY + L->Scroll_Y; /* + scrolly is correct! */
 
@@ -161,7 +160,11 @@
                            further above */
                         if (NULL != CR->lobs)
                         {
-                            bm = rport->BitMap;
+                            /* the hook renders into the backing bitmap, through a RastPort
+                               that _ObtainHookRastPort() provides for it */
+                            struct HookRastPort hrp;
+                            struct BitMap *hbm;
+                            WORD tx, ty;
 
                             /* it's a smart layer -: */
                             if (0 != (L->Flags & LAYERSUPER))
@@ -170,11 +173,10 @@
 
                                 D(bug("[Layers] %s:   SuperBitMap\n", __func__));
 
-                                bounds.MinX -= ( L->bounds.MinX + L->Scroll_X );
-                                bounds.MinY -= ( L->bounds.MinY + L->Scroll_Y );
-                                bounds.MaxX -= ( L->bounds.MinX + L->Scroll_X );
-                                bounds.MaxY -= ( L->bounds.MinY + L->Scroll_Y );
-                                rport->BitMap = L->SuperBitMap;
+                                /* superbitmap coordinates are rastport coordinates */
+                                tx = L->Scroll_X - L->bounds.MinX;
+                                ty = L->Scroll_Y - L->bounds.MinY;
+                                hbm = L->SuperBitMap;
                             }
                             else
                             {
@@ -187,17 +189,15 @@
 
                                 D(bug("[Layers] %s:   Hidden\n", __func__));
 
-                                bounds.MinX -= CR->bounds.MinX;
-                                bounds.MinX += ALIGN_OFFSET(CR->bounds.MinX);
-                                bounds.MinY -= CR->bounds.MinY;
-                                bounds.MaxX -= CR->bounds.MinX;
-                                bounds.MaxX += ALIGN_OFFSET(CR->bounds.MinX);
-                                bounds.MaxY -= CR->bounds.MinY;
+                                tx = CR_BMOFFX(CR) - CR->bounds.MinX;
+                                ty = CR_BMOFFY(CR) - CR->bounds.MinY;
 
-                                rport->BitMap = CR->BitMap;
+                                hbm = CR->BitMap;
                             }
-                            _CallLayerHook(hook, rport, rport->Layer, &bounds, offsetX, offsetY, LayersBase);
-                            rport->BitMap = bm;
+                            _TranslateRect(&bounds, tx, ty);
+                            _CallLayerHook(hook, _ObtainHookRastPort(&hrp, rport, hbm, LayersBase),
+                                           rport->Layer, &bounds, offsetX, offsetY, LayersBase);
+                            _ReleaseHookRastPort(&hrp, LayersBase);
 
                         } /* hidden cliprect */
                         else

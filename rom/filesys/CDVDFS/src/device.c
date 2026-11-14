@@ -5,12 +5,15 @@
  *
  * ----------------------------------------------------------------------
  * This code is (C) Copyright 1993,1994 by Frank Munkert.
- *              (C) Copyright 2002-2023 The AROS Development Team
+ *              (C) Copyright 2002-2026 The AROS Development Team
  * All rights reserved.
  * This software may be freely distributed and redistributed for
  * non-commercial purposes, provided this notice is included.
  * ----------------------------------------------------------------------
  * History:
+ *
+ * 08-Oct-26         Allow update-open of existing files on read-only CDs;
+ *                   report rejected writes with the DOS failure value.
  *
  * 08-Nov-13 neil      - Only delay 2 seconds upon exiting if debugging is
  *                       enabled.
@@ -205,7 +208,7 @@ ULONG __abox__ = 1;
 #endif
 
 #ifndef __AROS__
-char __version__[] = "\0$VER: CDVDFS 3.0 (07.02.2024)";
+char __version__[] = "\0$VER: CDVDFS 3.1 (08.10.2026)";
 struct ExecBase *SysBase;
 LONG SAVEDS Main(void)
 {
@@ -218,6 +221,7 @@ static struct CDVDBase *AllocCDVDBase(void)
 {
     struct CDVDBase *cdvd = NULL;
 
+    /* Start-up code relies on every field it does not set being zero/NULL. */
     cdvd = AllocMem(sizeof(*cdvd), MEMF_CLEAR | MEMF_PUBLIC);
     if (!cdvd)
         return NULL;
@@ -241,7 +245,6 @@ ULONG signals;
     struct CDVDBase *global = AllocCDVDBase();
 
     D(bug("[CDVDFS] In handler, cdvd=0x%08lx\n", (IPTR)global));
-    global->playing = FALSE;
 
     /*
      *  Initialize all global variables. SysBase MUST be initialized before
@@ -256,7 +259,6 @@ ULONG signals;
     DOSBase = (APTR)TaggedOpenLibrary(TAGGEDOPEN_DOS);
     UtilityBase = (APTR)TaggedOpenLibrary(TAGGEDOPEN_UTILITY);
 #endif
-    CodesetsBase = NULL;
 
     global->Dback = CreateMsgPort();
 
@@ -272,9 +274,6 @@ ULONG signals;
     if (DOSBase && global->Dback)
         dbinit(global);
 #endif
-    global->DevList = NULL;
-    global->PrefsProc = NULL;
-    global->uniCodeset = NULL;
 
     WaitPort(&global->DosProc->pr_MsgPort);         /*  Get Startup Packet  */
     msg = GetMsg(&global->DosProc->pr_MsgPort);
@@ -333,8 +332,6 @@ ULONG signals;
         return 0;                       /*  exit process                */
     }
 
-    global->g_inhibited = 0;
-
     BUG2(dbprintf (global, "g_cd = %08lx\n", global->g_cd);)
     D(bug("%d std buffers, %d file buffers\n",
                  global->g_std_buffers, global->g_file_buffers));
@@ -342,7 +339,6 @@ ULONG signals;
     global->g_changeint_signumber = AllocSignal(-1);
     global->g_changeint_sigbit = 1L << global->g_changeint_signumber;
     /* Initialize timer: */
-    global->g_timer_sigbit = 0;
     if (Open_Timer_Device (global)) {
       Send_Timer_Request (global);
       global->g_scan_time = global->g_scan_interval;
@@ -418,6 +414,13 @@ ULONG signals;
 
     FreeCDVDBase(global);
     return 0;
+}
+
+/* Byte counts and seek positions use -1 for failure, not DOSFALSE. */
+static SIPTR packet_error_result(LONG type)
+{
+    return (type == ACTION_READ || type == ACTION_WRITE ||
+        type == ACTION_SEEK) ? -1 : DOSFALSE;
 }
 
 LONG handlemessage(struct CDVDBase *global, ULONG signals) {
@@ -523,7 +526,7 @@ UBYTE   notdone = 1;
                                 break;
                         /* packets we cannot handle because the SCSI device is not yet open: */
                         default:
-                                packet->dp_Res1 = DOSFALSE;
+                                packet->dp_Res1 = packet_error_result(packet->dp_Type);
                                 /*
                                         some return codes cause the WB to pop a requester; we don't
                                         want this, though. Therefore we use this "exotic" return code:
@@ -546,7 +549,7 @@ UBYTE   notdone = 1;
                                 break;
                         /* packets we cannot handle because the handler is inhibited: */
                         default:
-                                packet->dp_Res1 = DOSFALSE;
+                                packet->dp_Res1 = packet_error_result(packet->dp_Type);
                                 packet->dp_Res2 = ERROR_NOT_A_DOS_DISK;
                                 D(bug("ERR=%ld\n", (LONG) packet->dp_Res2));
                                 returnpacket(global, packet);
@@ -569,7 +572,7 @@ UBYTE   notdone = 1;
                                 break;
                         /* packets we cannot handle because no disk is inserted: */
                         default:
-                                packet->dp_Res1 = DOSFALSE;
+                                packet->dp_Res1 = packet_error_result(packet->dp_Type);
                                 packet->dp_Res2 =
                                         (global->g_disk_inserted ?
                                                 ERROR_NOT_A_DOS_DISK :
@@ -595,6 +598,7 @@ UBYTE   notdone = 1;
                                         packet->dp_Arg3
                                 );
                         break;
+                case ACTION_FINDUPDATE: /* Existing file; writes remain protected */
                 case ACTION_FINDINPUT: /* FileHandle,Lock,Name   Bool */
                 {
                         if (!(error = Mount_Check (global)))
@@ -633,7 +637,8 @@ UBYTE   notdone = 1;
                                                 goto openbreak;
                                         }
                                         else if (global->iso_errno == ISOERR_NOT_FOUND)
-                                                error = ERROR_OBJECT_NOT_FOUND;
+                                                error = packet->dp_Type == ACTION_FINDUPDATE ?
+                                                        ERROR_DISK_WRITE_PROTECTED : ERROR_OBJECT_NOT_FOUND;
                                         else if (global->iso_errno == ISOERR_NO_MEMORY)
                                         {
                                                 error = ERROR_NO_FREE_STORE;
@@ -696,6 +701,8 @@ openbreak:
                         }
                         actual = Read_From_File (obj, ptr, length);
                         packet->dp_Res1 = actual;
+                        if (actual < 0)
+                                error = ERROR_SEEK_ERROR;
                 }
                 break;
                 case ACTION_END: /* FHArg1      Bool:TRUE */
@@ -991,7 +998,7 @@ openbreak:
                         }
                 break;
     /*
-     *  FINDINPUT and FINDOUTPUT normally should return the
+     *  FINDOUTPUT normally should return the
      *  'write protected' error. If the field 'Name', however,
      *  designates the root (e.g. CD0:), then the 'wrong type'
      *  error should be returned. Otherwise, AmigaDOS would do
@@ -1000,7 +1007,6 @@ openbreak:
      *  field 'Mount' set to 1.
      */
                 case ACTION_FINDOUTPUT: /* Handle  Lock  Name         Bool */
-                case ACTION_FINDUPDATE: /* Handle  Lock  Name         Bool */
                 {
                         int pos;
 
@@ -1109,7 +1115,7 @@ openbreak:
                         if (error)
                         {
                                 D(bug("ERR=%ld\n", error);)
-                                packet->dp_Res1 = DOSFALSE;
+                                packet->dp_Res1 = packet_error_result(packet->dp_Type);
                                 packet->dp_Res2 = error;
                         }
                         else
@@ -1278,6 +1284,15 @@ int Check_For_Volume_Name_Prefix (struct CDVDBase *global, char *p_pathname)
   return pos ? (pos - p_pathname) + 1 : 0;
 }
 
+/* Convert seconds since 1-Jan-1978 into a DateStamp. */
+
+CDVDFS_SHARED void Seconds_To_DateStamp (ULONG p_seconds, struct DateStamp *p_stamp)
+{
+        p_stamp->ds_Days   = p_seconds / (24 * 60 * 60);
+        p_stamp->ds_Minute = (p_seconds % (24 * 60 * 60)) / 60;
+        p_stamp->ds_Tick   = (p_seconds % 60) * TICKS_PER_SECOND;
+}
+
 /*
  * Fills a FileInfoBlock with the information contained in the
  * directory record of a CD-ROM directory or file.
@@ -1344,9 +1359,7 @@ static void Fill_FileInfoBlock (struct CDVDBase *global, FIB *p_fib, CDROM_INFO 
         p_fib->fib_Protection = p_info->protection;
         p_fib->fib_Size = p_info->file_length;
         p_fib->fib_NumBlocks = p_info->file_length >> 11;
-        p_fib->fib_Date.ds_Days   = p_info->date / (24 * 60 * 60);
-        p_fib->fib_Date.ds_Minute = (p_info->date % (24 * 60 * 60)) / 60;
-        p_fib->fib_Date.ds_Tick   = (p_info->date % 60) * TICKS_PER_SECOND;
+        Seconds_To_DateStamp (p_info->date, &p_fib->fib_Date);
 
         dest = p_fib->fib_Comment;
         len = p_info->comment_length;
@@ -1381,9 +1394,7 @@ static void Create_Volume_Node (struct CDVDBase *global, LONG p_disk_type, ULONG
                 global->DevList = dl = (struct DeviceList *)MakeDosEntry(global->g_vol_name+1, DLT_VOLUME);
                 dl->dl_Task = &global->DosProc->pr_MsgPort;
                 dl->dl_DiskType = p_disk_type;
-                dl->dl_VolumeDate.ds_Days = p_volume_date / (24 * 60 * 60);
-                dl->dl_VolumeDate.ds_Minute = (p_volume_date % (24 * 60 * 60)) / 60;
-                dl->dl_VolumeDate.ds_Tick = (p_volume_date % 60) * TICKS_PER_SECOND;
+                Seconds_To_DateStamp (p_volume_date, &dl->dl_VolumeDate);
                 D(bug("Name to add: <0x%08lX> %b\n", dl->dl_Name, dl->dl_Name));
                 AddDosEntry((struct DosList *)dl);
                 D(bug("Added name: <0x%08lX> %b\n", dl->dl_Name, dl->dl_Name));
@@ -1423,6 +1434,8 @@ static void Mount (struct CDVDBase *global)
     global->g_top_level_obj = Open_Top_Level_Directory (global->g_volume);
     if (!global->g_top_level_obj) {
       D(bug("!!! cannot open top level directory !!!\n"));
+      Close_Volume(global->g_volume);
+      global->g_volume = NULL;
       return;
     }
   }

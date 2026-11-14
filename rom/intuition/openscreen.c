@@ -44,6 +44,7 @@
 #include <cybergraphx/cybergraphics.h>
 #else
 #include <hidd/gfx.h>
+#include <cybergraphx/cybergraphics.h>  /* PIXFMT_* */
 #endif
 
 #include <string.h>
@@ -57,6 +58,7 @@
 #include "menus.h"
 #include "monitorclass_intern.h"
 #include "monitorclass_private.h"
+#include "../graphics/graphics_private.h"   /* BMATags_CGXPixFmt */
 
 // disabled as it causes compatibility issues
 //#define USE8BITHACK
@@ -178,6 +180,7 @@ static const char THIS_FILE[] = __FILE__;
     BOOL                   draggable = TRUE;
     ULONG                  compflags = COMPF_ABOVE; // Default to AmigaOS like behaviour.
     struct Hook            *compalphahook = NULL;
+    LONG                   reqpixfmt = -1;
 
     struct TagItem   modetags[] =
     {
@@ -291,7 +294,15 @@ static const char THIS_FILE[] = __FILE__;
         ok = FALSE;
     }
 
-    if (ok && tagList)
+    /* Without a screen object there is nothing the tags could set up */
+    if (!ok)
+        tagList = NULL;
+
+    /*
+     * Evaluate the tags. The tag functions accept a NULL list: GetTagData()
+     * returns the default and NextTagItem() returns NULL at once, so without
+     * tags everything keeps the value taken from the NewScreen structure.
+     */
     {
         char *pubname = NULL;
 
@@ -489,14 +500,6 @@ static const char THIS_FILE[] = __FILE__;
 #endif
             switch(tag->ti_Tag)
             {
-            case SA_CompositingFlags:
-                compflags = tag->ti_Data;
-                DEBUG_OPENSCREEN(dprintf("OpenScreen: SA_CompositingFlags 0x%p\n", compflags));
-                break;
-            case SA_AlphaPreCompositingHook:
-                compalphahook = (struct Hook *)tag->ti_Data;
-                DEBUG_OPENSCREEN(dprintf("OpenScreen: SA_AlphaPreCompositingHook 0x%p\n", compalphahook));
-                break;
             case SA_Left:
                 DEBUG_OPENSCREEN(dprintf("OpenScreen: SA_Left %ld\n",tag->ti_Data));
                 ns.LeftEdge  = tag->ti_Data;
@@ -710,83 +713,108 @@ static const char THIS_FILE[] = __FILE__;
                 DEBUG_OPENSCREEN(dprintf("OpenScreen: SA_MinimizeISG 0x%lx\n",tag->ti_Data));
                 break;
 
-            case SA_MonitorName:
-                monitorname = (char*)tag->ti_Data;
-                break;
-#ifndef __AROS__ /* AROS: Disable MorphOS-specific extensions and private stuff */
-            case SA_SkinName: /* TODO: Complete support for named skins and enable this tag. Value needed. */
-                DEBUG_OPENSCREEN(dprintf("OpenScreen: SA_SkinName (%s)\n",(char *)tag->ti_Data));
-                skinname = (char *)tag->ti_Data;
-                break;
-
-            case SA_VesaFallback:
-                vesafallback = tag->ti_Data;
-                break;
-
-            case SA_ModeEditControl:
-                modecontrol = (ULONG*)tag->ti_Data;
-                break;
-
-            case SA_WindowLock: /* TODO: We also can support this private tag. In which situations we don't need locking ? */
-                dowindowlock = tag->ti_Data ? TRUE : FALSE;
-                break;
-
-            case SA_CompositingLayers:
-                compositing = tag->ti_Data ? TRUE : FALSE;
-                break;
-#endif
-            case SA_ShowPointer:
-                showpointer = tag->ti_Data ? TRUE : FALSE;
-                break;
-
-            case SA_GammaControl:
-                gammacontrol = tag->ti_Data ? TRUE : FALSE;
-                break;
-
-            case SA_GammaRed:
-                gammared = (UBYTE*)tag->ti_Data;
-                break;
-
-            case SA_GammaBlue:
-                gammablue = (UBYTE*)tag->ti_Data;
-                break;
-
-            case SA_GammaGreen:
-                gammagreen = (UBYTE*)tag->ti_Data;
-                break;
-
-            case SA_3DSupport:
-                support3d = tag->ti_Data ? TRUE : FALSE;
-                break;
-
-            case SA_AdaptSize:
-                adaptsize = tag->ti_Data ? TRUE : FALSE;
-                break;
-
-            case SA_DisplayWidth:
-                displaywidth = (ULONG)tag->ti_Data;
-                break;
-
-            case SA_DisplayHeight:
-                displayheight = (ULONG)tag->ti_Data;
-                break;
-
-            case SA_ExactMatchMonitorName:
-                exactname = tag->ti_Data ? TRUE : FALSE;
-                break;
-
-            /* TODO: Missing SA_ Tags */
             default:
-                DEBUG_OPENSCREEN(dprintf("OpenScreen: unknown tag 0x%lx data 0x%lx\n",
-                             tag->ti_Tag,
-                             tag->ti_Data));
+                /*
+                 * The tags numbered from SA_Dummy + 100 up lie apart from the
+                 * ones above. They have a switch of their own, so that each of
+                 * the two covers a dense range of numbers.
+                 */
+                switch(tag->ti_Tag)
+                {
+                case SA_MonitorName:
+                    monitorname = (char*)tag->ti_Data;
+                    break;
+#ifndef __AROS__ /* AROS: Disable MorphOS-specific extensions and private stuff */
+                case SA_SkinName: /* TODO: Complete support for named skins and enable this tag. Value needed. */
+                    DEBUG_OPENSCREEN(dprintf("OpenScreen: SA_SkinName (%s)\n",(char *)tag->ti_Data));
+                    skinname = (char *)tag->ti_Data;
+                    break;
+
+                case SA_VesaFallback:
+                    vesafallback = tag->ti_Data;
+                    break;
+
+                case SA_ModeEditControl:
+                    modecontrol = (ULONG*)tag->ti_Data;
+                    break;
+
+                case SA_WindowLock: /* TODO: We also can support this private tag. In which situations we don't need locking ? */
+                    dowindowlock = tag->ti_Data ? TRUE : FALSE;
+                    break;
+
+                case SA_CompositingLayers:
+                    compositing = tag->ti_Data ? TRUE : FALSE;
+                    break;
+#endif
+                case SA_ShowPointer:
+                    showpointer = tag->ti_Data ? TRUE : FALSE;
+                    break;
+
+                case SA_GammaControl:
+                    gammacontrol = tag->ti_Data ? TRUE : FALSE;
+                    break;
+
+                case SA_GammaRed:
+                    gammared = (UBYTE*)tag->ti_Data;
+                    break;
+
+                case SA_GammaBlue:
+                    gammablue = (UBYTE*)tag->ti_Data;
+                    break;
+
+                case SA_GammaGreen:
+                    gammagreen = (UBYTE*)tag->ti_Data;
+                    break;
+
+                case SA_3DSupport:
+                    support3d = tag->ti_Data ? TRUE : FALSE;
+                    break;
+
+                case SA_AdaptSize:
+                    adaptsize = tag->ti_Data ? TRUE : FALSE;
+                    break;
+
+                case SA_DisplayWidth:
+                    displaywidth = (ULONG)tag->ti_Data;
+                    break;
+
+                case SA_DisplayHeight:
+                    displayheight = (ULONG)tag->ti_Data;
+                    break;
+
+                case SA_ExactMatchMonitorName:
+                    exactname = tag->ti_Data ? TRUE : FALSE;
+                    break;
+
+                case SA_CompositingFlags:
+                    compflags = tag->ti_Data;
+                    DEBUG_OPENSCREEN(dprintf("OpenScreen: SA_CompositingFlags 0x%p\n", compflags));
+                    break;
+                case SA_AlphaPreCompositingHook:
+                    compalphahook = (struct Hook *)tag->ti_Data;
+                    DEBUG_OPENSCREEN(dprintf("OpenScreen: SA_AlphaPreCompositingHook 0x%p\n", compalphahook));
+                    break;
+                case SA_PixelFormat:
+                    reqpixfmt = (LONG)tag->ti_Data;
+                    DEBUG_OPENSCREEN(dprintf("OpenScreen: SA_PixelFormat %ld\n", reqpixfmt));
+                    break;
+
+                /* TODO: Missing SA_ Tags */
+                default:
+                    DEBUG_OPENSCREEN(dprintf("OpenScreen: unknown tag 0x%lx data 0x%lx\n",
+                                 tag->ti_Tag,
+                                 tag->ti_Data));
+                    break;
+
+
+                } /* switch (tag->ti_Tag), SA_Dummy + 100 up */
                 break;
 
             } /* switch (tag->ti_Tag) */
 
         } /* while ((tag = NextTagItem (&tagList))) */
 
-    } /* if (tagList) */
+    }
 
     DEBUG_OPENSCREEN(dprintf("OpenScreen: Left %d Top %d Width %d Height %d Depth %d Tags 0x%lx\n",
                  ns.LeftEdge, ns.TopEdge, ns.Width, ns.Height, ns.Depth, tagList));
@@ -1111,7 +1139,7 @@ static const char THIS_FILE[] = __FILE__;
        )
     {
         success = TRUE;
-#ifdef __AROS__ /* AROS: Get HIDD composition flags */
+#ifdef __AROS__ /* AROS: Get HIDD composition flags, as SF_Compose* and SF_ScaledCoords */
         screen->SpecialFlags = ((compflags & (dimensions.reserved[0] >> 16)) | (dimensions.reserved[0] & 0xFFFF)) << 8;
         screen->preAlphaCompHook = compalphahook;
 
@@ -1230,8 +1258,22 @@ static const char THIS_FILE[] = __FILE__;
             struct TagItem bmtags[] =
             {
                 {BMATags_DisplayID, modeid},
+                {TAG_IGNORE       , 0     },
                 {TAG_DONE         , 0     }
             };
+
+            /*
+             * A 32-bit format with alpha the opener asked for (SA_PixelFormat),
+             * so a video plane can show below the screen through it. Taken
+             * where the mode's pixels are of its size (AllocBitMap() checks).
+             */
+            if ((reqpixfmt == PIXFMT_ARGB32) || (reqpixfmt == PIXFMT_BGRA32) || (reqpixfmt == PIXFMT_RGBA32))
+            {
+                bmtags[1].ti_Tag  = BMATags_CGXPixFmt;
+                bmtags[1].ti_Data = reqpixfmt;
+            }
+            else
+                reqpixfmt = -1;
 
             screen->Screen.RastPort.BitMap = AllocBitMap(ns.Width, ns.Height, Depth,
                                                          allocbitmapflags | BMF_CHECKVALUE,
@@ -1312,6 +1354,18 @@ static const char THIS_FILE[] = __FILE__;
 
             if (screen->Screen.RastPort.BitMap)
             {
+                if (reqpixfmt >= 0)
+                {
+                    /* An alpha screen starts opaque, not as transparent zeroes */
+                    struct RastPort rport;
+
+                    InitRastPort(&rport);
+                    rport.BitMap = screen->AllocatedBitMap;
+                    SetRPAttrs(&rport, RPTAG_PenMode, FALSE, RPTAG_FgColor, 0xFF000000, TAG_DONE);
+                    RectFill(&rport, 0, 0, GetBitMapAttr(rport.BitMap, BMA_WIDTH) - 1,
+                             GetBitMapAttr(rport.BitMap, BMA_HEIGHT) - 1);
+                    DeinitRastPort(&rport);
+                }
                 UpdateScreenBitMap(&screen->Screen, IntuitionBase);
 #ifndef __AROS__
                 /*
@@ -1379,6 +1433,15 @@ static const char THIS_FILE[] = __FILE__;
            from withing LoadRGBxx() functions
         */
         D(bug("got allocated stuff\n"));
+        /* Classic custom screens draw through their embedded bitmap header.
+         * Keep the caller's original header intact, and select the same
+         * header for drawing and display before creating screen layers. */
+        if (!IS_HIDD_BM(screen->Screen.RastPort.BitMap))
+        {
+            CopyMem(screen->Screen.RastPort.BitMap,
+                &screen->Screen.BitMap_OBSOLETE, sizeof(struct BitMap));
+            screen->Screen.RastPort.BitMap = &screen->Screen.BitMap_OBSOLETE;
+        }
         screen->Screen.ViewPort.RasInfo->BitMap = screen->Screen.RastPort.BitMap;
     }
 
@@ -1597,7 +1660,20 @@ static const char THIS_FILE[] = __FILE__;
 
             if (VideoControl(screen->Screen.ViewPort.ColorMap, tags) == 0)
             {
+                /*
+                 * The screen's composition parameters travel with its ViewPort:
+                 * the display's compositor reads them from the chain it is
+                 * given, instead of asking Intuition.
+                 */
+                struct TagItem comptags[] =
+                {
+                    { VTAG_COMPOSITING_SET, screen->SpecialFlags >> 8 },
+                    { VTAG_ALPHAHOOK_SET  , (IPTR)compalphahook       },
+                    { VTAG_END_CM         , 0                         }
+                };
+
                 DEBUG_OPENSCREEN(dprintf("OpenScreen: VideoControl ok\n"));
+                VideoControl(screen->Screen.ViewPort.ColorMap, comptags);
                 ok = TRUE;
             }
             else
@@ -1643,7 +1719,7 @@ static const char THIS_FILE[] = __FILE__;
                              screen->Screen.ViewPort,
                              k + lastcol, p[k+4].red, p[k+4].green, p[k+4].blue));
 
-                if (k + lastcol < numcolors)
+                if (k + lastcol < numcolors && !sharepens)
                 {
                     ObtainPen(screen->Screen.ViewPort.ColorMap,
                               k + lastcol,
@@ -2243,8 +2319,11 @@ static const char THIS_FILE[] = __FILE__;
             D(bug("calling SetRast()\n"));
 
             DEBUG_OPENSCREEN(dprintf("OpenScreen: Set background color Pen %ld\n",screen->Pens[BACKGROUNDPEN]));
-            /* Set screen to background color */
-            SetRast(&screen->Screen.RastPort, screen->Pens[BACKGROUNDPEN]);
+            /* An installed backfill hook owns the background, including a
+             * no-op hook used to retain a preloaded custom bitmap. SetRast
+             * bypasses that hook and would erase the caller's picture. */
+            if (layer_info_hook == LAYERS_BACKFILL)
+                SetRast(&screen->Screen.RastPort, screen->Pens[BACKGROUNDPEN]);
 
             D(bug("SetRast() called\n"));
 
@@ -2408,15 +2487,12 @@ static const char THIS_FILE[] = __FILE__;
         screen = 0;
 
     } /* if (!ok) */
-    else if (screen->Screen.RastPort.BitMap)
+    else if (screen->Screen.RastPort.BitMap &&
+             screen->Screen.RastPort.BitMap != &screen->Screen.BitMap_OBSOLETE)
     {
-        /* Copy the BitMap's info for compatability with existing AmigaOS apps */
+        /* Managed bitmaps retain their drawing/display header and expose a
+         * legacy snapshot. Raw custom screens already use the embedded one. */
         CopyMem(screen->Screen.RastPort.BitMap, &screen->Screen.BitMap_OBSOLETE, sizeof(struct BitMap));
-        /* Raw SA_BitMap screens display the embedded legacy header while
-         * drawing keeps the caller-owned header. Legacy edits are therefore
-         * visible on rebuild without modifying either drawing buffer. */
-        if (!IS_HIDD_BM(screen->Screen.RastPort.BitMap))
-            screen->Screen.ViewPort.RasInfo->BitMap = &screen->Screen.BitMap_OBSOLETE;
     }
 
     DEBUG_OPENSCREEN(dprintf("OpenScreen: return 0x%lx\n", screen));

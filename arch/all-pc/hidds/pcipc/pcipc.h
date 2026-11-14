@@ -1,5 +1,5 @@
 /*
-    Copyright (C) 1995-2025, The AROS Development Team. All rights reserved.
+    Copyright (C) 1995-2026, The AROS Development Team. All rights reserved.
 */
 
 #ifndef _PCIPC_H
@@ -44,29 +44,45 @@ struct pcipc_staticdata
     OOP_AttrBase                hidd_PCIDeviceAB;
 
     OOP_MethodID                hidd_PCIDeviceMB;
+    OOP_MethodID                hiddMB;
 
     OOP_Class                   *pcipcDriverClass;
     OOP_Class                   *pcipcDeviceClass;
 
     /* Low-level sub-methods */
     ULONG                       (*ReadConfigLong)(UBYTE bus, UBYTE dev, UBYTE sub, UWORD reg);
+    void                        (*WriteConfigWord)(UBYTE bus, UBYTE dev, UBYTE sub, UWORD reg, UWORD val);
     void                        (*WriteConfigLong)(UBYTE bus, UBYTE dev, UBYTE sub, UWORD reg, ULONG val);
 
     /* ACPI related */
     ACPI_TABLE_MCFG             *pcipc_acpiMcfgTbl;
+    struct MinList              pcipc_acpiNodes;        /* struct PCIPCACPINode */
 };
+
+/* The ACPI namespace node describing a host bridge or a PCI device */
+struct PCIPCACPINode
+{
+    struct MinNode              node;
+    ACPI_HANDLE                 handle;
+    UBYTE                       bus, dev, sub;          /* sub 0xff: every function */
+};
+
+/* In dev: the node describes the host bridge the bus starts at */
+#define PCIPC_ACPINODE_HOST     0xff
 
 #undef HiddPCIDriverAttrBase
 #undef HiddAttrBase
 #undef HiddPCIDeviceAttrBase
 
 #undef HiddPCIDeviceBase
+#undef HiddBase
 
 #define HiddPCIDriverAttrBase   (PSD(cl)->hiddPCIDriverAB)
 #define HiddAttrBase            (PSD(cl)->hiddAB)
 #define HiddPCIDeviceAttrBase   (PSD(cl)->hidd_PCIDeviceAB)
 
 #define HiddPCIDeviceBase       (PSD(cl)->hidd_PCIDeviceMB)
+#define HiddBase                (PSD(cl)->hiddMB)
 
 #define KernelBase              (PSD(cl)->kernelBase)
 #define UtilityBase             (PSD(cl)->utilityBase)
@@ -143,6 +159,7 @@ static inline UWORD ReadConfigByte(struct pcipc_staticdata *psd, UBYTE bus,
 }
 
 ULONG ReadConfig1Long(UBYTE bus, UBYTE dev, UBYTE sub, UWORD reg);
+void WriteConfig1Word(UBYTE bus, UBYTE dev, UBYTE sub, UWORD reg, UWORD val);
 void WriteConfig1Long(UBYTE bus, UBYTE dev, UBYTE sub, UWORD reg, ULONG val);
 
 #ifdef LEGACY_SUPPORT
@@ -185,5 +202,7 @@ static inline ULONG roundup_pow_of_two(ULONG x)
 {
     return x == 1 ? 1 : (1 << fls_long(x - 1));
 }
+
+void PCIPC_DeclareFirmwareNodes(OOP_Class *cl, OOP_Object *o, UBYTE bus, UBYTE dev, UBYTE sub);
 
 #endif /* _PCIPC_H */

@@ -37,11 +37,13 @@
 #include <kern/amiga_includes.h>
 #include <kern/amiga_gui.h>
 #include <kern/amiga_dhcp.h>
+#include <kern/amiga_netdb.h>
 
 #include <sys/synch.h>
 
 #include <net/if.h>
 #include <net/netisr.h>
+#include <net/route.h>
 
 #define NDEBUG
 #include <assert.h>
@@ -67,7 +69,7 @@
 #include <net/if_sana.h>
 #include <net/if_types.h>
 #include <net/sana2arp.h>
-#include <net/bpf.h>
+#include "bpf.h"
 
 #include <net/sana2config.h>
 #include <net/sana2request.h>
@@ -97,6 +99,7 @@ struct sana_softc *ssq = NULL;
  * Local prototypes
  */
 struct ifnet *iface_make(struct ssconfig *ifc);
+extern void if_detach(struct ifnet *ifp);       /* net/if.c */
 static void sana_run(struct sana_softc *ssc, int requests, struct ifaddr *ifa);
 static void sana_unrun(struct sana_softc *ssc);
 static void sana_up(struct sana_softc *ssc);
@@ -189,15 +192,205 @@ sana_deinit(void)
 }
 
 /*
+ * Drop all of an interface's live layer-3 configuration - DNS, autoip, every
+ * route, and every address (IPv6 then IPv4) - WITHOUT closing the device or
+ * freeing the ifnet.  Shared by the reload teardown (which re-applies the
+ * config afterwards) and the dropped-interface path (which leaves it bare).
+ *
+ * rt_purgeif() removes every route that resolves through the interface first -
+ * including the IPv6 RTF_CLONING prefix route that in6_ifscrub() alone did not
+ * reliably delete.  With the routes already gone, in6_purgeaddr() can free each
+ * IPv6 address without leaving a route's rt_ifa dangling.
+ *
+ * Returns the number of addresses removed (for logging).
+ */
+static int
+sana_if_deconfigure(struct ifnet *ifp)
+{
+    struct sana_softc *ssc = (struct sana_softc *)ifp;
+    struct ifreq ifr;
+    int deleted = 0;
+
+    ifnet_clear_dns(ifp);
+    if(ssc->ss_autoip.state != AUTOIP_DISABLED)
+        autoip_stop(ifp);
+
+#if INET6
+    /* Forget the routers heard on it and the routes they gave, and the
+     * prefixes: the routes and addresses go below anyway, and an entry left
+     * marked installed (or its address made) would never be put back when
+     * the router advertises again after a reload. */
+    nd6_purge_routers(ifp);
+    nd6_purge_prefixes(ifp);
+#endif
+    /* Flush all routes on the interface before dropping its addresses, so no
+     * live route is left referencing an ifaddr we are about to free. */
+    rt_purgeif(ifp, AF_UNSPEC);
+
+#if INET6
+    {
+        struct ifaddr *ifa, *nifa;
+        for(ifa = ifp->if_addrlist; ifa; ifa = nifa) {
+            nifa = ifa->ifa_next;       /* in6_purgeaddr() unlinks+frees ifa */
+            if(ifa->ifa_addr &&
+                    ifa->ifa_addr->sa_family == AF_INET6) {
+                in6_purgeaddr(ifa);
+                deleted++;
+            }
+        }
+    }
+#endif
+    while(1) {
+        bzero(&ifr, sizeof(ifr));
+        if(in_control(NULL, SIOCDIFADDR, (caddr_t)&ifr, ifp) != 0)
+            break;
+        deleted++;
+    }
+    return deleted;
+}
+
+/*
+ * Tear down every interface's live configuration for an in-place reload.  The
+ * config is re-applied afterwards by re-reading the interface database
+ * (addifent), so an interface is reconfigured without a link bounce - and
+ * because the routes/addresses are fully dropped first, an IPv6 address can
+ * change across a reload (addifent() re-adds the new address and its route; an
+ * unchanged one is simply re-added identically).  DHCP is stopped separately
+ * (dhcp service) before this runs.
+ */
+void
+sana_reconfig_teardown(void)
+{
+    struct sana_softc *ssc;
+
+    for(ssc = ssq; ssc; ssc = ssc->ss_next) {
+        struct ifnet *ifp = (struct ifnet *)ssc;
+        int deleted = sana_if_deconfigure(ifp);
+
+        D(bug("[AROSTCP](if_sana.c) sana_reconfig_teardown: %s%d dropped %d address(es)\n",
+              ifp->if_name, ifp->if_unit, deleted));
+    }
+}
+
+/*
+ * In-place reload: handle interfaces dropped from the new configuration.
+ *
+ * sana_reload_begin() bumps a generation; addifent() marks each interface it
+ * (re)configures via sana_mark_seen(); sana_remove_unseen() then disables any
+ * interface still carrying an older generation (i.e. no longer in the config).
+ *
+ * Removal is a full teardown: stop DHCP, release DNS/autoip, flush routes and
+ * delete every address (sana_if_deconfigure()), take the device offline and
+ * drain all its I/O requests (sana_down() + sana_unrun() - every request buffer
+ * is chained in ss_reqs, so this clears SanaPort of anything that references the
+ * softc), detach the per-interface nd6 state, unlink the ifnet from the global
+ * list and free its link-level ifaddr (if_detach()), unlink from ssq,
+ * CloseDevice() and finally free the softc.  Order mirrors sana_deinit(), with
+ * the list-unlink + free added for a single live interface.
+ */
+static ULONG sana_reload_gen = 0;
+
+void sana_reload_begin(void)
+{
+    sana_reload_gen++;
+}
+
+void sana_mark_seen(struct ifnet *ifp)
+{
+    struct sana_softc *ssc;
+
+    /* Only SANA interfaces (those in ssq) are tracked; a tunnel/pseudo ifnet
+     * is not a sana_softc and must not be cast/written as one. */
+    for(ssc = ssq; ssc; ssc = ssc->ss_next) {
+        if((struct ifnet *)ssc == ifp) {
+            ssc->ss_reloadseen = sana_reload_gen;
+            return;
+        }
+    }
+}
+
+void sana_remove_unseen(void)
+{
+    struct sana_softc *ssc, *next;
+    struct sana_softc **prev = &ssq;
+
+    for(ssc = ssq; ssc; ssc = next) {
+        struct ifnet *ifp = (struct ifnet *)ssc;
+        struct IOSana2Req *req;
+
+        next = ssc->ss_next;
+
+        if(ssc->ss_reloadseen == sana_reload_gen) {
+            prev = &ssc->ss_next;       /* kept: advance the unlink cursor */
+            continue;
+        }
+
+        /* interface no longer in the config: full teardown and free */
+        ifp->if_data.ifi_aros_usedhcp = 0;
+#if INET6 && DHCP6
+        ifp->if_data.ifi_aros_usedhcp6 = 0;
+#endif
+        kill_dhclient(ifp);
+#if INET6 && DHCP6
+        kill_dhclient6(ifp);
+#endif
+        sana_if_deconfigure(ifp);       /* DNS, autoip, routes, all addresses */
+
+        /* take the device offline and drain/free all of its I/O requests
+         * before anything that references the softc is torn down.  (A compliant
+         * SANA-II driver must return parked CMD_READs on AbortIO; tap.device
+         * now does.) */
+        sana_down(ssc);
+        if(ssc->ss_if.if_flags & IFF_DRV_RUNNING)
+            sana_unrun(ssc);
+        ifp->if_flags &= ~IFF_UP;
+
+#if INET6
+        nd6_ifdetach(ifp);
+#endif
+        if_detach(ifp);                 /* global-list unlink + free link ifaddr */
+
+        *prev = next;                   /* unlink from ssq (prev still points here) */
+
+        /* close the device (ss_dev/ss_unit are still valid in the softc) */
+        req = CreateIOSana2Req(ssc);
+        if(req) {
+            CloseDevice((struct IORequest *)req);
+            DeleteIOSana2Req(req);
+        } else {
+            __log(LOG_ERR, "sana_remove_unseen: couldn't close device %s\n",
+                  ssc->ss_name);
+        }
+
+        __log(LOG_NOTICE, "%s%d: removed from configuration, interface detached",
+              ifp->if_name, ifp->if_unit);
+
+        bsd_free((caddr_t)ssc, M_IFNET);
+        /* prev is unchanged: it now holds `next`, the new current node */
+    }
+}
+
+/*
  * sana_poll()
  *  This routine polls SanaPort and processes replied
  *  requests appropriately
  */
+/*
+ * Replies taken from SanaPort before the protocols run (net_poll()), as
+ * Linux NAPI's budget: each read reply posts its request again at once,
+ * so while a device keeps answering, the loop below would only queue
+ * packets, and a burst would overflow ipintrq (ipqmaxlen) and be dropped
+ * there. Run in batches, the protocols keep up, and a device with no
+ * request posted holds what follows (tap.device in the host's queue).
+ */
+#define SANA_POLL_BUDGET 32
+
 BOOL
 sana_poll(void)
 {
     struct IOIPReq *io;
     spl_t s = splnet();
+    int n = 0;
 
     while(io = (struct IOIPReq *)GetMsg(SanaPort)) {
         /* touch the network interface */
@@ -207,6 +400,10 @@ sana_poll(void)
         } else {
             __log(LOG_ERR, "No dispatch function in request for %s\n",
                   io->ioip_if->ss_name);
+        }
+        if(++n == SANA_POLL_BUDGET) {
+            net_poll();
+            n = 0;
         }
     }
 
@@ -684,9 +881,9 @@ sana_ioctl(register struct ifnet *ifp, int cmd, caddr_t data)
          * does not mean sana_up() (CmdOnline + CmdRead) has been called.
          */
         if((ssc->ss_if.if_flags & IFF_DRV_RUNNING) && (ssc->ss_ip.sent == 0)) {
-            if(ssc->ss_if.if_flags & IFF_NOUP) {
+            if(ssc->ss_cflags & SSF_NOUP) {
                 D(bug("[AROSTCP:SANA] %s: SIFADDR Clearing interface NOUP flag .. \n", __func__));
-                ssc->ss_if.if_flags &= ~IFF_NOUP;
+                ssc->ss_cflags &= ~SSF_NOUP;
             } else {
                 D(bug("[AROSTCP:SANA] %s: SIFADDR bringing interface UP .. \n", __func__));
                 sana_up(ssc);
@@ -717,9 +914,9 @@ sana_ioctl(register struct ifnet *ifp, int cmd, caddr_t data)
             sana_run(ssc, ssc->ss_reqno, ifa);
         }
         if((ssc->ss_if.if_flags & IFF_DRV_RUNNING) && (ssc->ss_ip.sent == 0)) {
-            if(ssc->ss_if.if_flags & IFF_NOUP) {
+            if(ssc->ss_cflags & SSF_NOUP) {
                 D(bug("[AROSTCP:SANA] %s: SIOCAIFADDR_IN6 Clearing interface NOUP flag ..\n", __func__));
-                ssc->ss_if.if_flags &= ~IFF_NOUP;
+                ssc->ss_cflags &= ~SSF_NOUP;
             } else {
                 D(bug("[AROSTCP:SANA] %s: SIOCAIFADDR_IN6 bringing interface UP ..\n", __func__));
                 sana_up(ssc);
@@ -1011,6 +1208,49 @@ sana_read(struct sana_softc *ssc, struct IOIPReq *req,
 }
 
 /*
+ * BPF sees what is on the wire. The SANA-II driver adds and strips the link
+ * header itself, so the stack never holds it: on Ethernet it is rebuilt
+ * here from the destination and source addresses and the packet type, and
+ * the capture is DLT_EN10MB. No other wire type has a header the stack can
+ * rebuild in general; there the capture is DLT_RAW, which holds IPv4 and
+ * IPv6 alone, so another packet (ARP) is not shown. bpf_dlt_for_ifp() in
+ * bpf.c reports the same choice.
+ */
+static void
+sana_bpf_tap(struct sana_softc *ssc, struct mbuf *m, int direction,
+             const UBYTE *dsthw, const UBYTE *srchw, ULONG type, int ip)
+{
+    if(ssc->ss_hwtype == S2WireType_Ethernet) {
+        UBYTE eh[SANA_ETHER_HDRLEN];
+
+        bcopy(dsthw, eh, SANA_ETHER_ADDRLEN);
+        bcopy(srchw, eh + SANA_ETHER_ADDRLEN, SANA_ETHER_ADDRLEN);
+        eh[12] = (UBYTE)(type >> 8);
+        eh[13] = (UBYTE)type;
+        bpf_mtap2(&ssc->ss_if, eh, sizeof(eh), m, direction);
+    } else if(ip) {
+        bpf_mtap(&ssc->ss_if, m, direction);
+    }
+}
+
+/*
+ * The link addresses of a received frame, for sana_bpf_tap(). They are
+ * taken before sana_read(), which hands the request back to the driver.
+ */
+struct sana_rxaddr {
+    UBYTE ra_dst[MAXADDRSANA];
+    UBYTE ra_src[MAXADDRSANA];
+};
+
+static inline void
+sana_rxaddr_save(struct sana_softc *ssc, struct IOIPReq *req,
+                 struct sana_rxaddr *ra)
+{
+    bcopy(req->ioip_s2.ios2_DstAddr, ra->ra_dst, ssc->ss_if.if_addrlen);
+    bcopy(req->ioip_s2.ios2_SrcAddr, ra->ra_src, ssc->ss_if.if_addrlen);
+}
+
+/*
  * sana_ip_read(): feed a packet to the IP queue
  * (This routine is called from sana_poll)
  */
@@ -1018,6 +1258,8 @@ static void
 sana_ip_read(struct sana_softc *ssc, struct IOIPReq *req)
 {
     struct mbuf *m;
+    struct sana_rxaddr ra;
+    int tap = ssc->ss_if.if_bpf != NULL;
     spl_t s;
 
     D(bug("[AROSTCP:SANA] %s: %s%d ioError=%d wireError=%ld len=%ld\n",
@@ -1026,6 +1268,8 @@ sana_ip_read(struct sana_softc *ssc, struct IOIPReq *req)
           (long)req->ioip_s2.ios2_WireError,
           (long)req->ioip_s2.ios2_DataLength));
 
+    if(tap)
+        sana_rxaddr_save(ssc, req, &ra);
     m = sana_read(ssc, req, 0, &ssc->ss_ip.sent, "sana_ip_read",
                   ssc->ss_if.if_mtu);
 
@@ -1034,8 +1278,9 @@ sana_ip_read(struct sana_softc *ssc, struct IOIPReq *req)
               __func__, ssc->ss_if.if_name, ssc->ss_if.if_unit,
               m->m_pkthdr.len, m->m_flags, m));
         /* BPF tap: let packet filters see incoming IPv4 packets */
-        if(ssc->ss_if.if_bpf)
-            bpf_mtap(&ssc->ss_if, m, BPF_D_IN);
+        if(tap)
+            sana_bpf_tap(ssc, m, BPF_D_IN, ra.ra_dst, ra.ra_src,
+                         ssc->ss_ip.type, TRUE);
         s = splimp();
         if(IF_QFULL(&ipintrq)) {
             IF_DROP(&ipintrq);
@@ -1063,15 +1308,20 @@ sana_arp_read(struct sana_softc *ssc, struct IOIPReq *req)
 {
     struct mbuf *m;
     UBYTE hwaddr[MAXADDRSANA];
+    struct sana_rxaddr ra;
+    int tap = ssc->ss_if.if_bpf != NULL;
 
     bcopy(req->ioip_s2.ios2_SrcAddr, hwaddr, ssc->ss_if.if_addrlen);
+    if(tap)
+        sana_rxaddr_save(ssc, req, &ra);
 
     m = sana_read(ssc, req, 0, &ssc->ss_arp.sent, "sana_arp_read", ARP_MTU);
 
     if(m) {
         /* BPF tap: let packet filters see incoming ARP packets */
-        if(ssc->ss_if.if_bpf)
-            bpf_mtap(&ssc->ss_if, m, BPF_D_IN);
+        if(tap)
+            sana_bpf_tap(ssc, m, BPF_D_IN, ra.ra_dst, ra.ra_src,
+                         ssc->ss_arp.type, FALSE);
         arpinput(ssc, m, hwaddr);
     }
 }
@@ -1085,6 +1335,8 @@ static void
 sana_ip6_read(struct sana_softc *ssc, struct IOIPReq *req)
 {
     struct mbuf *m;
+    struct sana_rxaddr ra;
+    int tap = ssc->ss_if.if_bpf != NULL;
     spl_t s;
 
     D(bug("[AROSTCP:SANA] %s: %s%d ioError=%d wireError=%ld len=%ld\n",
@@ -1093,6 +1345,8 @@ sana_ip6_read(struct sana_softc *ssc, struct IOIPReq *req)
           (long)req->ioip_s2.ios2_WireError,
           (long)req->ioip_s2.ios2_DataLength));
 
+    if(tap)
+        sana_rxaddr_save(ssc, req, &ra);
     m = sana_read(ssc, req, 0, &ssc->ss_ip6.sent, "sana_ip6_read",
                   ssc->ss_if.if_mtu);
 
@@ -1101,8 +1355,9 @@ sana_ip6_read(struct sana_softc *ssc, struct IOIPReq *req)
               __func__, ssc->ss_if.if_name, ssc->ss_if.if_unit,
               m->m_pkthdr.len, m->m_flags));
         /* BPF tap: let packet filters see incoming IPv6 packets */
-        if(ssc->ss_if.if_bpf)
-            bpf_mtap(&ssc->ss_if, m, BPF_D_IN);
+        if(tap)
+            sana_bpf_tap(ssc, m, BPF_D_IN, ra.ra_dst, ra.ra_src,
+                         ssc->ss_ip6.type, TRUE);
         s = splimp();
         if(IF_QFULL(&ip6intrq)) {
             IF_DROP(&ip6intrq);
@@ -1167,12 +1422,17 @@ sana_linkdown(struct sana_softc *ssc)
     int deleted = 0;
 
     kill_dhclient(ifp);
+    ifnet_clear_dns(ifp);       /* drop this interface's DNS servers with its addresses */
     if(ssc->ss_autoip.state != AUTOIP_DISABLED)
         autoip_stop(ifp);
 
+    /* in_control() scrubs only each address's interface route: a gateway
+     * route (the DHCP default) would keep rt_ifa on the freed address. */
+    rt_purgeif(ifp, AF_INET);
+
     /*
      * A request naming no address means "the first one on this interface", so
-     * this deletes them all; in_control() scrubs their routes on the way out.
+     * this deletes them all.
      */
     while(1) {
         bzero(&ifr, sizeof(ifr));
@@ -1214,7 +1474,19 @@ sana_connect(struct sana_softc *ssc, struct IOIPReq *req)
                                        | S2EVENT_DISCONNECT;
         BeginIO((struct IORequest *)req);
     } else {
+        /*
+         * No more events from the driver: it does not do S2_ONEVENT (as
+         * tap.device), or the interface went offline. The request is done,
+         * and off every list - sana_poll()'s GetMsg() took it - but still
+         * NT_REPLYMSG, with the links it had on the port: a WaitIO() on it
+         * later (sana_unrun()) would Remove() it from the port a second time,
+         * writing through them into whatever they point at by then. Free it
+         * now.
+         */
         ssc->ss_eventsent--;
+        if(ssc->ss_connectreq == req)
+            ssc->ss_connectreq = NULL;
+        DeleteIORequest((struct IORequest *)req);
     }
 }
 
@@ -1246,7 +1518,9 @@ sana_start(struct sana_softc *ssc)
         req->ioip_s2.ios2_PacketType     = st->st_type;
         bcopy(st->st_dstaddr, req->ioip_s2.ios2_DstAddr, ifp->if_addrlen);
         req->ioip_s2.ios2_Req.io_Message.mn_Node.ln_Pri = st->st_pri;
-        req->ioip_Command  = (m->m_flags & M_BCAST) ? S2_BROADCAST : CMD_WRITE;
+        /* a group's frame is not an ordinary write to a SANA-II driver */
+        req->ioip_Command  = (m->m_flags & M_BCAST) ? S2_BROADCAST :
+                             (m->m_flags & M_MCAST) ? S2_MULTICAST : CMD_WRITE;
         req->ioip_dispatch = free_written_packet;
         req->ioip_packet   = m;
         req->ioip_s2.ios2_DataLength = m->m_pkthdr.len;
@@ -1254,7 +1528,7 @@ sana_start(struct sana_softc *ssc)
         m_free(tag);			/* metadata consumed; the packet lives on */
 
         ifp->if_obytes += m->m_pkthdr.len;
-        if(m->m_flags & M_BCAST)
+        if(m->m_flags & (M_BCAST | M_MCAST))
             ifp->if_omcasts++;
 
         BeginIO((struct IORequest *)req);
@@ -1274,7 +1548,7 @@ sana_output(struct ifnet *ifp, struct mbuf *m0,
 
     register struct mbuf *m = m0, *tag;
     struct sana_sendtag *st;
-    UBYTE dst_hw[MAXADDRSANA];
+    UBYTE dst_hw[MAXADDRSANA] = { 0 };	/* a broadcast leaves it unset */
     UWORD ioflags = 0;
     BYTE  pri = 0;
 
@@ -1397,9 +1671,29 @@ sana_output(struct ifnet *ifp, struct mbuf *m0,
      * Queue packet to Sana-II driver
      */
 
-    /* BPF tap: let packet filters see outgoing packets */
-    if(ifp->if_bpf)
-        bpf_mtap(ifp, m, BPF_D_OUT);
+    /*
+     * BPF tap: let packet filters see outgoing packets. A raw packet (from
+     * bpf_write()) is a whole frame already. Otherwise the frame goes to
+     * dst_hw, which a broadcast leaves unset: the driver broadcasts it.
+     */
+    if(ifp->if_bpf) {
+        if(ioflags & SANA2IOF_RAW) {
+            if(ssc->ss_hwtype == S2WireType_Ethernet)
+                bpf_mtap(ifp, m, BPF_D_OUT);
+        } else {
+            static const UBYTE bcast_hw[SANA_ETHER_ADDRLEN] =
+                { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
+
+            sana_bpf_tap(ssc, m, BPF_D_OUT,
+                         (m->m_flags & M_BCAST) ? bcast_hw : dst_hw,
+                         ssc->ss_hwaddr, type,
+                         dst->sa_family == AF_INET
+#if INET6
+                         || dst->sa_family == AF_INET6
+#endif
+                        );
+        }
+    }
 
     /*
      * Park the packet on the send queue behind a metadata tag and pump the

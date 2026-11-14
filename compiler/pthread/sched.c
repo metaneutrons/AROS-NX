@@ -21,6 +21,10 @@
 
 #include <proto/exec.h>
 #include <exec/execbase.h>
+#ifdef __AROS__
+#define __KERNEL_NOLIBBASE__
+#include <proto/kernel.h>
+#endif
 
 
 #include "sched.h"
@@ -29,21 +33,93 @@
 #define PRIO_MAX 2
 #define PRIO_MIN -2
 
-int sched_get_priority_max(int policy)
+/****************************************************************************
+    NAME */
+        int sched_get_priority_max(
+
+/*  SYNOPSIS */
+        int policy)
+
+/*  FUNCTION
+        Return the upper bound of the library's fixed scheduling-priority
+        range.
+
+    INPUTS
+        policy - Scheduling policy identifier; not inspected.
+
+    RESULT
+        2 for every policy value.
+
+    NOTES
+        The result is a library constant, not a query of the current
+        Exec scheduler.
+
+    SEE ALSO
+        sched_get_priority_min(),
+        sched_yield()
+
+*****************************************************************************/
 {
     D(bug("%s(%d)\n", __FUNCTION__, policy));
 
     return PRIO_MAX;
 }
 
-int sched_get_priority_min(int policy)
+/****************************************************************************
+    NAME */
+        int sched_get_priority_min(
+
+/*  SYNOPSIS */
+        int policy)
+
+/*  FUNCTION
+        Return the lower bound of the library's fixed scheduling-priority
+        range.
+
+    INPUTS
+        policy - Scheduling policy identifier; not inspected.
+
+    RESULT
+        -2 for every policy value.
+
+    NOTES
+        The result is a library constant, not a query of the current
+        Exec scheduler.
+
+    SEE ALSO
+        sched_get_priority_max(),
+        sched_yield()
+
+*****************************************************************************/
 {
     D(bug("%s(%d)\n", __FUNCTION__, policy));
 
     return PRIO_MIN;
 }
 
-int sched_yield(void)
+/****************************************************************************
+    NAME */
+        int sched_yield(
+
+/*  SYNOPSIS */
+        void)
+
+/*  FUNCTION
+        Give the scheduler an opportunity to run another task.
+
+    RESULT
+        Always returns 0. No error is reported.
+
+    NOTES
+        On AROS the kernel's scheduler is run (KrnSchedule()); the task's
+        priority is not changed. The call does not guarantee that another
+        task runs before it returns.
+
+    SEE ALSO
+        sched_get_priority_max(),
+        sched_get_priority_min()
+
+*****************************************************************************/
 {
 #if defined(__MORPHOS__) || defined(__AMIGA__)
     D(bug("%s()\n", __FUNCTION__));
@@ -54,16 +130,69 @@ int sched_yield(void)
 #endif
     Permit();
 #else
-    BYTE oldpri;
-    struct Task *task;
+    /*
+     * A reschedule that keeps the task's priority. Lowering it to -10 and
+     * restoring it afterwards (the old way) left the task at -10 whenever a
+     * task of its old priority was ready: that one ran instead, and the
+     * restore never got the CPU back (two GL programs starved each other in
+     * turn, 2026-11-07). SetTaskPri() to the same priority does not
+     * reschedule, so the kernel is asked directly.
+     */
+    static APTR KernelBase;
 
     D(bug("%s()\n", __FUNCTION__));
 
-    task = FindTask(NULL);
-    // changing the priority will trigger a reschedule
-    oldpri = SetTaskPri(task, -10);
-    SetTaskPri(task, oldpri);
+    if (!KernelBase)
+        KernelBase = OpenResource("kernel.resource");
+    if (KernelBase)
+        KrnSchedule();
 #endif
 
     return 0;
 }
+
+#ifdef __AROS__
+/****************************************************************************
+    NAME */
+        int sched_getcpu(
+
+/*  SYNOPSIS */
+        void)
+
+/*  FUNCTION
+        Return the number of the CPU the caller is running on.
+
+    RESULT
+        The kernel's logical CPU number (0 on a uniprocessor system), or
+        -1 if kernel.resource is not available.
+
+    NOTES
+        The task may move to another CPU at any time, so the result can be
+        out of date by the time it is used, unless the task's affinity
+        allows only one CPU.
+
+    SEE ALSO
+        pthread_setaffinity_np()
+
+*****************************************************************************/
+{
+    APTR KernelBase = OpenResource("kernel.resource");
+
+    if (!KernelBase)
+        return -1;
+
+    return (int)KrnGetCPUNumber();
+}
+
+/* CPU_COUNT_S(): the number of CPUs in a set of setsize bytes */
+int __sched_cpucount(size_t setsize, const cpu_set_t *set)
+{
+    size_t i, words = setsize / sizeof(unsigned long);
+    int count = 0;
+
+    for (i = 0; i < words; i++)
+        count += __builtin_popcountl(set->__bits[i]);
+
+    return count;
+}
+#endif

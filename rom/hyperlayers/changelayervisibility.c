@@ -1,5 +1,5 @@
 /*
-    Copyright (C) 1995-2011, The AROS Development Team. All rights reserved.
+    Copyright (C) 1995-2026, The AROS Development Team. All rights reserved.
 
     Desc:
 */
@@ -73,24 +73,7 @@
      * Make the layer visible
      * Back up all layers behind this layer.
      */
-    lparent = l->parent;
-    _l = l->back;
-    while (1)
-    {
-      if (IS_VISIBLE(_l) && DO_OVERLAP(&l->visibleshape->bounds, &_l->shape->bounds))
-        _BackupPartsOfLayer(_l, l->visibleshape, 0, FALSE, LayersBase);
-      else
-        ClearRegionRegion(l->visibleshape, _l->VisibleRegion);
-        
-      if (_l == lparent)
-      {
-        if (IS_VISIBLE(_l) || (NULL == lparent->parent))
-          break;
-        else
-          lparent = lparent->parent;
-      }
-      _l = _l->back;
-    }
+    _HideLayersBehind(l, OCCLUDESHAPE(l), &l->visibleshape->bounds, LayersBase);
     
     /*
      * For the layer to become visible I must recalculate its
@@ -113,7 +96,7 @@
       if (IS_VISIBLE(_l))
       {
         SetRegion(_l->VisibleRegion, &r);
-        ClearRegionRegion(_l->visibleshape, &r);
+        ClearRegionRegion(OCCLUDESHAPE(_l), &r);
         break;
       }
         
@@ -158,46 +141,15 @@
 
     SetRegion(l->VisibleRegion, &r);
 
-    SetRegion(l->visibleshape, &clearr);
-    _BackupPartsOfLayer(l, &clearr, 0, FALSE, LayersBase);
+    /* hide the layer itself completely; the layers behind get back what it hid from them */
+    _BackupPartsOfLayer(l, l->visibleshape, 0, FALSE, LayersBase);
+    SetRegion(OCCLUDESHAPE(l), &clearr);
 
     /*
      * Walk through all the layers behind this layer and
      * make them (more) visible...
      */
-    lparent = l->parent;
-    _l = l->back;
-    while (1)
-    {
-      if (IS_VISIBLE(_l) && DO_OVERLAP(&l->visibleshape->bounds, &_l->visibleshape->bounds))
-      {
-        ClearRegion(_l->VisibleRegion);
-        _ShowPartsOfLayer(_l, &r, LayersBase);
-      }
-      else
-        SetRegion(&r, _l->VisibleRegion);
-
-      if (IS_VISIBLE(_l) || IS_ROOTLAYER(_l))
-        AndRegionRegion(_l->VisibleRegion, &clearr);
-
-      if (_l == lparent)
-      {
-        if (IS_VISIBLE(_l) || (NULL == lparent->parent))
-          break;
-        else
-          lparent = lparent->parent;
-      }
-
-      /*
-       * Take the shape of the current layer out of
-       * the visible region that will be applied to the
-       * layer behind this one.
-       */
-      if (IS_VISIBLE(_l))
-        ClearRegionRegion(_l->visibleshape, &r);
-
-      _l = _l->back;
-    }
+    lparent = _ShowLayersBehind(l, &r, &clearr, &l->visibleshape->bounds, NULL, TRUE, LayersBase);
 
     if (!IS_EMPTYREGION(&clearr))
     {
@@ -211,6 +163,9 @@
   }
 
   ClearRegion(&r);
+
+  UPDATE_SURFACES(l->LayerInfo);
+
   UnlockLayers(l->LayerInfo);
 
   return TRUE;

@@ -14,18 +14,11 @@
 
 /****************************************************************************************/
 
-struct bltmask_render_data {
-    struct render_special_info rsi;
-    struct BitMap              *srcbm;
-    OOP_Object                 *srcbm_obj;
-    PLANEPTR                   mask;
-};
-
 static ULONG bltmask_render(APTR bltmask_rd, WORD srcx, WORD srcy,
                             OOP_Object *dstbm_obj, OOP_Object *dst_gc,
                             struct Rectangle *rect, struct GfxBase *GfxBase)
 {
-    struct bltmask_render_data *brd = bltmask_rd;
+    struct bitmap_render_data *brd = bltmask_rd;
     WORD width  = rect->MaxX - rect->MinX + 1;
     WORD height = rect->MaxY - rect->MinY + 1;
     OOP_Object *gfxhidd;
@@ -73,7 +66,7 @@ static ULONG bltmask_render(APTR bltmask_rd, WORD srcx, WORD srcy,
         bltMask - The mask bitplane must be of the same size as the source bitmap.
 
     RESULT
-        TRUE.
+        None.
 
     NOTES
 
@@ -84,12 +77,6 @@ static ULONG bltmask_render(APTR bltmask_rd, WORD srcx, WORD srcy,
     SEE ALSO
         ClipBlit()
 
-    INPUTS
-
-    RESULT
-
-    NOTES
-
     INTERNALS
 
     HISTORY
@@ -99,11 +86,6 @@ static ULONG bltmask_render(APTR bltmask_rd, WORD srcx, WORD srcy,
 *****************************************************************************/
 {
     AROS_LIBFUNC_INIT
-
-    struct bltmask_render_data  brd;
-    struct Rectangle            rr;
-    OOP_Object                  *gc;
-    Point                       src;
 
     EnterFunc(bug("BltMaskBitMapRastPort(%p (%d*%d), %d*%d, %p, %d*%d, %d*%d, %02x, %p)\n",
                   srcBitMap, srcBitMap->BytesPerRow, srcBitMap->Rows, xSrc, ySrc,
@@ -116,28 +98,9 @@ static ULONG bltmask_render(APTR bltmask_rd, WORD srcx, WORD srcy,
 
     if((xSize < 1) || (ySize < 1)) return;
 
-    brd.srcbm_obj = OBTAIN_HIDD_BM(srcBitMap);
-    if(NULL == brd.srcbm_obj) {
-        return;
-    }
+    internal_BltBitMapRastPort(srcBitMap, xSrc, ySrc, destRP, xDest, yDest, xSize, ySize, minterm,
+                               bltmask_render, bltMask, GfxBase);
 
-    brd.srcbm = srcBitMap;
-    brd.mask  = bltMask;
-
-    gc = GetDriverData(destRP, GfxBase);
-    GC_DRMD(gc) = MINTERM_TO_GCDRMD(minterm);
-
-    rr.MinX = xDest;
-    rr.MinY = yDest;
-    rr.MaxX = xDest + xSize - 1;
-    rr.MaxY = yDest + ySize - 1;
-
-    src.x = xSrc;
-    src.y = ySrc;
-
-    do_render_with_gc(destRP, &src, &rr, bltmask_render, &brd, gc, TRUE, TRUE, GfxBase);
-
-    RELEASE_HIDD_BM(brd.srcbm_obj, srcBitMap);
     ReturnVoid("BltBitMapRastPort");
 
     AROS_LIBFUNC_EXIT

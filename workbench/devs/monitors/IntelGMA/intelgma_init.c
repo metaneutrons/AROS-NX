@@ -18,7 +18,6 @@
 
 #include "intelgma_hidd.h"
 #include "intelG45_regs.h"
-#include "compositing.h"
 
 static uint32_t min(uint32_t a, uint32_t b)
 {
@@ -521,10 +520,6 @@ int G45_Init(struct g45staticdata *sd)
                     sd->mid_CopyLUTMemBox16 = OOP_GetMethodID((STRPTR)CLID_Hidd_BitMap, moHidd_BitMap_CopyLUTMemBox16);
                     sd->mid_CopyLUTMemBox32 = OOP_GetMethodID((STRPTR)CLID_Hidd_BitMap, moHidd_BitMap_CopyLUTMemBox32);
                     sd->mid_GetImage    = OOP_GetMethodID((STRPTR)CLID_Hidd_BitMap, moHidd_BitMap_GetImage);
-
-                    sd->mid_BitMapPositionChanged        = OOP_GetMethodID((STRPTR)IID_Hidd_Compositor, moHidd_Compositor_BitMapPositionChanged);
-                    sd->mid_BitMapRectChanged            = OOP_GetMethodID((STRPTR)IID_Hidd_Compositor, moHidd_Compositor_BitMapRectChanged);
-                    sd->mid_ValidateBitMapPositionChange = OOP_GetMethodID((STRPTR)IID_Hidd_Compositor, moHidd_Compositor_ValidateBitMapPositionChange);
 
                     return TRUE;
                 }

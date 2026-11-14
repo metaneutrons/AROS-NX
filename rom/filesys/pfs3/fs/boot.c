@@ -362,6 +362,8 @@ void __saveds EntryPoint (struct ExecBase *SysBase)
 		{
 			if ((msg = GetMsg(g->timeport)))
 			{
+				/* The request is available for reuse even while inhibited. */
+				g->timeron = FALSE;
 				if (g->inhibitcount == 0)
 				{
 					/* postpone until timeoutcounter 'timeout' is 0 */
@@ -384,7 +386,6 @@ void __saveds EntryPoint (struct ExecBase *SysBase)
 						else
 						{
 							UpdateAndMotorOff(g);
-							g->timeron = FALSE;
 							for (idle = HeadOf(&g->idlelist); idle->next; idle = idle->next)
 								Signal (idle->task, 1L<<idle->cleansignal);
 
@@ -405,9 +406,11 @@ void __saveds EntryPoint (struct ExecBase *SysBase)
 
 #if MULTIUSER
 				/* get current task owner */
+				g->user = NULL;
 				if (g->muFS_ready)
 					g->user = muGetTaskExtOwner (pkt->dp_Port->mp_SigTask);
-				else
+				/* tasks nobody has logged in have no owner */
+				if (!g->user)
 					g->user = (APTR) &NOBODY;
 #endif
 				/* handle the packet */
@@ -418,7 +421,7 @@ void __saveds EntryPoint (struct ExecBase *SysBase)
 
 #if MULTIUSER
 				/* free structure previously allocated by muGetTaskOwner */
-				if (g->muFS_ready)
+				if (g->user != (APTR) &NOBODY)
 					muFreeExtOwner (g->user);
 #endif  
 
@@ -426,7 +429,6 @@ void __saveds EntryPoint (struct ExecBase *SysBase)
 				{
 					/* set timer for first period (always extended) */
 					SetTimer(200000, g);
-					g->timeron = TRUE;
 				}
 
 				if (g->dieing) {
@@ -524,6 +526,7 @@ static void SetTimer (int micros, globaldata *g)
 	g->trequest->tr_time.tv_secs     = 0;
 	g->trequest->tr_time.tv_micro    = micros;
 	SendIO ((struct IORequest *)g->trequest);
+	g->timeron = TRUE;
 }
 
 
@@ -545,7 +548,7 @@ static void Quit (globaldata *g)
 	UpdateDisk (g);
 
 #if MULTIUSER
-	if (g->user->uid != muROOT_UID)
+	if (!IsPrivileged())
 		return;
 #endif
 
@@ -558,7 +561,7 @@ static void Quit (globaldata *g)
 		struct volumedata *v = g->currentvolume;
 		if (v) {
 			/* 'remove' disk */
-			if (SafeDiskRemoveSequence(g)) {
+			if (SafeDiskRemoveSequence(g, NULL)) {
 				volume = v;
 			} else {
 				Delay(5);

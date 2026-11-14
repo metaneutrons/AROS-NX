@@ -57,7 +57,7 @@
         message->mn_Node.ln_Type=NT_FREEMSG;
     else
     {
-        /* Mark the message as replied, in the same step as queueing it */
+        /* Marked as replied only once it is on the port (see InternalPutMsgType) */
         InternalPutMsgType(port, message, NT_REPLYMSG, SysBase);
     }
 

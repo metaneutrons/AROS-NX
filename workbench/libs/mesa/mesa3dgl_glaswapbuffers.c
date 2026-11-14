@@ -5,6 +5,7 @@
 #include <aros/debug.h>
 
 #include "util/os_misc.h"
+#include "util/os_time.h"
 #include "pipe/p_context.h"
 #include "pipe/p_defines.h"
 #include "pipe/p_screen.h"
@@ -64,15 +65,43 @@
         if (zs && pipe->invalidate_resource)
             pipe->invalidate_resource(pipe, zs);
 
-        /* Flush rendering cache before blitting */
-        st_context_flush(_ctx->st, ST_FLUSH_FRONT, NULL, NULL, NULL);
+        /* Flush rendering cache before blitting / flipping. ST_FLUSH_FRONT
+         * also marks the framebuffer state dirty, so the next draw
+         * revalidates the drawable and picks up a swapped attachment. */
+        struct pipe_fence_handle *fence = NULL;
+        struct pipe_screen *screen = pipe->screen;
 
-        /* gallium.library tries the whole-window DisplayResourceRP method
-         * first (vc4 presents zero-copy there) and falls back to the
-         * per-cliprect DisplayResource loop (softpipe). */
-        BltPipeResourceRastPort(_ctx->driver, _ctx->framebuffer->render_resource, 0, 0,
-            _ctx->visible_rp, _ctx->left, _ctx->top,
-            _ctx->framebuffer->width, _ctx->framebuffer->height);
+        st_context_flush(_ctx->st, ST_FLUSH_FRONT, &fence, NULL, NULL);
+
+        /* The frame must be complete before it is shown. The blit below
+         * reads it back through the driver's own context, which can only
+         * wait for work this context has already submitted (a driver that
+         * flushes asynchronously - zink - may still hold the frame here);
+         * a flip shows the buffer as it is, and a driver that synchronises
+         * explicitly (NVK) does not hold the display back for the GPU.
+         * Wait for the flush's fence first. */
+        if (fence)
+        {
+            screen->fence_finish(screen, NULL, fence, OS_TIMEOUT_INFINITE);
+            screen->fence_reference(screen, &fence, NULL);
+        }
+
+        if (_ctx->framebuffer->scanout)
+        {
+            /* 3D scan-out: the rendered buffer is flipped onto the window
+             * by the display (plane or compositor blit); the next buffer
+             * becomes the render target. */
+            MESA3DGLScanoutSwap(_ctx);
+        }
+        else
+        {
+            /* gallium.library tries the whole-window DisplayResourceRP method
+             * first (vc4 presents zero-copy there) and falls back to the
+             * per-cliprect DisplayResource loop (softpipe). */
+            BltPipeResourceRastPort(_ctx->driver, _ctx->framebuffer->render_resource, 0, 0,
+                _ctx->visible_rp, _ctx->left, _ctx->top,
+                _ctx->framebuffer->width, _ctx->framebuffer->height);
+        }
     }
 
 

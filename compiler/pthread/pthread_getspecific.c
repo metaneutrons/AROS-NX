@@ -23,20 +23,53 @@
 #include "pthread_intern.h"
 #include "debug.h"
 
-void *pthread_getspecific(pthread_key_t key)
+/****************************************************************************
+    NAME */
+        void *pthread_getspecific(
+
+/*  SYNOPSIS */
+        pthread_key_t key)
+
+/*  FUNCTION
+        Read the calling thread's pointer slot for key. The pointer is returned
+        unchanged; the call neither copies nor frees the pointed-to data.
+
+    INPUTS
+        key - Live key allocated by pthread_key_create(), with its lifetime
+            protected against concurrent deletion and reuse.
+
+    RESULT
+        The stored pointer, or NULL if the slot is NULL or key is outside
+        0..PTHREAD_KEYS_MAX-1. There is no separate error result.
+
+    NOTES
+        Include <pthread.h>; link with pthread. This is a nonblocking slot
+        read. A new worker's slots start as NULL. A task that is not a pthread
+        (another program calling into a shared library, a raw subtask) has
+        slots of its own, and its destructors never run. Values belong to the
+        application and remain valid only for the lifetime established by
+        that application.
+
+    BUGS
+        The call does not check whether an in-range key is allocated. Deleting
+        or recreating a key does not clear old slot contents, so it can return
+        a stale pointer.
+
+    SEE ALSO
+        pthread_key_create(),
+        pthread_setspecific(),
+        pthread_self()
+
+*****************************************************************************/
 {
-    pthread_t thread;
-    ThreadInfo *inf;
-    void *value = NULL;
+    void **values;
 
     D(bug("%s(%u)\n", __FUNCTION__, key));
 
     if (key >= PTHREAD_KEYS_MAX)
         return NULL;
 
-    thread = pthread_self();
-    inf = GetThreadInfo(thread);
-    value = inf->tlsvalues[key];
+    values = GetTLSValues(FALSE);
 
-    return value;
+    return values ? values[key] : NULL;
 }

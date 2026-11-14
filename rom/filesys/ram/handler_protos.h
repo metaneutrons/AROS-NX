@@ -63,7 +63,8 @@ BOOL CmdExamineObject(struct Handler *handler, struct Lock *lock,
    struct FileInfoBlock *info);
 BOOL CmdExamineFH(struct Handler *handler, struct Opening *opening,
    struct FileInfoBlock *info);
-BOOL CmdExamineNext(struct Handler *handler, struct FileInfoBlock *info);
+BOOL CmdExamineNext(struct Handler *handler, struct Lock *lock,
+   struct FileInfoBlock *info);
 BOOL CmdExamineAll(struct Handler *handler, struct Lock *lock,
    UBYTE *buffer, ULONG size, ULONG type, struct ExAllControl *control);
 VOID CmdExamineAllEnd(struct Handler *handler, struct Lock *lock,
@@ -100,6 +101,8 @@ BOOL AttemptDeleteObject(struct Handler *handler, struct Object *object,
 VOID DeleteObject(struct Handler *handler, struct Object *object);
 struct Object *GetHardObject(struct Handler *handler, struct Lock *lock,
    const TEXT *name, struct Object **parent);
+struct Object *GetObjectNoFollow(struct Handler *handler, struct Lock *lock,
+   const TEXT *name, struct Object **parent);
 struct Object *GetObject(struct Handler *handler, struct Lock *lock,
    const TEXT *name, struct Object **parent, LONG *remainder_pos);
 PINT ChangeFileSize(struct Handler *handler, struct Opening *opening,
@@ -118,6 +121,7 @@ UPINT GetBlockLength(struct Object *file, struct Block *block);
 struct Object *GetRealObject(struct Object *object);
 
 VOID MatchNotifyRequests(struct Handler *handler);
+VOID RematchNotifyRequests(struct Handler *handler);
 VOID UnmatchNotifyRequests(struct Handler *handler, struct Object *object);
 VOID NotifyAll(struct Handler *handler, struct Object *object,
    BOOL notify_links);

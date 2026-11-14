@@ -215,7 +215,14 @@ static int GM_UNIQUENAME(open)(LIBBASETYPEPTR LIBBASE, struct IOSana2Req *req, U
             unit->info.DeviceLevel = 0;
             unit->info.AddrFieldSize = 48;
             unit->info.MTU = unit->mtu;
-            unit->info.BPS = 10000000;
+            /*
+             * A host tap is no 10 Mbit/s wire: it delivers as fast as the host
+             * does. A stack sizes its read requests by this (AROSTCP posts 16
+             * per protocol up to 10 Mbit/s, 128 from 100 Mbit/s), and a burst
+             * from the host larger than that found no request and was dropped
+             * here (tap_receive(): an orphan).
+             */
+            unit->info.BPS = 1000000000;
             unit->info.HardwareType = S2WireType_Ethernet;
 
             /* create a random hardware address */
@@ -234,6 +241,9 @@ static int GM_UNIQUENAME(open)(LIBBASETYPEPTR LIBBASE, struct IOSana2Req *req, U
 
             /* and for the trackers */
             NEWLIST(&(unit->trackers));
+
+            /* and for the multicast addresses the openers added */
+            NEWLIST(&(unit->mcast_ranges));
 
             /* only bring the io task up if the buffers were allocated */
             if (error == 0)
@@ -322,6 +332,7 @@ static int GM_UNIQUENAME(close)(LIBBASETYPEPTR LIBBASE, struct IOSana2Req *req) 
     struct tap_unit *unit = (struct tap_unit *) req->ios2_Req.io_Unit;
     struct tap_opener *opener = (struct tap_opener *) req->ios2_BufferManagement;
     struct tap_tracker *tracker, *tracker_next;
+    struct tap_mcast_range *range, *range_next;
     ULONG unitnum = unit->num;
 
     D(bug("[tap] in close\n"));
@@ -353,6 +364,10 @@ static int GM_UNIQUENAME(close)(LIBBASETYPEPTR LIBBASE, struct IOSana2Req *req) 
         ForeachNodeSafe(&(unit->trackers), tracker, tracker_next)
             FreeVec(tracker);
 
+        /* and the multicast addresses */
+        ForeachNodeSafe(&(unit->mcast_ranges), range, range_next)
+            FreeVec(range);
+
         /* release the frame buffers */
         FreeVec(unit->rxbuf);
         FreeVec(unit->txbuf);
@@ -367,6 +382,13 @@ static int GM_UNIQUENAME(close)(LIBBASETYPEPTR LIBBASE, struct IOSana2Req *req) 
     Remove((APTR) opener);
     Enable();
     FreeVec(opener);
+
+    /* a frame held for its reads would wait for good: the I/O task drops
+     * it, and the remaining openers record their types again */
+    if (unit->refcount > 0) {
+        unit->rxreset = TRUE;
+        Signal(unit->iotask, 1 << unit->io_signal);
+    }
 
     req->ios2_Req.io_Unit = NULL;
     req->ios2_BufferManagement = NULL;
@@ -393,9 +415,39 @@ AROS_LH1(void, begin_io, AROS_LHA(struct IOSana2Req *, req, A1), LIBBASETYPEPTR,
 AROS_LH1(long, abort_io, AROS_LHA(struct IOSana2Req *, req, A1), LIBBASETYPEPTR, LIBBASE, 6, tap_device) {
     AROS_LIBFUNC_INIT
 
-    /* XXX anything to do here? */
+    struct tap_opener *opener = (struct tap_opener *) req->ios2_BufferManagement;
+    struct Node *node;
+    long result = -1;   /* not ours / not pending -> nothing aborted */
 
-    return 1;
+    D(bug("[tap] abort_io req=%p cmd=%d\n", req, req->ios2_Req.io_Command));
+
+    /*
+     * A queued CMD_READ sits on the opener's read_pending port until a matching
+     * packet arrives (see tap_read()/iotask).  Without this the request can only
+     * ever complete on traffic, so a caller tearing an interface down would hang
+     * in WaitIO().  Pull it back off the queue under Disable() (the same lock the
+     * iotask uses to Remove()) and reply it IOERR_ABORTED.
+     */
+    if (opener != NULL) {
+        Disable();
+        ForeachNode(&(opener->read_pending.mp_MsgList), node) {
+            if (node == (struct Node *) req) {
+                Remove((struct Node *) req);
+                result = 0;
+                break;
+            }
+        }
+        Enable();
+
+        if (result == 0) {
+            req->ios2_Req.io_Error = IOERR_ABORTED;
+            req->ios2_WireError = S2WERR_GENERIC_ERROR;
+            ReplyMsg((struct Message *) req);
+            D(bug("[tap] abort_io: aborted parked request %p\n", req));
+        }
+    }
+
+    return result;
 
     AROS_LIBFUNC_EXIT
 }

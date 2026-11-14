@@ -1,5 +1,5 @@
 /*
-    Copyright (C) 2002-2019, The AROS Development Team. All rights reserved.
+    Copyright (C) 2002-2026, The AROS Development Team. All rights reserved.
     Copyright (C) 2001-2003, The MorphOS Development Team. All Rights Reserved.
 */
 
@@ -30,6 +30,39 @@ void SetActiveMonPointerPos(struct IntuitionBase *IntuitionBase)
         ppmsg.x = IntuitionBase->MouseX;
         ppmsg.y = IntuitionBase->MouseY;
         DoMethodA(mon, &ppmsg);
+    }
+}
+
+/* Show the image of a pointer object on the monitor of a screen. If that
+   works the screen holds a reference to the shared pointer from then on and
+   the window, if one is given, takes over its hot spot. */
+void SetScreenPointer(struct IntScreen *scr, struct Window *window, Object *pointer,
+                      struct IntuitionBase *IntuitionBase)
+{
+    struct msSetPointerShape pmsg;
+
+    pmsg.MethodID = MM_SetPointerShape;
+    pmsg.pointer = NULL;
+
+    GetAttr(POINTERA_SharedPointer, pointer, (IPTR *)&pmsg.pointer);
+
+    DEBUG_POINTER(dprintf("SetScreenPointer: scr 0x%lx pointer 0x%lx sprite 0x%lx\n",
+                          scr, pointer, pmsg.pointer->sprite));
+
+    if (DoMethodA(scr->IMonitorNode, &pmsg))
+    {
+        ObtainSharedPointer(pmsg.pointer, IntuitionBase);
+        ReleaseSharedPointer(scr->Pointer, IntuitionBase);
+        scr->Pointer = pmsg.pointer;
+        if (window)
+        {
+            window->XOffset = pmsg.pointer->xoffset;
+            window->YOffset = pmsg.pointer->yoffset;
+        }
+    }
+    else
+    {
+        DEBUG_POINTER(dprintf("SetScreenPointer: can't set pointer.\n"));
     }
 }
 
@@ -92,12 +125,34 @@ void ActivateMonitor(Object *newmonitor, WORD x, WORD y, struct IntuitionBase *I
         /* A crude copy from inputhandler.c. We should really handle this in monitorclass */
         if (scr)
         {
-            DWidth = (scr->ViewPort.ColorMap->cm_vpe->DisplayClip.MaxX -
-                      scr->ViewPort.ColorMap->cm_vpe->DisplayClip.MinX + 1) *
-                     int_MouseScaleX(scr) - 1;
-            DHeight = (scr->ViewPort.ColorMap->cm_vpe->DisplayClip.MaxY -
-                       scr->ViewPort.ColorMap->cm_vpe->DisplayClip.MinY + 1) *
-                      int_MouseScaleY(scr) - 1;
+            UWORD cw = scr->ViewPort.ColorMap->cm_vpe->DisplayClip.MaxX -
+                       scr->ViewPort.ColorMap->cm_vpe->DisplayClip.MinX + 1;
+            UWORD ch = scr->ViewPort.ColorMap->cm_vpe->DisplayClip.MaxY -
+                       scr->ViewPort.ColorMap->cm_vpe->DisplayClip.MinY + 1;
+
+            /* The clip is in the screen's pixels, the pointer in the
+             * display's, which a scaled screen does not share. */
+            if (GetPrivScreen(scr)->SpecialFlags & SF_ScaledCoords)
+            {
+                struct msScreenToDisplayCoords coordmsg =
+                {
+                    .MethodID   = MM_ScreenToDisplayCoords,
+                    .Screen     = scr,
+                    .ScrX       = cw,
+                    .ScrY       = ch,
+                    .DispX      = &DWidth,
+                    .DispY      = &DHeight
+                };
+
+                DoMethodA(newmonitor, (Msg)&coordmsg);
+                DWidth--;
+                DHeight--;
+            }
+            else
+            {
+                DWidth = cw * int_MouseScaleX(scr) - 1;
+                DHeight = ch * int_MouseScaleY(scr) - 1;
+            }
         }
         else
         {
@@ -156,6 +211,8 @@ struct RastPort *MyCloneRastPort(struct IntuitionBase *IntuitionBase, struct Ras
         if (newrp)
         {
             CopyMem(rp, newrp, sizeof(struct RastPort));
+            /* graphics' private data stays with the original */
+            newrp->RP_Extra = NULL;
         }
     }
 
@@ -164,11 +221,12 @@ struct RastPort *MyCloneRastPort(struct IntuitionBase *IntuitionBase, struct Ras
 
 void MyFreeRastPort(struct IntuitionBase *IntuitionBase, struct RastPort *rp)
 {
-    if (rp->RP_Extra)
-    {
-        /* Just in case... What if someone plays with ClipRects? */
+    /*
+     * graphics' private data, when it belongs to this RastPort (its first
+     * field is the RastPort): a copy of another RastPort shares the pointer.
+     */
+    if (rp->RP_Extra && (*(struct RastPort **)rp->RP_Extra == rp))
         FreeVec(rp->RP_Extra);
-    }
 
     FreeMem(rp, sizeof(*rp));
 }
@@ -218,10 +276,25 @@ struct TextFont *SafeReopenFont(struct IntuitionBase *IntuitionBase,
     struct IntIntuitionBase *_intuitionBase = GetPrivIBase(IntuitionBase);
     struct GfxBase *GfxBase = _intuitionBase->GfxBase;
     struct TextFont *ret = NULL, *font;
+    struct SignalSemaphore *fontsem;
 
-    /* Atomically lock the font before, so it can't go away
+    /*
+     * Pin the font under the semaphore graphics.library itself uses for
+     * the font list and tf_Accessors (OpenFont/CloseFont/RemFont), so it
+     * cannot go away under us. Forbid() alone only stops this CPU.
      */
-    Forbid();
+    if (!_intuitionBase->GfxFontSem)
+    {
+        Forbid();
+        _intuitionBase->GfxFontSem = FindSemaphore("graphics.library/TextFonts");
+        Permit();
+    }
+    fontsem = _intuitionBase->GfxFontSem;
+
+    if (fontsem)
+        ObtainSemaphore(fontsem);
+    else
+        Forbid();
 
     font = *fontptr;
     if (font)
@@ -229,7 +302,10 @@ struct TextFont *SafeReopenFont(struct IntuitionBase *IntuitionBase,
         struct TextAttr ta;
 
         font->tf_Accessors++;
-        Permit();
+        if (fontsem)
+            ReleaseSemaphore(fontsem);
+        else
+            Permit();
 
         /* Now really open it
          */
@@ -242,11 +318,17 @@ struct TextFont *SafeReopenFont(struct IntuitionBase *IntuitionBase,
 
         /* Unlock it
          */
-        Forbid();
+        if (fontsem)
+            ObtainSemaphore(fontsem);
+        else
+            Forbid();
         font->tf_Accessors--;
     }
 
-    Permit();
+    if (fontsem)
+        ReleaseSemaphore(fontsem);
+    else
+        Permit();
 
     return ret;
 }
@@ -407,3 +489,25 @@ void ReleaseSharedPointer(struct SharedPointer *pointer,
     }
     UnlockIBase(lock);
 }
+
+// TODO: Move to arch specific files.
+#ifdef __mc68000__
+/* See intuition_intern.h */
+UWORD int_MouseScaleX(const struct Screen *screen)
+{
+    if (screen && screen->RastPort.BitMap &&
+        !IS_HIDD_BM(screen->RastPort.BitMap) &&
+        !(screen->ViewPort.Modes & (HIRES | SUPERHIRES)))
+        return 2;
+    return 1;
+}
+
+UWORD int_MouseScaleY(const struct Screen *screen)
+{
+    if (screen && screen->RastPort.BitMap &&
+        !IS_HIDD_BM(screen->RastPort.BitMap) &&
+        !(screen->ViewPort.Modes & LACE))
+        return 2;
+    return 1;
+}
+#endif

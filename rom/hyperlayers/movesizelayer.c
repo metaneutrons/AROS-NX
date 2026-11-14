@@ -1,5 +1,5 @@
 /*
-    Copyright (C) 1995-2013, The AROS Development Team. All rights reserved.
+    Copyright (C) 1995-2026, The AROS Development Team. All rights reserved.
 
     Desc:
 */
@@ -66,17 +66,34 @@
   AROS_LIBFUNC_INIT
 
   struct Layer * first, *_l, *lparent;
-  struct Region * newshape, * oldshape, r, rtmp, cutnewshape;
+  struct Region * newshape, * oldshape, r, cutnewshape, cutocclude;
   struct Region *clipregion, *olddamage = NULL;
   struct Rectangle rectw, recth;
 
   InitRegion(&r);
-  InitRegion(&rtmp);
   InitRegion(&cutnewshape);
+  InitRegion(&cutocclude);
 
   LockLayers(l->LayerInfo);
+
+  /* a growing layer needs a bigger surface before anything is backed up */
+  if ((dw > 0 || dh > 0) && NULL != IL(l)->surface)
+  {
+    if (!_EnsureSurfaceSize(l, l->Width + dw, l->Height + dh, LayersBase) && IS_COMPOSITED(l))
+    {
+      /*
+       * A composited layer must be complete in its surface. When the bigger
+       * one is not allowed (surface budget, LAYERS_SURFACE_BUDGET_FACTOR)
+       * or cannot be allocated, the layer goes on as an ordinary smart
+       * refresh layer, its content kept and the old surface its backing
+       * store as far as it reaches. A smart refresh layer with a surface
+       * that is too small simply gets ClipRect bitmaps for the rest.
+       */
+      _UncompositeLayer(l, LayersBase);
+    }
+  }
   
-  clipregion = _InternalInstallClipRegion(l, NULL, 0, 0, LayersBase);
+  clipregion = _InternalInstallClipRegion(l, NULL, 0, LayersBase);
 
   /* There's a little problem with CopyClipRectsToClipRects(). It
      may call the backfill hook for the whole DamageList region.
@@ -179,6 +196,9 @@
 
   SetRegion(newshape, &cutnewshape);
   AndRegionRegion(l->parent->visibleshape, &cutnewshape);
+  /* what the layer will hide from those behind at its new place: nothing when blended */
+  if (!IS_TRANSLUCENT(l))
+    SetRegion(&cutnewshape, &cutocclude);
 
   first = GetFirstFamilyMember(l);
   /*
@@ -209,32 +229,11 @@
    */
 
         
-  lparent = l->parent;
-  _l = l->back;
+  _HideLayersBehind(l, &cutocclude, &cutocclude.bounds, LayersBase);
 
-#if 0
-kprintf("\t\t%s: Backing up parts of layers that are behind the layer!\n",
-        __FUNCTION__);
-#endif
-  while (1)
-  {
-    if (IS_VISIBLE(_l) && DO_OVERLAP(&cutnewshape.bounds, &_l->shape->bounds))
-      _BackupPartsOfLayer(_l, &cutnewshape, 0, FALSE, LayersBase);
-    else
-      ClearRegionRegion(&cutnewshape, _l->VisibleRegion);
-
-    if (_l == lparent)
-    {
-      if (IS_VISIBLE(_l) || (NULL == lparent->parent))
-        break;
-      else
-        lparent = lparent->parent;
-    }
-    _l = _l->back;
-  }
-
-   SetRegion(&cutnewshape, l->visibleshape);
+  SetRegion(&cutnewshape, l->visibleshape);
   ClearRegion(&cutnewshape);
+  ClearRegion(&cutocclude);
 
   /*
    * Now I need to move the layer and all its familiy to the new
@@ -324,7 +323,7 @@ kprintf("\t\t%s: SHOWING parts of THE LAYER TO BE MOVED (children)!\n",
       if (l == _l)
         break;
       
-      ClearRegionRegion(_l->visibleshape, &r);
+      ClearRegionRegion(OCCLUDESHAPE(_l), &r);
     }
 
     if (l == _l)
@@ -335,71 +334,40 @@ kprintf("\t\t%s: SHOWING parts of THE LAYER TO BE MOVED (children)!\n",
 
   /*
    * Now make those parts of the layers after l up to and including
-   * its parent visible.
+   * its parent visible. A blended layer hid nothing, so nothing has
+   * to be shown or backfilled behind it.
    */
-  SetRegion(l->VisibleRegion, &r);
-  ClearRegionRegion(l->visibleshape, &r);
-  _l = l->back;
-  lparent = l->parent;
-    
-  while (1)
+  if (IS_TRANSLUCENT(l))
   {
-#if 0
-kprintf("\t\t%s: SHOWING parts of the layers behind the layer to be moved!\n",
-        __FUNCTION__);
-#endif
-    if (IS_VISIBLE(_l) &&
-       (  DO_OVERLAP(&l->visibleshape->bounds, &_l->shape->bounds) ||
-          DO_OVERLAP(   &oldshape->bounds, &_l->shape->bounds) ))
-    {
-      ClearRegion(_l->VisibleRegion);
-      _ShowPartsOfLayer(_l, &r, LayersBase);
-    }
-    else
-      SetRegion(&r, _l->VisibleRegion);
-
-    if (IS_VISIBLE(_l) || IS_ROOTLAYER(_l))
-      AndRegionRegion(_l->VisibleRegion, oldshape);
-
-#if 0
-    if (IS_ROOTLAYER(_l))
-      kprintf("root reached! %p\n",_l);
-#endif
-      
-    if (_l == lparent)
-    {
-      if (IS_VISIBLE(_l) || (NULL == lparent->parent))
-        break;
-      else
-        lparent = lparent->parent;
-    }
-      
-    if (IS_VISIBLE(_l))
-      ClearRegionRegion(_l->visibleshape, &r);
-
-    _l = _l->back;
+    DisposeRegion(oldshape);
+    oldshape = NULL;
   }
-
-  ClearRegion(&rtmp);
-    
-  /*
-   * Now I need to clear the old layer at its previous place..
-   * But I may only clear those parts where no layer has become
-   * visible in the meantime.
-   */
-  if (!IS_EMPTYREGION(oldshape))
+  else
   {
-    if (lparent && IS_ROOTLAYER(lparent))
-      _BackFillRegion(l->parent, oldshape, TRUE, LayersBase);
-  }
+    SetRegion(l->VisibleRegion, &r);
+    ClearRegionRegion(OCCLUDESHAPE(l), &r);
+    lparent = _ShowLayersBehind(l, &r, oldshape, &l->visibleshape->bounds, &oldshape->bounds, FALSE, LayersBase);
 
-  DisposeRegion(oldshape);
+    
+    /*
+     * Now I need to clear the old layer at its previous place..
+     * But I may only clear those parts where no layer has become
+     * visible in the meantime.
+     */
+    if (!IS_EMPTYREGION(oldshape))
+    {
+      if (lparent && IS_ROOTLAYER(lparent))
+        _BackFillRegion(l->parent, oldshape, TRUE, LayersBase);
+    }
+
+    DisposeRegion(oldshape);
+  } /* if (!IS_TRANSLUCENT(l)) */
 
   /*
    * If the size of the layer became larger clear the
    * new area where it is visible.
    */
-  if ((dw > 0 || dh > 0) && !IS_SUPERREFRESH(l))
+  if (dw > 0 || dh > 0)   /* a superbitmap layer shows the superbitmap there */
   {
     ClearRegion(&r);
     if (dw > 0)
@@ -431,7 +399,9 @@ kprintf("\t\t%s: SHOWING parts of the layers behind the layer to be moved!\n",
   }
   
   if (clipregion)
-    _InternalInstallClipRegion(l, clipregion, 0, 0, LayersBase);
+    _InternalInstallClipRegion(l, clipregion, 0, LayersBase);
+
+  UPDATE_SURFACES(l->LayerInfo);
 
   UnlockLayers(l->LayerInfo);
 

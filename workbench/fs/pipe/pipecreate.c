@@ -230,6 +230,7 @@ OPENMEMERR1:
 
           pipekey->iotype= PIPEREAD;
           pipe->flags  |=  OPEN_FOR_READ;
+          pipe->flags  &=  ~READER_GONE;
         }
       else if (openmode == MODE_NEWFILE)
         { if (pipe->flags & OPEN_FOR_WRITE)
@@ -343,7 +344,9 @@ struct DosPacket  *pkt;
   pipe= pipekey->pipe;
 
   if ((pipekey->iotype == PIPEREAD) || (pipekey->iotype == PIPERW))
-    pipe->flags &= ~OPEN_FOR_READ;
+    { pipe->flags &= ~OPEN_FOR_READ;
+      pipe->flags |= READER_GONE;
+    }
 
   if ((pipekey->iotype == PIPEWRITE) || (pipekey->iotype == PIPERW))
     pipe->flags &= ~OPEN_FOR_WRITE;
@@ -403,7 +406,7 @@ const char        *tapname;
   WAITINGDATA        *wd;
   struct DosPacket   *tappkt;
   struct MsgPort     *Handler;
-  struct FileLock    *Lock;
+  BPTR               Lock;
 
   if ( (tapname == NULL) ||
        ((Bname= (char *) AllocMem (OPENTAP_STRSIZE, ALLOCMEM_FLAGS)) == NULL) )
@@ -433,7 +436,7 @@ OPENTAPERR:
       return;
     }
 
-  Lock= (struct FileLock *) IoErr ();
+  Lock= (BPTR) IoErr ();
   CstrtoBSTR (tapname, Bname, OPENTAP_STRSIZE);
 
   handle->fh_Pos= -1;
@@ -445,7 +448,7 @@ OPENTAPERR:
   wd->pktinfo.tapwait.handle= handle;     /* for HandleTapReply() */
 
   StartTapIO ( tappkt, ACTION_FINDOUTPUT,
-               (IPTR)CptrtoBPTR (handle), (IPTR)CptrtoBPTR (Lock), (IPTR)CptrtoBPTR (Bname),
+               (IPTR)CptrtoBPTR (handle), (IPTR)Lock, (IPTR)CptrtoBPTR (Bname),
                Handler );
 
   InsertHead (&tapwaitlist, (PIPELISTNODE *)wd);

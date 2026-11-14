@@ -194,14 +194,22 @@ static ULONG msf2lsn(struct RMSF *msf)
 
 static VOID CD32_IntEnable(struct CD32Unit *cu, ULONG mask)
 {
+    /* The unit task and IRQ2 server share this shadow. Keep its update
+     * and the hardware store indivisible: an interrupt between them can
+     * acknowledge a completion, then have its hardware mask overwritten
+     * with the task's stale value, leaving IRQ2 permanently asserted. */
+    Disable();
     cu->cu_IntEnable |= mask;
     writel(cu->cu_IntEnable, AKIKO_CDINTENA);
+    Enable();
 }
 
 static VOID CD32_IntDisable(struct CD32Unit *cu, ULONG mask)
 {
+    Disable();
     cu->cu_IntEnable &= ~mask;
     writel(cu->cu_IntEnable, AKIKO_CDINTENA);
+    Enable();
 }
 
 static AROS_INTH1(CD32_XLCallbackInterrupt, struct CD32Unit *, cu)
@@ -1256,7 +1264,11 @@ static LONG CD32_DoIO(struct IOStdReq *io, APTR priv)
 
     D(bug("%s:%p io_Command=%d\n", __func__, io, io->io_Command));
 
+    /* Cached media queries leave the data stream running. Retain its range
+     * so the next seek pauses it before releasing the sector DMA slots.
+     * Actual media-change responses invalidate the range themselves. */
     if (io->io_Command != CD_READ && io->io_Command != CD_INFO &&
+        io->io_Command != CD_CHANGENUM && io->io_Command != CD_CHANGESTATE &&
         io->io_Command != CD_ADDFRAMEINT && io->io_Command != CD_REMFRAMEINT)
         cu->cu_ReadEnd = 0;
 
@@ -1475,17 +1487,23 @@ static LONG CD32_DoIO(struct IOStdReq *io, APTR priv)
         }
         break;
     case CD_PAUSE:
-        err = 0;
-        io->io_Actual = (cu->cu_CDInfo.Status & CDSTSF_PAUSED) ? 1 : 0;
-        if (cu->cu_CDInfo.Status & CDSTSF_TOC) {
-            UBYTE cmd[1] = { io->io_Length ? CHCD_PAUSE : CHCD_UNPAUSE };
-            UBYTE res[1];
-            err = CD32_Cmd(cu, cmd, 1, res, 1);
-            if (err == 0) {
-                if (io->io_Length)
-                    cu->cu_CDInfo.Status |= CDSTSF_PAUSED;
-                else
-                    cu->cu_CDInfo.Status &= ~CDSTSF_PAUSED;
+        {
+            /* Classic callers can initialise only the low word, leaving
+             * values such as 0x00020000 for an unpause request. */
+            UWORD pausemode = (UWORD)io->io_Length;
+
+            err = 0;
+            io->io_Actual = (cu->cu_CDInfo.Status & CDSTSF_PAUSED) ? 1 : 0;
+            if (cu->cu_CDInfo.Status & CDSTSF_TOC) {
+                UBYTE cmd[1] = { pausemode ? CHCD_PAUSE : CHCD_UNPAUSE };
+                UBYTE res[1];
+                err = CD32_Cmd(cu, cmd, 1, res, 1);
+                if (err == 0) {
+                    if (pausemode)
+                        cu->cu_CDInfo.Status |= CDSTSF_PAUSED;
+                    else
+                        cu->cu_CDInfo.Status &= ~CDSTSF_PAUSED;
+                }
             }
         }
         break;
@@ -1512,24 +1530,31 @@ static LONG CD32_DoIO(struct IOStdReq *io, APTR priv)
         }
         break;
     case CD_PLAYTRACK:
-        if (io->io_Length == 0) {
-            err = CDERR_BADLENGTH;
-        } else if (io->io_Offset <= cu->cu_CDTOC[0].Summary.LastTrack) {
-            ULONG start;
-            ULONG end;
-            ULONG last = io->io_Offset + io->io_Length;
+        {
+            /* CD32 Kickstart consumes word-sized track arguments. Legacy
+             * callers may initialise only the low words of these fields. */
+            UWORD track = (UWORD)io->io_Offset;
+            UWORD count = (UWORD)io->io_Length;
 
-            start = bcdmsf2sec(&cu->cu_CDTOC[io->io_Offset].Entry.Position.MSF);
-            if (last > cu->cu_CDTOC[0].Summary.LastTrack) {
-                end = bcdmsf2sec(&cu->cu_CDTOC[0].Summary.LeadOut.MSF);
-            } else {
-                end = bcdmsf2sec(&cu->cu_CDTOC[last].Entry.Position.MSF);
+            if (count == 0) {
+                err = CDERR_BADLENGTH;
+            } else if (track <= cu->cu_CDTOC[0].Summary.LastTrack) {
+                ULONG start;
+                ULONG end;
+                ULONG last = (ULONG)track + count;
+
+                start = bcdmsf2sec(&cu->cu_CDTOC[track].Entry.Position.MSF);
+                if (last > cu->cu_CDTOC[0].Summary.LastTrack) {
+                    end = bcdmsf2sec(&cu->cu_CDTOC[0].Summary.LeadOut.MSF);
+                } else {
+                    end = bcdmsf2sec(&cu->cu_CDTOC[last].Entry.Position.MSF);
+                }
+                err = end > start ?
+                    CD32_StartPlay(cu, io, start, end - start) :
+                    CDERR_BADLENGTH;
             }
-            err = end > start ?
-                CD32_StartPlay(cu, io, start, end - start) :
-                CDERR_BADLENGTH;
+            break;
         }
-        break;
     case CD_PLAYMSF:
         {
             union LSNMSF start, length;

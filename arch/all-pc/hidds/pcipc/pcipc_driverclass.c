@@ -22,6 +22,8 @@
 #include <acpica/acnames.h>
 #include <acpica/accommon.h>
 
+#include <asm/io.h>
+
 #include <string.h>
 
 #include "pcipc.h"
@@ -107,6 +109,9 @@ OOP_Object *PCIPC__Root__New(OOP_Class *cl, OOP_Object *o, struct pRoot_New *msg
                 ADDTAIL(&data->irqRoutingTable, tmp1);
             }
         }
+
+        /* The buses we operate start at the host bridges the firmware describes */
+        PCIPC_DeclareFirmwareNodes(cl, controllerObj, 0, PCIPC_ACPINODE_HOST, 0);
     }
     D(bug("[PCIPC:Driver] %s: returning 0x%p\n", __func__, controllerObj);)
 
@@ -222,6 +227,42 @@ void PCIPC__Hidd_PCIDriver__WriteConfigLong(OOP_Class *cl, OOP_Object *o,
 }
 
 /*
+    A word write has to reach the hardware as a word. The base class
+    emulates this method with a read-modify-write of the containing long,
+    which puts the neighbouring register back as well. For PCICS_COMMAND
+    that neighbour is PCICS_STATUS, and handing its error bits back is a
+    write-1-to-clear of every one that was latched.
+*/
+void PCIPC__Hidd_PCIDriver__WriteConfigWord(OOP_Class *cl, OOP_Object *o,
+                                            struct pHidd_PCIDriver_WriteConfigWord *msg)
+{
+    struct PCIPCBusData *data = OOP_INST_DATA(cl, o);
+    struct PCIPCDeviceData *devdata = OOP_INST_DATA(PSD(cl)->pcipcDeviceClass, msg->device);
+
+    if (msg->reg & 1)
+    {
+        bug("[PCIPC:Driver] %s: missaligned word access! (reg = %u)\n", __func__, msg->reg);
+    }
+
+    if ((data->ecam && devdata->mmconfig) ||
+        (devdata->mmconfig && (msg->reg < 0x100)))
+    {
+        /* use MMIO word write access for ECAM */
+        UWORD volatile *wordreg;
+        wordreg = (UWORD volatile *) (devdata->mmconfig + (msg->reg & 0xffe));
+        DMMIO(bug("[PCIPC:Driver] %s: MMIO Write %04x @ %p\n", __func__, msg->val, wordreg));
+        mmio_outw(msg->val, wordreg);
+    }
+    else
+    {
+        /*
+            Use legacy access if MMIO isnt possible.
+        */
+        PSD(cl)->WriteConfigWord(msg->bus, msg->dev, msg->sub, msg->reg, msg->val);
+    }
+}
+
+/*
     PCIDriver::MapPCI(Address, Length) - core_SetupMMU() identity maps at
     least the first 128GB, but firmware with Above-4G decoding can put a BAR
     anywhere in the 64bit space. Map anything beyond the window, or the
@@ -243,8 +284,8 @@ APTR PCIPC__Hidd_PCIDriver__MapPCI(OOP_Class *cl, OOP_Object *o,
         DMMIO(bug("[PCIPC:Driver] %s: mapping 0x%p (%u bytes)\n", __func__,
                   cpuaddr, msg->Length);)
 
-        if (KrnMapGlobal((APTR)start, (APTR)start, end - start,
-                         MAP_Readable | MAP_Writable | MAP_CacheInhibit) != 0)
+        if (!KrnMapGlobal((APTR)start, (APTR)start, end - start,
+                          MAP_Readable | MAP_Writable | MAP_CacheInhibit))
         {
             bug("[PCIPC:Driver] %s: failed to map BAR @ 0x%p\n", __func__, cpuaddr);
             return NULL;
@@ -366,6 +407,91 @@ static void FindIRQRouting(struct pcipc_staticdata *psd, struct acpiHostBridge *
     }
 
     return;
+}
+
+/*
+ * The driver and device objects tell where in the ACPI namespace they are
+ * described (see PCIPC_DeclareFirmwareNodes()). Collect the host bridges
+ * and the nodes with a PCI address below them. This is kept apart from the
+ * routing table search above, which takes only the host bridges it can
+ * route for.
+ */
+static void ACPIRecordNode(struct pcipc_staticdata *psd, ACPI_HANDLE handle, UBYTE bus, UBYTE dev, UBYTE sub)
+{
+    struct PCIPCACPINode *an = AllocVec(sizeof(struct PCIPCACPINode), MEMF_ANY);
+
+    if (an)
+    {
+        an->handle = handle;
+        an->bus = bus;
+        an->dev = dev;
+        an->sub = sub;
+        ADDTAIL(&psd->pcipc_acpiNodes, &an->node);
+    }
+}
+
+static void ACPIScanBus(struct pcipc_staticdata *psd, ACPI_HANDLE parent, UBYTE bus)
+{
+    ACPI_HANDLE child = NULL;
+
+    while (AcpiGetNextObject(ACPI_TYPE_DEVICE, parent, child, &child) == AE_OK)
+    {
+        ACPI_DEVICE_INFO *info;
+
+        if (ACPI_SUCCESS(AcpiGetObjectInfo(child, &info)))
+        {
+            if (info->Valid & ACPI_VALID_ADR)
+            {
+                UBYTE dev = (info->Address >> 16) & 0xff;
+                UWORD sub = info->Address & 0xffff;     /* 0xffff: every function */
+
+                ACPIRecordNode(psd, child, bus, dev, (sub == 0xffff) ? 0xff : sub);
+
+                if (sub == 0xffff)
+                    sub = 0;
+                /* Carry on behind PCI-PCI bridges */
+                if (ReadConfigWord(psd, bus, dev, sub, PCIBR_SUBCLASS) == 0x0604)
+                {
+                    UBYTE secbus = ReadConfigByte(psd, bus, dev, sub, PCIBR_SECBUS);
+
+                    if (secbus > bus)
+                        ACPIScanBus(psd, child, secbus);
+                }
+            }
+            FreeVec(info);
+        }
+    }
+}
+
+static ACPI_STATUS ACPIScanHostBridge(ACPI_HANDLE handle, ULONG nesting_level,
+    void *context, void **return_value)
+{
+    struct pcipc_staticdata *psd = (struct pcipc_staticdata *)context;
+    struct PCIPCACPINode *an;
+    ACPI_BUFFER buffer = { ACPI_ALLOCATE_BUFFER, NULL };
+    UBYTE bus = 0;
+
+    /* A host bridge is reported once for every ID it matches */
+    ForeachNode(&psd->pcipc_acpiNodes, an)
+    {
+        if (an->handle == handle)
+            return AE_OK;
+    }
+
+    if (ACPI_SUCCESS(AcpiEvaluateObject(handle, "_BBN", NULL, &buffer)) && buffer.Pointer)
+    {
+        ACPI_OBJECT *obj = buffer.Pointer;
+
+        if (obj->Type == ACPI_TYPE_INTEGER)
+            bus = obj->Integer.Value;
+        FreeVec(buffer.Pointer);
+    }
+
+    /* The host bridge itself is what the driver object stands for */
+    ACPIRecordNode(psd, handle, bus, PCIPC_ACPINODE_HOST, 0);
+    ACPIScanBus(psd, handle, bus);
+
+    return AE_OK;
 }
 
 #undef UtilityBase
@@ -583,12 +709,18 @@ static int PCIPC_InitClass(LIBBASETYPEPTR LIBBASE)
 
     /* Default to using config mechanism 1 */
     _psd->ReadConfigLong  = ReadConfig1Long;
+    _psd->WriteConfigWord = WriteConfig1Word;
     _psd->WriteConfigLong = WriteConfig1Long;
     PCIPC_ProbeConfMech(&LIBBASE->psd);
+
+    NEWLIST(&_psd->pcipc_acpiNodes);
 
     /* Find ACPI PCI Host Bridges and their routing tables */
     if (ACPICABase)
     {
+        AcpiGetDevices("PNP0A03", ACPIScanHostBridge, _psd, NULL);
+        AcpiGetDevices("PNP0A08", ACPIScanHostBridge, _psd, NULL);
+
         NEWLIST(&acpiHBridges);
         status = AcpiGetDevices("PNP0A03", ACPIHostBridgeCallbackA, _psd, (void **)&acpiHBridges);
         if (ACPI_FAILURE(status)) {

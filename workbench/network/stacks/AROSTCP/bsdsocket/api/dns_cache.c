@@ -90,16 +90,17 @@ static BOOL dns_cache_ready = FALSE;
 BOOL dns_cache_enabled = TRUE;
 
 /*
- * Current time in whole seconds, taken from the same system time source the
- * rest of the resolver uses (GetSysTime(), i.e. timer.device). Absolute
- * expiries are computed against this so a lookup only needs one comparison.
+ * Current time in whole seconds on the monotonic clock (timer.device's
+ * GetUpTime()), so that setting the system time neither drops answers
+ * early nor keeps them past their TTL. Absolute expiries are computed
+ * against this so a lookup only needs one comparison.
  */
 static ULONG
 dns_cache_now(void)
 {
     struct timeval tv;
 
-    GetSysTime(&tv);
+    GetUpTime(&tv);
     return (ULONG)tv.tv_secs;
 }
 
@@ -202,9 +203,9 @@ dns_cache_min_ttl(const UBYTE *msg, int msglen)
 }
 
 /*
- * One-time initialisation of the semaphore. The slot table itself is a zeroed
- * static, so nothing else needs setting up. Serialised with Forbid()/Permit()
- * so two tasks racing on the very first lookup cannot both InitSemaphore().
+ * One-time initialisation of the semaphore, from api_init() before any base
+ * can look names up (Forbid() would not keep a second CPU out). The slot
+ * table itself is a zeroed static, so nothing else needs setting up.
  */
 void
 dns_cache_init(void)
@@ -213,22 +214,10 @@ dns_cache_init(void)
     D(bug("[AROSTCP](dns_cache.c) dns_cache_init()\n"));
 #endif
 
-    Forbid();
     if(!dns_cache_ready) {
         InitSemaphore(&dns_cache_lock);
         dns_cache_ready = TRUE;
     }
-    Permit();
-}
-
-/*
- * Ensure the cache is ready before its lock is used. Cheap once initialised.
- */
-static void
-dns_cache_ensure(void)
-{
-    if(!dns_cache_ready)
-        dns_cache_init();
 }
 
 int
@@ -247,7 +236,6 @@ dns_cache_lookup(const char *name, int qtype, UBYTE *buf, int buflen)
     if(namelen >= (int)sizeof(lname))       /* too long to have been cached */
         return 0;
 
-    dns_cache_ensure();
     dns_cache_lowercopy(lname, name, namelen);
     now = dns_cache_now();
 
@@ -321,7 +309,6 @@ dns_cache_insert(const char *name, int qtype, const UBYTE *resp, int resplen)
     dns_cache_lowercopy(newname, name, namelen);
     memcpy(newresp, resp, resplen);
 
-    dns_cache_ensure();
     now = dns_cache_now();
     expiry = now + (ULONG)ttl;
 

@@ -159,14 +159,15 @@ __tcp_set_flags(struct tcphdr *th, uint16_t flags)
 #define	TCP6_MSS	1220
 
 /*
- * Limit the lowest MSS we accept for path MTU discovery and the TCP SYN MSS
- * option.  Allowing low values of MSS can consume significant resources and
- * be used to mount a resource exhaustion attack.
+ * Limit the lowest MSS we accept for path MTU discovery, a route's MTU and
+ * the TCP SYN MSS option.  Allowing low values of MSS can consume
+ * significant resources and be used to mount a resource exhaustion attack.
  * Connections requesting lower MSS values will be rounded up to this value
- * and the IP_DF flag will be cleared to allow fragmentation along the path.
+ * and, over IPv4, the IP_DF flag will be cleared to allow fragmentation along
+ * the path.
  *
- * See tcp_subr.c tcp_minmss SYSCTL declaration for more comments.  Setting
- * it to "0" disables the minmss check.
+ * The value in use is tcp_minmss (tcp_subr.c, sysctl net.inet.tcp.minmss).
+ * Setting it to "0" leaves only the floor of 64 bytes.
  *
  * The default value is fine for TCP across the Internet's smallest official
  * link MTU (256 bytes for AX.25 packet radio).  However, a connection is very
@@ -199,6 +200,7 @@ __tcp_set_flags(struct tcphdr *th, uint16_t flags)
 #define	TCP_NOPUSH		4	/* don't push last block of write */
 #define	TCP_NOOPT		8	/* don't use TCP options */
 #define	TCP_MD5SIG		16	/* use MD5 digests (RFC2385) */
+#define	TCP_USER_TIMEOUT	18	/* u_int; ms unacknowledged before the connection is dropped (RFC 5482; Linux's number) */
 #define	TCP_INFO		32	/* retrieve tcp_info structure */
 #define	TCP_STATS		33	/* retrieve stats blob structure */
 #define	TCP_LOG			34	/* configure event logging for connection */

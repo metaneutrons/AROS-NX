@@ -137,6 +137,60 @@ fdt_node_t FDT_NextNode(fdt_node_t node)
     return FDT_NONE;
 }
 
+fdt_node_t FDT_FirstChild(fdt_node_t node)
+{
+    LONG off;
+
+    if (!fdt_base || node == FDT_NONE)
+        return FDT_NONE;
+
+    /* A node's properties come before its children */
+    for (off = next_token(node); off >= 0 && off < (LONG)fdt_structlen;
+         off = next_token(off))
+    {
+        ULONG tok = be32(CELL(off));
+
+        if (tok == FDT_BEGIN_NODE)
+            return off;
+        if (tok != FDT_PROP && tok != FDT_NOP)
+            break;
+    }
+
+    return FDT_NONE;
+}
+
+fdt_node_t FDT_NextSibling(fdt_node_t node)
+{
+    LONG off, depth = 1;
+
+    if (!fdt_base || node == FDT_NONE)
+        return FDT_NONE;
+
+    /* Step over everything inside the node, then take what follows it */
+    for (off = next_token(node); off >= 0 && off < (LONG)fdt_structlen;
+         off = next_token(off))
+    {
+        ULONG tok = be32(CELL(off));
+
+        if (tok == FDT_BEGIN_NODE)
+        {
+            if (depth == 0)
+                return off;
+            depth++;
+        }
+        else if (tok == FDT_END_NODE)
+        {
+            if (depth == 0)
+                break;
+            depth--;
+        }
+        else if (tok == FDT_END)
+            break;
+    }
+
+    return FDT_NONE;
+}
+
 CONST_STRPTR FDT_NodeName(fdt_node_t node)
 {
     static char buf[64];
@@ -199,6 +253,66 @@ CONST_APTR FDT_GetProp(fdt_node_t node, CONST_STRPTR name, ULONG *len)
 BOOL FDT_HasProp(fdt_node_t node, CONST_STRPTR name)
 {
     return FDT_GetProp(node, name, NULL) ? TRUE : FALSE;
+}
+
+/*
+ * A property handle is the offset of its FDT_PROP token, so this is the
+ * walk FDT_GetProp() does - stopping at the first child node or at the
+ * end of this one.
+ */
+static fdt_prop_t fdt_propfrom(LONG off)
+{
+    for (; off >= 0 && off < (LONG)fdt_structlen; off = next_token(off))
+    {
+        ULONG tok = be32(CELL(off));
+
+        if (tok == FDT_PROP)
+            return (fdt_prop_t)off;
+
+        if (tok != FDT_NOP)
+            break;
+    }
+
+    return FDT_PROPNONE;
+}
+
+fdt_prop_t FDT_FirstProp(fdt_node_t node)
+{
+    if (!fdt_base || node == FDT_NONE ||
+        be32(CELL(node)) != FDT_BEGIN_NODE)
+        return FDT_PROPNONE;
+
+    return fdt_propfrom(next_token(node));
+}
+
+fdt_prop_t FDT_NextProp(fdt_prop_t prop)
+{
+    if (!fdt_base || prop == FDT_PROPNONE ||
+        be32(CELL(prop)) != FDT_PROP)
+        return FDT_PROPNONE;
+
+    return fdt_propfrom(next_token((LONG)prop));
+}
+
+CONST_STRPTR FDT_PropName(fdt_prop_t prop)
+{
+    if (!fdt_base || prop == FDT_PROPNONE ||
+        be32(CELL(prop)) != FDT_PROP)
+        return NULL;
+
+    return (CONST_STRPTR)(fdt_strings + be32(CELL(prop + 2)));
+}
+
+CONST_APTR FDT_PropData(fdt_prop_t prop, ULONG *len)
+{
+    if (!fdt_base || prop == FDT_PROPNONE ||
+        be32(CELL(prop)) != FDT_PROP)
+        return NULL;
+
+    if (len)
+        *len = be32(CELL(prop + 1));
+
+    return (CONST_APTR)&CELL(prop + 3);
 }
 
 ULONG FDT_GetPropU32(fdt_node_t node, CONST_STRPTR name, ULONG def)
@@ -294,6 +408,62 @@ static fdt_node_t fdt_parent(fdt_node_t node)
     }
 
     return FDT_NONE;
+}
+
+BOOL FDT_GetPath(fdt_node_t node, STRPTR buf, ULONG size)
+{
+    LONG off, depth = 0, i;
+    fdt_node_t stack[16];
+    ULONG pos = 0;
+
+    if (!fdt_base || node == FDT_NONE || !buf || size < 2)
+        return FALSE;
+
+    /* Find the node, keeping track of what it is inside of */
+    for (off = FDT_Root(); off >= 0 && off < (LONG)fdt_structlen;
+         off = next_token(off))
+    {
+        ULONG tok = be32(CELL(off));
+
+        if (tok == FDT_BEGIN_NODE)
+        {
+            if (depth >= (LONG)(sizeof(stack) / sizeof(stack[0])))
+                return FALSE;
+            stack[depth++] = off;
+            if (off == node)
+                break;
+        }
+        else if (tok == FDT_END_NODE)
+        {
+            if (--depth < 0)
+                return FALSE;
+        }
+        else if (tok == FDT_END)
+            return FALSE;
+    }
+
+    if (off != node)
+        return FALSE;
+
+    /* The root has no name, so the path starts with the separator */
+    for (i = 1; i < depth; i++)
+    {
+        const char *name = (const char *)&CELL(stack[i] + 1);
+        ULONG len = strlen(name);
+
+        if (pos + 1 + len >= size)
+            return FALSE;
+
+        buf[pos++] = '/';
+        memcpy(&buf[pos], name, len);
+        pos += len;
+    }
+
+    if (!pos)
+        buf[pos++] = '/';
+    buf[pos] = 0;
+
+    return TRUE;
 }
 
 ULONG FDT_ParentAddressCells(fdt_node_t node)

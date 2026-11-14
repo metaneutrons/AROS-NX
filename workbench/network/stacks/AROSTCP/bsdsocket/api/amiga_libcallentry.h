@@ -42,13 +42,17 @@
 /*
  * The following macros are written in each socket library functions
  * (execpt Errno()). they makes sure that the task that calls library
- * functions is the opener task of the socketbase it is using.
+ * functions is the opener task of the socketbase it is using, unless the
+ * base is shared by the tasks of a program (SBTC_CAN_SHARE_LIBRARY_BASES).
  */
 
 extern const char wrongTaskErrorFmt[];
 
+#define WRONG_TASK(libPtr) \
+  (!(libPtr)->shared && (libPtr)->thisTask != FindTask(NULL))
+
 #define CHECK_TASK()					\
-  if (libPtr->thisTask != FindTask(NULL)) {		\
+  if (WRONG_TASK(libPtr)) {				\
     struct Task * wTask = FindTask(NULL);		\
     __log(LOG_CRIT, wrongTaskErrorFmt, wTask,		\
 	wTask->tc_Node.ln_Name,	libPtr->thisTask,	\
@@ -57,7 +61,7 @@ extern const char wrongTaskErrorFmt[];
   }
 
 #define CHECK_TASK_NULL()				\
-  if (libPtr->thisTask != FindTask(NULL)) {		\
+  if (WRONG_TASK(libPtr)) {				\
     struct Task * wTask = FindTask(NULL);		\
     __log(LOG_CRIT, wrongTaskErrorFmt, wTask,		\
 	wTask->tc_Node.ln_Name,	libPtr->thisTask,	\
@@ -68,7 +72,7 @@ extern const char wrongTaskErrorFmt[];
 #define CHECK_TASK2() CHECK_TASK_NULL()
 
 #define CHECK_TASK_VOID()				\
-  if (libPtr->thisTask != FindTask(NULL)) {		\
+  if (WRONG_TASK(libPtr)) {				\
     struct Task * wTask = FindTask(NULL);		\
     __log(LOG_CRIT, wrongTaskErrorFmt, wTask,		\
 	wTask->tc_Node.ln_Name,	libPtr->thisTask,	\
@@ -104,6 +108,11 @@ static inline LONG getSock(struct SocketBase *p, int fd, struct socket **sop)
  * fdAlloc there. libPtr->nextDToSearch is dumped.
  */
 LONG sdFind(struct SocketBase * libPtr, LONG *fdp);
+void sdFree(LONG fd);
+LONG closeSocketLocked(LONG fd, struct SocketBase *libPtr); /* amiga_generic.c */
+LONG releaseSocketRef(struct socket *so);                   /* amiga_generic.c */
+void setSocketOwner(struct socket *so, struct SocketBase *owner); /* amiga_generic.c */
+LONG setdtablesize(struct SocketBase *libPtr, UWORD size); /* amiga_generic2.c */
 
 #ifndef AMIGA_RAF_H
 #include <api/amiga_raf.h>

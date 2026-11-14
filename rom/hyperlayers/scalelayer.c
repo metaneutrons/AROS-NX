@@ -130,6 +130,8 @@ AROS_UFH3(BOOL, ScaleLayerCallback,
   ULONG depth = GetBitMapAttr(display_bm, BMA_DEPTH);
   WORD  alignoff = ALIGN_OFFSET(l->bounds.MinX);
   LONG  destx, desty, destw, desth, bmw, bmh;
+  LONG  v[8];
+  int   i;
 
   /*
    * ChangeLayerShape() has backed the layer up: every ClipRect is hidden
@@ -138,6 +140,10 @@ AROS_UFH3(BOOL, ScaleLayerCallback,
    * like a ClipRect bitmap covering the whole layer.
    */
   if (NULL == l->ClipRect)
+    return FALSE;
+
+  /* A composited layer's single ClipRect is a view into its surface; not scaled (yet) */
+  if (IS_COMPOSITED(l))
     return FALSE;
 
   srcbm = AllocBitMap(l->Width + ALIGN_CLIPRECT, l->Height, depth, BMF_CLEAR, display_bm);
@@ -149,8 +155,8 @@ AROS_UFH3(BOOL, ScaleLayerCallback,
     if (NULL != cr->BitMap)
     {
       BltBitMap(cr->BitMap,
-                ALIGN_OFFSET(cr->bounds.MinX),
-                0,
+                CR_BMOFFX(cr),
+                CR_BMOFFY(cr),
                 srcbm,
                 cr->bounds.MinX - l->bounds.MinX + alignoff,
                 cr->bounds.MinY - l->bounds.MinY,
@@ -166,10 +172,21 @@ AROS_UFH3(BOOL, ScaleLayerCallback,
    * The destination bitmap must at least cover the layer (it becomes the
    * layer's ClipRect bitmap) and the destination rectangle.
    */
-  destx = GetTagData(LA_DESTX     , 0        , taglist);
-  desty = GetTagData(LA_DESTY     , 0        , taglist);
-  destw = GetTagData(LA_DESTWIDTH , l->Width , taglist);
-  desth = GetTagData(LA_DESTHEIGHT, l->Height, taglist);
+  /*
+   * LA_SRCX, LA_SRCY, LA_DESTX, LA_DESTY default to 0, LA_SRCWIDTH,
+   * LA_SRCHEIGHT, LA_DESTWIDTH, LA_DESTHEIGHT to the layer's size.
+   */
+  _Static_assert(LA_SRCY == LA_SRCX + 1 && LA_DESTX == LA_SRCX + 2 && LA_DESTY == LA_SRCX + 3 &&
+                 LA_SRCWIDTH == LA_SRCX + 4 && LA_SRCHEIGHT == LA_SRCX + 5 &&
+                 LA_DESTWIDTH == LA_SRCX + 6 && LA_DESTHEIGHT == LA_SRCX + 7,
+                 "the scale tags must be consecutive in this order");
+  for (i = 0; i < 8; i++)
+    v[i] = GetTagData(LA_SRCX + i, (i < 4) ? 0 : ((i & 1) ? l->Height : l->Width), taglist);
+
+  destx = v[LA_DESTX - LA_SRCX];
+  desty = v[LA_DESTY - LA_SRCX];
+  destw = v[LA_DESTWIDTH - LA_SRCX];
+  desth = v[LA_DESTHEIGHT - LA_SRCX];
 
   bmw = MAX(l->Width , destx + destw);
   bmh = MAX(l->Height, desty + desth);
@@ -181,10 +198,10 @@ AROS_UFH3(BOOL, ScaleLayerCallback,
     return FALSE;
   }
 
-  bsa.bsa_SrcX        = alignoff + GetTagData(LA_SRCX, 0, taglist);
-  bsa.bsa_SrcY        = GetTagData(LA_SRCY, 0, taglist);
-  bsa.bsa_SrcWidth    = GetTagData(LA_SRCWIDTH , l->Width , taglist);
-  bsa.bsa_SrcHeight   = GetTagData(LA_SRCHEIGHT, l->Height, taglist);
+  bsa.bsa_SrcX        = alignoff + v[LA_SRCX - LA_SRCX];
+  bsa.bsa_SrcY        = v[LA_SRCY - LA_SRCX];
+  bsa.bsa_SrcWidth    = v[LA_SRCWIDTH - LA_SRCX];
+  bsa.bsa_SrcHeight   = v[LA_SRCHEIGHT - LA_SRCX];
   bsa.bsa_XSrcFactor  = bsa.bsa_SrcWidth;
   bsa.bsa_YSrcFactor  = bsa.bsa_SrcHeight;
   bsa.bsa_DestX       = alignoff + destx;
@@ -221,6 +238,8 @@ AROS_UFH3(BOOL, ScaleLayerCallback,
   newcr->Next   = NULL;
   newcr->lobs   = (struct Layer *)(IPTR)TRUE; /* hidden */
   newcr->BitMap = destbm;
+  CR_SETBMOFF(newcr, alignoff, 0);
+  newcr->Flags &= ~CR_SHAREDBITMAP;
   l->ClipRect   = newcr;
 
   slp->scaled = TRUE;
