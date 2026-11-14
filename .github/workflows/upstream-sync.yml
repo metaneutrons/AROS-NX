@@ -48,7 +48,7 @@ jobs:
           set -euo pipefail
 
           git remote add upstream https://github.com/aros-development-team/AROS.git
-          git fetch --no-tags origin main master
+          git fetch --no-tags origin main master '+refs/heads/sync/*:refs/remotes/origin/sync/*'
           git fetch --no-tags upstream master
 
           old_master=$(git rev-parse origin/master)
@@ -61,49 +61,37 @@ jobs:
             exit 65
           fi
 
-          if [ "$old_master" != "$new_master" ] &&
-             ! git merge-base --is-ancestor "$old_master" origin/main; then
-            echo '::error::AROS-NX main does not contain the currently mirrored upstream head.'
-            echo 'Repair the permanent branch invariant before syncing more upstream commits.'
-            exit 66
-          fi
+          # Open integration PRs into main from this repository, automated
+          # (sync/upstream-*) or manual (sync/manual-*). Each line: ref<TAB>sha.
+          open_syncs=$(
+            gh api --paginate "repos/${REPOSITORY}/pulls?state=open&base=main&per_page=100" |
+              jq -r --arg repo "$REPOSITORY" \
+                '.[] | select(.head.repo.full_name == $repo and (.head.ref | startswith("sync/"))) | "\(.head.ref)\t\(.head.sha)"'
+          )
 
-          short=${new_master:0:12}
-          branch="sync/upstream-${short}"
-
-          if [ "$old_master" = "$new_master" ]; then
-            if git merge-base --is-ancestor "$new_master" origin/main; then
-              echo 'changed=false' >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-
-            # The mirror may already have advanced while the integration PR
-            # remains open. Do not claim the source is integrated into main.
-            if ! git ls-remote --exit-code origin "refs/heads/${branch}" >/dev/null 2>&1; then
-              echo '::error::The mirror is ahead of main, but its integration branch is missing.'
-              exit 69
-            fi
-            git fetch --no-tags origin "refs/heads/${branch}:refs/remotes/origin/${branch}"
-            if ! git merge-base --is-ancestor "$new_master" "origin/${branch}"; then
-              echo '::error::The existing integration branch does not contain the mirrored upstream commit.'
-              exit 70
-            fi
-            branch_head=$(git rev-parse "origin/${branch}")
-            open_prs=$(
-              gh api "repos/${REPOSITORY}/pulls?state=open&head=metaneutrons:${branch}&base=main" |
-                jq --arg sha "$branch_head" \
-                  '[.[] | select(.head.sha == $sha and .head.repo.full_name == "metaneutrons/AROS-NX")] | length'
-            )
-            if [ "$open_prs" != 1 ]; then
-              echo '::error::The mirror is ahead of main without exactly one open integration PR.'
-              exit 71
-            fi
+          pending() {
             {
               echo 'changed=pending'
-              echo "branch=${branch}"
-              echo "upstream_sha=${new_master}"
+              echo "branch=$1"
+              echo "upstream_sha=$2"
             } >> "$GITHUB_OUTPUT"
             exit 0
+          }
+
+          # The mirror only advances together with a published integration
+          # branch, so a mirror ahead of main is healthy exactly while an open
+          # integration PR contains it.
+          if ! git merge-base --is-ancestor "$old_master" origin/main; then
+            while IFS=$'\t' read -r ref sha; do
+              [ -n "$ref" ] || continue
+              if git merge-base --is-ancestor "$old_master" "$sha" 2>/dev/null; then
+                echo "Mirror ${old_master:0:12} is awaiting integration through ${ref}."
+                pending "$ref" "$old_master"
+              fi
+            done <<< "$open_syncs"
+            echo '::error::AROS-NX main does not contain the mirrored upstream head, and no open integration PR does.'
+            echo 'Merge a sync branch containing the mirror into main; master never needs rewriting.'
+            exit 66
           fi
 
           remote="https://x-access-token:${SYNC_TOKEN}@github.com/${REPOSITORY}.git"
@@ -112,33 +100,59 @@ jobs:
           # advances. In that case only fast-forward the mirror; proposing an
           # empty PR would turn a healthy state into a scheduled failure.
           if git merge-base --is-ancestor "$new_master" origin/main; then
-            git push "$remote" "${new_master}:refs/heads/master"
+            if [ "$old_master" != "$new_master" ]; then
+              git push "$remote" "${new_master}:refs/heads/master"
+            fi
             echo 'changed=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
+          # One integration at a time: while any sync PR is open, a second
+          # proposal would conflict with it or duplicate its resolutions.
+          if [ -n "$open_syncs" ]; then
+            ref=$(head -n1 <<< "$open_syncs" | cut -f1)
+            echo "Upstream ${new_master:0:12} waits until the open integration PR (${ref}) is merged or closed."
+            pending "$ref" "$old_master"
+          fi
+
+          short=${new_master:0:12}
+          branch="sync/upstream-${short}"
+
           if git ls-remote --exit-code origin "refs/heads/${branch}" >/dev/null 2>&1; then
-            echo "::error::Sync branch ${branch} already exists but master has not advanced."
-            echo 'Resolve or close the existing proposal; this workflow will never overwrite it.'
+            echo "::error::Sync branch ${branch} already exists without an open pull request."
+            echo 'Delete the stale branch or reopen its proposal; this workflow will never overwrite it.'
             exit 67
           fi
 
           git config user.name 'aros-nx-upstream-sync[bot]'
           git config user.email 'aros-nx-upstream-sync[bot]@users.noreply.github.com'
 
-          # The protected mirror accepts this push only as a fast-forward from
-          # the dedicated sync identity. No force option is ever used.
-          git push "$remote" "${new_master}:refs/heads/master"
-
           git switch --create "$branch" origin/main
           # AROS-NX owns .github/: upstream changes there are discarded and
-          # reported. Any other conflict aborts the merge (exit 68).
+          # reported. Any other conflict aborts the merge (exit 68). Nothing has
+          # been pushed at that point, so the mirror stays a valid base for the
+          # next run or for a manual sync branch.
           report="${RUNNER_TEMP}/discarded-automation.md"
-          if ! python3 scripts/ci/upstream_merge.py "$new_master" --report "$report"; then
-            echo 'The mirror is updated, but no integration branch was published. Resolve the merge manually.'
+          conflicts="${RUNNER_TEMP}/conflicts.txt"
+          if ! python3 scripts/ci/upstream_merge.py "$new_master" --report "$report" 2> "$conflicts"; then
+            cat "$conflicts" >&2
+            {
+              echo '## Upstream sync'
+              echo "Upstream \`${new_master}\` does not merge cleanly into main. Nothing was pushed; the mirror stays at \`${old_master}\`."
+              echo
+              echo "Integrate it manually on a \`sync/manual-${short}\` branch and open a PR into main."
+              echo
+              sed -n 's/^Conflict: /- /p' "$conflicts"
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 68
           fi
+
           git push "$remote" "HEAD:refs/heads/${branch}"
+          # The protected mirror accepts this push only as a fast-forward from
+          # the dedicated sync identity. No force option is ever used. If it
+          # fails, the branch is already published; the next run finds the
+          # open PR or exits 67 for the stale branch instead of looping.
+          git push "$remote" "${new_master}:refs/heads/master"
 
           {
             echo 'changed=true'
@@ -187,9 +201,9 @@ jobs:
               echo "- Integration branch: \`$BRANCH\`"
               echo '- Merge remains gated by branch protection and required qualification jobs.'
             elif [ "$CHANGED" = 'pending' ]; then
-              echo "- Mirrored upstream commit: \`$UPSTREAM_SHA\`"
-              echo "- Integration branch: \`$BRANCH\`"
-              echo '- Its existing pull request remains open; main does not yet contain this upstream commit.'
+              echo "- Mirror: \`$UPSTREAM_SHA\`"
+              echo "- Open integration branch: \`$BRANCH\`"
+              echo '- An integration pull request is still open; no new proposal until it is merged or closed.'
             else
               echo '- Upstream is integrated into main and the mirror equals upstream master.'
             fi
