@@ -177,7 +177,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | N2U | Credential-free WLAN image defaults and first-use selection | `matched ABI8 candidate BSP/image build and host verification; deployment/runtime open` | Existing AROS WiFi/Network preferences, WirelessManager, AROSTCP and dhclient only; device/unit0, DHCP RAM paths, empty Wireless.prefs, autostart off. Five defaults/eighteen stage tests pass. WLAN-only whitelist includes ESP32Board/icon; actual85-file overlay, tracked Wanderer defaults, no saved build Env-Archive. Fresh static-linked resource282952B/device67584B, audited42-member BSP3971508B,41 other payloads unchanged. Final64MiB AROSDefault image has332 manifest entries; historical loader failures/artifacts retained in dated evidence. Installed baseline backup/full-span recovery, native discovery, single-manager lifetime, clock/routing/resolver/GUI/radio acceptance remain open. Both privacy assertions0; credentials excluded and SYS/SD read-only. |
 | N2E | Caller-visible asynchronous association failure | `generic caller/native binding/Close model+build verified; runtime open` | Native76cc32560a owned cookies/opener failure latches and message-ACK/token fence are bound; independent source review clear, clean72936B RV32 device build and all six scoped macOS/Linux O0/O2 sanitizer suites pass. Caller Close9a0a0d8346 integratedd50ca3ba1e passes independent review/macOS/Linux models and full679652B RV32 rebuild. Capability advertisement remains disabled. SUMMARY-only and privacy assertions0 unchanged. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
-| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | The source-owned LLVM/RV32 SDK contracts, reproducible generator and GNU recipe corrections are prepared against current protected main; fresh source/product qualification is pending. Current board/runtime history is preserved. Source-owned pins, normalized cache contracts and explicit header prerequisites have fixture coverage. Libinit literal commands retain target flags once; six GenMF/GNU Make dry-run regressions cover aggregate and overridden CFLAGS without rebuilding a compiler. Historical local SDK/link probes are not qualification of this main-based candidate. Clean source/runtime-bound compiler and complete SDK replay, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
+| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | Linux x86-64 qualification run 42123301600 produced byte-identical compiler A/B packages for GNU RV32 and all three LLVM profiles. SDK construction exposed the LLVM release runtime-layout omission and the RV32 inventory's stateful board-profile include; both source corrections pass local declaration, driver-path and complete source-inventory probes. Current board/runtime history is preserved. Complete local SDK construction, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
@@ -2429,6 +2429,38 @@ implementation and its acceptance gate follow that inventory, not an assumption
 that a similarly named AROS driver matches the P4 MAC generation.
 
 ## Track TC: RV32 compiler and SDK publication
+
+### 2026-11-06 - TC0 repair SDK admission after Linux compiler qualification
+
+- Baseline: nonpublishing aros-toolchains run `42123301600`, source
+  `28c8f0b09ffcbbce94278fabf4d3ecbe14ccfe44`, aros-tools
+  `684617258f32334aaf65475498afa782bb7c60c7`. GNU RV32 and the three LLVM
+  compiler lanes each produced byte-identical A/B package sets. The previous
+  RV32 shared-header conflict and ARM extraction failure did not recur.
+- LLVM finding: all three SDKs failed their first ordinary C link because the
+  release-only compiler-rt fixup left builtins under `lib/clang/23.1.0` while
+  Clang 23 selected its major-version resource directory. The release fixup
+  now mirrors the same archives as the nonrelease path. A local Clang 23
+  driver probe resolves x86-64, i386, ARM hard-float and AArch64 builtins from
+  `lib/clang/23/lib/aros`; an x86-64 object requiring `__udivti3` links to a
+  valid static ELF. Both fixup targets are covered by a source regression.
+- RV32 finding: the SDK reached CMake configuration and then rejected
+  `kernel-exec-esp32p4-riscv` because source inventory encountered the
+  parse-time `$(shell ...)` build-profile check inside `board.mk`. The board
+  declaration is now pure. Real configured builds include a separate stateful
+  guard from `config/make.cfg`, while the source-owned SDK binds `board.mk` to
+  a sealed flat D1001 projection. Existing marker stability, foreign-target,
+  empty-TOP and stale board/layout counterprobes pass.
+- Local evidence: the exact aros-tools runtime completes native RV32 source
+  inventory against the corrected contract with all locally cached submodules
+  materialized and no network download. LLVM declaration tests pass 4/4,
+  native SDK declaration tests 6/6, native exporter tests 16/16, and both
+  build-profile suites pass 7/7. The three LLVM and RV32 input seals are
+  refreshed and check cleanly.
+- Safety and remaining work: no firmware, media, board, release or published
+  artifact changed. Complete source-bound SDK construction, relocation and
+  the three-host release gates still decide TC0; this local correction does
+  not change hardware status.
 
 ### 2026-10-17 - TC0 prepare checked main-based SDK integration
 

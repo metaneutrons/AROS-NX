@@ -1,4 +1,4 @@
-# Exact Mesa 26.0.0 libmesa inventory for the new src/mesa layout.
+# Exact Mesa 26.2.5 libmesa inventory for the new src/mesa layout.
 # Static entries follow the wildcard order in libmesa/mmakefile.src:
 # main, math, program, state_tracker, then vbo; each directory is sorted by
 # GNU Make's wildcard expansion. Generated entries retain the recipe order.
@@ -7,6 +7,7 @@
 MESA26_CORE_STATIC_C_SOURCES := \
 	main/accum.c \
 	main/api_arrayelt.c \
+	main/api_trace_helpers.c \
 	main/arbprogram.c \
 	main/arrayobj.c \
 	main/atifragshader.c \
@@ -214,6 +215,7 @@ MESA26_CORE_STATIC_CXX_SOURCES := \
 
 MESA26_CORE_GENERATED_C_SOURCES := \
 	main/api_exec_init.c \
+	main/api_trace.c \
 	main/enums.c \
 	main/format_fallback.c \
 	main/unmarshal_table.c \

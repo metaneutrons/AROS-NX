@@ -52,7 +52,7 @@
     },
     {
       "path": "arch/riscv-esp32p4/board/board.mk",
-      "sha256": "0a708031c8159fc198c698e6933c774a203dbb9f040f07c4f8928dfd1e967de5"
+      "sha256": "5446e21bd5385f009c0c0d8f330c28b203b53aa090e5e323c3b228bc18aeb73e"
     },
     {
       "path": "arch/riscv-esp32p4/exec/mmakefile.src",
@@ -61,6 +61,10 @@
     {
       "path": "arch/riscv-esp32p4/mmakefile.src",
       "sha256": "131ebbc32f5d2f262dd5bbda5d94d74adb0a4a85f39a7f377be6fb95d4178158"
+    },
+    {
+      "path": "arch/riscv-esp32p4/native-sdk/board.mk",
+      "sha256": "40c9dd83365d569e0518567260618886b0e01d3b39f91702ef936f0003a6a9f9"
     },
     {
       "path": "arch/riscv-esp32p4/native-sdk/config.mk",
@@ -72,7 +76,7 @@
     },
     {
       "path": "arch/riscv-esp32p4/native-sdk/metamake-v1.json",
-      "sha256": "8b272f174be9ca09388474523f9e1578c77665d4962e2746f01caabeed572073"
+      "sha256": "083f0a176d04f1a28d10b370149b21504e4d6df79d478c563753cf050a0d2924"
     },
     {
       "path": "arch/riscv-esp32p4/native-sdk/probes/application.c",
@@ -84,7 +88,7 @@
     },
     {
       "path": "aros-targets.toml",
-      "sha256": "6151204a2b21f05c11440b85bc2d88c441d87605f9222dfc8462affd81286505"
+      "sha256": "16e856f40a28ae7a7195f3c3ba205b255af48f93c90597d7c92261df814d570d"
     },
     {
       "path": "compiler/crt/stdc/mmakefile.src",
@@ -128,7 +132,7 @@
     },
     {
       "path": "config/llvm_def",
-      "sha256": "7bd6bcbe3813e0cd55e0998053d182b7bc8c97dcfd0b85028e9f7f55af4ad61b"
+      "sha256": "105cea6ab21beabd59f0ce9c72349435c99d6012981875d22aae70494f10dc10"
     },
     {
       "path": "config/make-autotools.tmpl",
@@ -144,11 +148,11 @@
     },
     {
       "path": "config/make.cfg.in",
-      "sha256": "55a6fe963d015d11fbd4509f0bf752f1036d9addf251a192fb57d150f974b5f4"
+      "sha256": "e9726febced9fb26e3ecdcbbde8591257830b62d6aced6a512c20d7c9e33e951"
     },
     {
       "path": "config/make.tmpl",
-      "sha256": "8661d2bf16e94d6fdb5b89f26663bb813766afb02209e6e0368b94858812ec75"
+      "sha256": "f36e924e88a1be6eb4f8dcbb78d00c0e895fec65767c48729b41da53e89c10ff"
     },
     {
       "path": "config/target.cfg.in",
@@ -156,7 +160,7 @@
     },
     {
       "path": "configure.in",
-      "sha256": "87444bb0ef9a8166f44cf60ec6a2538c35f9f3fd7aa7f2f96bccb50a34f9b75a"
+      "sha256": "c56c209f74dc81f4c38ad6a36c8e89d9e9941104b92d8bbfd85ccc81c76b091f"
     },
     {
       "path": "mmake.config.in",
@@ -250,7 +254,7 @@
   },
   "make_include_bindings": {
     "config/aros.cfg": "arch/riscv-esp32p4/native-sdk/config.mk",
-    "arch/riscv-esp32p4/board/board.mk": "arch/riscv-esp32p4/board/board.mk"
+    "arch/riscv-esp32p4/board/board.mk": "arch/riscv-esp32p4/native-sdk/board.mk"
   },
   "kernel_compiler_role": "target",
   "optional_meta_dependencies": [
