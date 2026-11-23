@@ -291,7 +291,7 @@ tools-crosstools-isl :
 	gendir="$(GNU_HOST_OBJDIR)" basedir= \
 	package_repo="$(ISL_REPOSITORY)" \
 	patch=no \
-	prefix="$(GNU_BUILDDEPDIR)" usecppflags=no config_env_extra="$(GNU_REPRO_HOST_ENV) $(GNU_BUILDDEPS_PKG_CONFIG_ENV)" \
+	prefix="$(GNU_BUILDDEPDIR)" usecppflags=no config_env_extra="$(GNU_ISL_REPRO_HOST_ENV) $(GNU_BUILDDEPS_PKG_CONFIG_ENV)" \
 	usecrosstoolsdir=$(GNU_HOST_PACKAGES_USE_CROSSTOOLSDIR) extraoptions="$(GNU_ISL_EXTRA_OPTS)"
 
 ## MPFR ###

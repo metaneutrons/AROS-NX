@@ -86,6 +86,8 @@ assert_contains 'classic Binutils child make has no compile bindir override' "$c
 assert_not_contains 'classic Binutils child make cannot receive release compile bindir' "$classic_binutils_child" 'build-bindir=/aros-toolchain/'
 assert_contains 'classic physical sysroot' "$classic" '--with-sysroot=/tmp/aros-developer'
 assert_contains 'classic physical package dependency prefix' "$classic" '--with-isl=/tmp/gnu-candidate'
+classic_isl_env=$(printf '%s\n' "$classic" | sed -n 's/^isl-configure-env=//p')
+assert_not_contains 'classic ISL keeps its upstream optimizer selection' "$classic_isl_env" 'CFLAGS_FOR_BUILD'
 assert_contains 'classic install arguments preserve physical prefix' "$classic" 'gcc-install-args=prefix=/tmp/gnu-candidate exec_prefix=/tmp/gnu-candidate'
 assert_contains 'classic dependency include paths remain unchanged' "$classic" '-I/tmp/gnu-candidate/include'
 assert_contains 'classic dependency library paths remain unchanged' "$classic" '-L/tmp/gnu-candidate/lib'
@@ -176,6 +178,10 @@ assert_not_contains 'release GMP standard override does not reach CXXFLAGS' "$re
 assert_not_contains 'release GCC does not receive the GMP C standard override' "$release_env" '-std=gnu11'
 release_isl_env=$(printf '%s\n' "$release" | sed -n 's/^isl-configure-env=//p')
 assert_not_contains 'release ISL does not receive the GMP C standard override' "$release_isl_env" '-std=gnu11'
+assert_contains 'release ISL CFLAGS are explicit and CPU independent' "$release_isl_env" 'CFLAGS="-ffile-prefix-map=/src=/mapped -fdebug-prefix-map=/build=/mapped -O2"'
+assert_contains 'release ISL build CFLAGS keep its optimizer autodetection off' "$release_isl_env" 'CFLAGS_FOR_BUILD="-ffile-prefix-map=/src=/mapped -fdebug-prefix-map=/build=/mapped -O2"'
+assert_not_contains 'release ISL never selects a CPU architecture' "$release_isl_env" '-march'
+assert_not_contains 'release ISL never enables fast math' "$release_isl_env" '-ffast-math'
 assert_contains 'release Binutils configure keeps canonical slash-free bindir' "$release" 'binutils-configure-args=--prefix=/aros-toolchain --target=riscv64-aros --bindir=/aros-toolchain --libdir=/aros-toolchain/lib --with-sysroot=yes'
 assert_contains 'release Binutils preserves script relocation at compile time' "$release" 'binutils-build-args=bindir=/aros-toolchain/'
 release_binutils_child=$(run_generated generated-binutils-build-args AROS_GNU_RELEASE_LAYOUT=yes "crosstools-binutils--pkgdir=$task_tmp/child-make")
