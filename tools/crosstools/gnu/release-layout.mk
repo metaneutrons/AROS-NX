@@ -44,6 +44,7 @@ GNU_REPRO_HOST_ENV :=
 GNU_RECORDED_METADATA_ENV :=
 GNU_REPRO_TARGET_ENV :=
 GNU_GMP_REPRO_HOST_ENV = $(GNU_REPRO_HOST_ENV)
+GNU_ISL_REPRO_HOST_ENV = $(GNU_REPRO_HOST_ENV)
 
 ifeq ($(AROS_GNU_RELEASE_LAYOUT),yes)
 # A root prefix produces STANDARD_BINDIR_PREFIX=// in GCC, which cannot
@@ -105,6 +106,15 @@ GNU_GCC_LAYOUT_OVERRIDE_OPTS := --prefix=$(GNU_CONFIGURE_PREFIX) --bindir=$(GNU_
 GNU_REPRO_HOST_ENV = CFLAGS="$(strip $(AROS_TOOLCHAIN_REPRO_FLAGS))" CXXFLAGS="$(strip $(AROS_TOOLCHAIN_REPRO_FLAGS))"
 GNU_REPRO_TARGET_ENV = CFLAGS_FOR_TARGET="$(strip $(AROS_TOOLCHAIN_REPRO_FLAGS) $(GCC_TARGET_CFLAGS))" CXXFLAGS_FOR_TARGET="$(strip $(AROS_TOOLCHAIN_REPRO_FLAGS) $(GCC_TARGET_CXXFLAGS))"
 GNU_GMP_REPRO_HOST_ENV = CFLAGS="$(strip $(AROS_TOOLCHAIN_REPRO_FLAGS) -std=gnu11)" CXXFLAGS="$(strip $(AROS_TOOLCHAIN_REPRO_FLAGS))"
+# ISL 0.27's configure records whether CFLAGS was given, then overwrites that
+# record with the CFLAGS_FOR_BUILD test of its build-compiler check. With
+# CFLAGS_FOR_BUILD unset, AX_CC_MAXOPT then appends -O3 -ffast-math and an
+# -march selected from the build machine's cpuid, so two runners of one host
+# platform with different CPU vendors produced different cc1, cc1plus, lto1
+# and lto-dump bytes. Set both variables to the same explicit, CPU-independent
+# flags so the optimizer selection never runs.
+GNU_ISL_HOST_CFLAGS = $(strip $(AROS_TOOLCHAIN_REPRO_FLAGS) -O2)
+GNU_ISL_REPRO_HOST_ENV = CFLAGS="$(GNU_ISL_HOST_CFLAGS)" CFLAGS_FOR_BUILD="$(GNU_ISL_HOST_CFLAGS)" CXXFLAGS="$(strip $(AROS_TOOLCHAIN_REPRO_FLAGS))"
 ifneq ($(filter --with-sysroot% --with-build-sysroot%,$(GCC_EXTRA_OPTS)),)
 $(error AROS_GNU_RELEASE_LAYOUT=yes cannot be combined with GCC_EXTRA_OPTS containing a sysroot option)
 endif
