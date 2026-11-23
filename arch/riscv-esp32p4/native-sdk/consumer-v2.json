@@ -188,7 +188,7 @@
     },
     {
       "path": "tools/crosstools/gnu/mmakefile.src",
-      "sha256": "9452b41216533c97bbbe366808e018de81d931fccb42cf43ef455c290b26dc3c"
+      "sha256": "835287770b062342845a96f0eff756bedf71bf9ca47b8cadd6d813490a490a55"
     },
     {
       "path": "tools/genctbl/Makefile",
