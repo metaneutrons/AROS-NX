@@ -29,6 +29,12 @@ include $(GENDIR)/config/target.cfg
 include $(HOSTGENDIR)/config/host.cfg
 include $(GENDIR)/config/build.cfg
 
+# ESP32-P4 board/layout flags change object contents without changing source
+# names. Pin a real build tree before any port recipe can reuse stale objects.
+ifeq ($(AROS_TARGET_ARCH)-$(AROS_TARGET_CPU),esp32p4-riscv)
+include $(SRCDIR)/arch/riscv-esp32p4/board/build-profile.mk
+endif
+
 # Bootstrap ELF relocators cannot allocate SHN_COMMON symbols. Append the
 # feature-detected flag after USER_CFLAGS so -fcommon cannot leak into kernels.
 KERNEL_CFLAGS                += $(CFLAGS_NO_COMMON)

@@ -32,11 +32,15 @@ The existing host `genctbl` generator uses hash-verified Unicode 16.0.0 inputs
 and generates the real locale table; no pregenerated substitute is supplied.
 
 The SDK includes shared kernel headers that require a board macro. Its
-configuration explicitly selects the existing `d1001` source default and
-seals `board/board.mk`, which derives the flags. This is a header compilation
-context, not board support inferred from the compiler or a hardware claim.
-Other board choices, watchdog/PSRAM/XIP settings, partition maps and
-kernel/media roots belong to a separate source-owned board build contract.
+configuration explicitly selects the existing `d1001` source default. It
+seals both the complete `board/board.mk` declaration and a flat D1001
+projection used by source inventory. Real configured builds run the separate
+stateful build-profile guard before recipes can reuse objects; SDK inventory
+has no reusable object tree and never executes that guard. This is a header
+compilation context, not board support inferred from the compiler or a
+hardware claim. Other board choices, watchdog/PSRAM/XIP settings, partition
+maps and kernel/media roots belong to a separate source-owned board build
+contract.
 
 The empty `INCEMPTYDIRS` configuration is explicit: classic Make expands that
 undefined variable to empty, while the native engine refuses an unbound value.

@@ -1,4 +1,4 @@
-# Mesa 26.0.0 Gallivm MCJIT inventory, relative to
+# Mesa 26.2.5 Gallivm MCJIT inventory, relative to
 # src/gallium/auxiliary/gallivm. Draw and tessellation have separate owners.
 # ORCJIT's lp_bld_init_orc.cpp is not part of this configuration.
 
@@ -28,6 +28,7 @@ MESA26_GALLIVM_C_SOURCES := \
     lp_bld_logic.c \
     lp_bld_nir.c \
     lp_bld_nir_aos.c \
+    lp_bld_nir_lower.c \
     lp_bld_nir_soa.c \
     lp_bld_pack.c \
     lp_bld_passmgr.c \

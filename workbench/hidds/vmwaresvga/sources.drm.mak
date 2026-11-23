@@ -122,7 +122,7 @@ AROS_VMWGFX_LIBDRM_SOURCES = \
             libdrm/arosdrmmode \
 
 # Mesa 26's winsys/svga/drm, built from the Mesa port tree (its AROS changes
-# live in workbench/libs/mesa/mesa-26.0.0-aros.diff).
+# live in workbench/libs/mesa/mesa-26.2.5-aros.diff).
 AROS_VMWGFX_WINSYS_SOURCES = \
             pb_buffer_simple_fenced \
             vmw_buffer \

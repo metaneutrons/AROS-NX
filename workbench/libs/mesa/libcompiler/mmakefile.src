@@ -14,7 +14,7 @@ MESA_COMPILER_LAYOUT := old
 include $(top_srcdir)/$(CUR_MESADIR)/Makefile.sources
 else
 MESA_COMPILER_LAYOUT := new
-include $(SRCDIR)/$(CURDIR)/compiler-26.0.0.sources
+include $(SRCDIR)/$(CURDIR)/compiler-26.2.5.sources
 
 LIBGLSL_FILES := $(MESA26_COMPILER_GLSL_C_SOURCES) $(MESA26_COMPILER_GLSL_CXX_SOURCES)
 NIR_FILES := $(MESA26_COMPILER_NIR_C_SOURCES)

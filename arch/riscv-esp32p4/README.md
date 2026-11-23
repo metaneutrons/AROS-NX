@@ -2388,6 +2388,12 @@ SD-boot or visual/touch acceptance yet; fresh readiness/card insertion next.
 This supersedes the older D1001 "Currently flashed" history table below.
 The separate RV32 compiler/SDK release track is TC0 in
 [ROADMAP.md](ROADMAP.md#track-tc-rv32-compiler-and-sdk-publication).
+The 2026-11-06 Linux qualification produced byte-identical compiler A/B
+packages for RV32 and all three LLVM profiles. SDK construction then exposed
+two source defects: the LLVM release path omitted the Clang-major runtime
+mirror, and the native RV32 inventory encountered the stateful board-profile
+guard. Both corrections pass their local source and driver probes; complete
+SDK construction and release qualification remain open.
 The 2026-10-12 input-seal correction keeps the RV32 contract bound to the
 shared target-profile document after adding the LLVM SDK declarations.
 This is source-binding preparation only, not new SDK or hardware qualification.

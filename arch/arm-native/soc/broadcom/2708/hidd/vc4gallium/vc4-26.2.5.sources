@@ -1,4 +1,4 @@
-# Closed Mesa 26 VC4 driver inventory. The NEON wrapper is local to AROS.
+# Closed Mesa 26.2.5 VC4 driver inventory. The NEON wrapper is local to AROS.
 MESA26_VC4_DRIVER_C_SOURCES := \
     vc4_blit.c \
     vc4_bufmgr.c \

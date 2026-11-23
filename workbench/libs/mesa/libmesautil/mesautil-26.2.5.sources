@@ -1,4 +1,4 @@
-# Mesa 26.0.0 libmesautil inventory for the AROS new-layout recipe.
+# Mesa 26.2.5 libmesautil inventory for the AROS new-layout recipe.
 # Mesa paths are relative to src/util. Static C preserves the recipe's
 # wildcard order (util/*.c, then util/format/*.c), followed by its explicit
 # additions; the listed filters have already been applied.
@@ -29,7 +29,6 @@ MESA26_UTIL_STATIC_C_SOURCES := \
 	log.c \
 	lut.c \
 	mesa-blake3.c \
-	mesa-sha1.c \
 	mesa_cache_db.c \
 	mesa_cache_db_multipart.c \
 	os_file.c \
@@ -70,6 +69,7 @@ MESA26_UTIL_STATIC_C_SOURCES := \
 	u_process.c \
 	u_queue.c \
 	u_range_remap.c \
+	u_shader_variant_cache.c \
 	u_string.c \
 	u_thread.c \
 	u_vector.c \

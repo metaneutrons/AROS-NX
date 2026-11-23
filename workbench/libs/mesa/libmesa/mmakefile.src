@@ -58,7 +58,7 @@ MESA_PTR_SIZE := 4
 endif
 
 ifeq ($(MESA_MESA_LAYOUT),new)
-include $(SRCDIR)/$(CURDIR)/mesa-26.0.0.sources
+include $(SRCDIR)/$(CURDIR)/mesa-26.2.5.sources
 MESA_GENERATED_C_SOURCES := $(MESA26_CORE_GENERATED_C_SOURCES)
 else
 MESA_GENERATED_C_SOURCES := \
@@ -143,6 +143,11 @@ $(top_builddir)/$(CUR_MESADIR)/main/enums.c: $(dispatch_deps)
 $(top_builddir)/$(CUR_MESADIR)/main/api_exec_init.c: PRIVATE_SCRIPT := $(PYTHON) $(glapi)/api_exec_init.py
 $(top_builddir)/$(CUR_MESADIR)/main/api_exec_init.c: PRIVATE_XML := -f $(glapi)/gl_and_es_API.xml
 $(top_builddir)/$(CUR_MESADIR)/main/api_exec_init.c: $(dispatch_deps)
+	$(call es-gen)
+
+$(top_builddir)/$(CUR_MESADIR)/main/api_trace.c: PRIVATE_SCRIPT := $(PYTHON) $(glapi)/api_trace_c.py
+$(top_builddir)/$(CUR_MESADIR)/main/api_trace.c: PRIVATE_XML := -f $(glapi)/gl_and_es_API.xml
+$(top_builddir)/$(CUR_MESADIR)/main/api_trace.c: $(dispatch_deps)
 	$(call es-gen)
 
 $(top_builddir)/$(CUR_MESADIR)/main/api_exec_decl.h: PRIVATE_SCRIPT := $(PYTHON) $(glapi)/api_exec_decl_h.py

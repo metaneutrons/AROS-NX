@@ -1,4 +1,4 @@
-# Mesa 26.0.0 compiler inventory for the AROS new-layout recipe.
+# Mesa 26.2.5 compiler inventory for the AROS new-layout recipe.
 # Paths are relative to src/compiler. Lists preserve the wildcard group order
 # in workbench/libs/mesa/libcompiler/mmakefile.src.
 #
@@ -86,6 +86,7 @@ MESA26_COMPILER_NIR_C_SOURCES := \
 	nir/nir_clip_cull_distance_io_utils.c \
 	nir/nir_clone.c \
 	nir/nir_control_flow.c \
+	nir/nir_convert_address_format.c \
 	nir/nir_deref.c \
 	nir/nir_divergence_analysis.c \
 	nir/nir_dominance.c \
@@ -109,6 +110,7 @@ MESA26_COMPILER_NIR_C_SOURCES := \
 	nir/nir_linking_helpers.c \
 	nir/nir_liveness.c \
 	nir/nir_loop_analyze.c \
+	nir/nir_lower_abort.c \
 	nir/nir_lower_alpha.c \
 	nir/nir_lower_alu.c \
 	nir/nir_lower_alu_width.c \
@@ -119,7 +121,6 @@ MESA26_COMPILER_NIR_C_SOURCES := \
 	nir/nir_lower_bit_size.c \
 	nir/nir_lower_bitmap.c \
 	nir/nir_lower_blend.c \
-	nir/nir_lower_bool_to_bitsize.c \
 	nir/nir_lower_bool_to_float.c \
 	nir/nir_lower_bool_to_int32.c \
 	nir/nir_lower_calls_to_builtins.c \
@@ -222,6 +223,7 @@ MESA26_COMPILER_NIR_C_SOURCES := \
 	nir/nir_move_output_stores_to_end.c \
 	nir/nir_move_vec_src_uses_to_dest.c \
 	nir/nir_normalize_cubemap_coords.c \
+	nir/nir_normalize_sin_cos.c \
 	nir/nir_opt_access.c \
 	nir/nir_opt_barriers.c \
 	nir/nir_opt_barycentric.c \
@@ -239,6 +241,7 @@ MESA26_COMPILER_NIR_C_SOURCES := \
 	nir/nir_opt_find_array_copies.c \
 	nir/nir_opt_frag_coord_to_pixel_coord.c \
 	nir/nir_opt_fragdepth.c \
+	nir/nir_opt_fp_math_ctrl.c \
 	nir/nir_opt_gcm.c \
 	nir/nir_opt_generate_bfi.c \
 	nir/nir_opt_group_loads.c \
@@ -269,6 +272,7 @@ MESA26_COMPILER_NIR_C_SOURCES := \
 	nir/nir_opt_remove_phis.c \
 	nir/nir_opt_shrink_stores.c \
 	nir/nir_opt_shrink_vectors.c \
+	nir/nir_opt_shared_vars_to_subgroup.c \
 	nir/nir_opt_sink.c \
 	nir/nir_opt_undef.c \
 	nir/nir_opt_uniform_atomics.c \
@@ -357,7 +361,7 @@ MESA26_COMPILER_GLSL_GENERATED_ALWAYS_HEADERS := \
 	glsl/float64_glsl.h
 
 # The current recipe adds these five only when the corresponding Mesa 26 GLSL
-# input exists. All five inputs exist in the pinned Mesa 26.0.0 source tree.
+# input exists. All five inputs exist in the pinned Mesa 26.2.5 source tree.
 MESA26_COMPILER_GLSL_GENERATED_OPTIONAL_HEADERS := \
 	glsl/cross_platform_settings_piece_all.h \
 	glsl/bc1_glsl.h \

@@ -10,11 +10,11 @@
       }
     },
     {
-      "role": "product:mesa@26.0.0",
-      "destination": "portssources/mesa-26.0.0.tar.xz",
+      "role": "product:mesa@26.2.5",
+      "destination": "portssources/mesa-26.2.5.tar.xz",
       "source_guard": {
         "path": "workbench/libs/mesa/mesa.cfg",
-        "line": "MESA_ARCHIVE_CHECKSUMS := mesa-26.0.0.tar.xz=sha256:2a44e98e64d5c36cec64633de2d0ec7eff64703ee25b35364ba8fcaa84f33f72"
+        "line": "MESA_ARCHIVE_CHECKSUMS := mesa-26.2.5.tar.xz=sha256:794b3d1729075dae7ebd47c7283b7ca0cdb5dec668f7f11cc0a5d82f6138a0a5"
       }
     }
   ]
