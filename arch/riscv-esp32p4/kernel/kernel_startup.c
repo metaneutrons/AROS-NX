@@ -360,6 +360,9 @@ void kernel_cstart(unsigned long hartid, void *fdt)
     platform_init();
 
     krnCLICInit();
+    /* riscv-native dispatches the tick through the hook table, so the
+       table has to be filled before the tick starts */
+    krnP4PlatformHooks();
     krnTimerInit();
     csr_set(mstatus, MSTATUS_MIE);
     krnWdtArm();
@@ -472,7 +475,6 @@ void kernel_cstart(unsigned long hartid, void *fdt)
             (void)krnP4PublishPSRAM(P4_PSRAM_WINDOW_BASE);
     }
 
-    krnP4PlatformHooks();
     krnP4ConsoleRuntime();
     krnStartExec();
 
