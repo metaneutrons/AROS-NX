@@ -31,8 +31,8 @@ PKG_LIBS_ARCH := expansion
 # The package and the flash development volume share the arosbsp
 # partition; a package over the board's limit would have the loader read
 # volume bytes as members.
-#MM
-kernel-package-esp32p4-riscv-checksize : kernel-package-esp32p4-riscv
+#MM kernel-package-esp32p4-riscv-checksize : kernel-package-esp32p4-riscv
+kernel-package-esp32p4-riscv-checksize :
 	@$(PYTHON) $(SRCDIR)/arch/riscv-esp32p4/tools/check-artifact-size.py \
 	    "$(AROSARCHDIR)/aros-bsp.pkg" $(P4_BOARD_PKG_LIMIT) --label Package
 
