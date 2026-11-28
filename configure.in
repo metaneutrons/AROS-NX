@@ -406,6 +406,10 @@ case "$host_os" in
 please run 'xcode-select --install' before
 re-running configure])])
         AC_MSG_RESULT($LOC)
+        # MetaMake must use GNU make, not the make 3.81 macOS ships: the
+        # archive and link response files need the $(file ...) function,
+        # which GNU make has had since 4.0.
+        aros_host_make="gmake"
         aros_host_arch="darwin"
         host_cc_elf=no
         if [[ -z ${SED+x} ]]; then
