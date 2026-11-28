@@ -1,0 +1,54 @@
+#ifndef ESP32P4_FLASH_LAYOUT_H
+#define ESP32P4_FLASH_LAYOUT_H
+
+#define P4_BOARD_BOOTLOADER_OFFSET      0x00002000UL
+
+/*
+ * Board headers describe the physical board and retain their historical
+ * partition values. This header applies the opt-in flash layout afterward.
+ * The A/B layout deliberately does not alias DEVELOP into a BSP package.
+ */
+#if defined(P4_FLASH_LAYOUT_AB) && P4_FLASH_LAYOUT_AB
+
+#undef P4_BOARD_PARTITION_OFFSET
+#define P4_BOARD_PARTITION_OFFSET       0x00020000UL
+
+#define P4_BOARD_BOOT_REGION_BYTES      0x00040000UL
+#define P4_BOARD_KERNEL_SLOT_BYTES      0x00080000UL
+#define P4_BOARD_BSP_SLOT_BYTES         0x00600000UL
+#define P4_BOARD_PACKAGE_LIMIT_BYTES    0x00600000UL
+#define P4_BOARD_PKG_LIMIT              0x00600000UL
+
+#define P4_BOARD_KERNEL_PART_TYPE       0x00
+#define P4_BOARD_KERNEL_SLOT_A_SUBTYPE  0x10
+#define P4_BOARD_KERNEL_SLOT_B_SUBTYPE  0x11
+#define P4_BOARD_KERNEL_SLOT_A_LABEL    "KERNEL_A"
+#define P4_BOARD_KERNEL_SLOT_B_LABEL    "KERNEL_B"
+
+#undef P4_BOARD_BSP_PART_LABEL
+#define P4_BOARD_BSP_PART_TYPE          0x40
+#define P4_BOARD_BSP_SLOT_A_SUBTYPE     0x00
+#define P4_BOARD_BSP_SLOT_B_SUBTYPE     0x01
+#define P4_BOARD_BSP_SLOT_A_LABEL       "BSP_A"
+#define P4_BOARD_BSP_SLOT_B_LABEL       "BSP_B"
+
+#undef P4_BOARD_FLASHDISK_PART_OFFSET
+#undef P4_BOARD_FLASHDISK_SIZE
+#define P4_BOARD_FLASHDISK_PART_OFFSET  0x00000000UL
+#define P4_BOARD_FLASHDISK_SIZE         0x002c0000UL
+#define P4_BOARD_FLASHDISK_SIZE_BYTES   0x002c0000UL
+#define P4_BOARD_FLASHDISK_PART_LABEL  "DEVELOP"
+#define P4_BOARD_FLASHDISK_PART_TYPE   0x41
+#define P4_BOARD_FLASHDISK_PART_SUBTYPE 0x00
+#define P4_BOARD_DEVELOP_OFFSET         0x00d40000UL
+#define P4_BOARD_DEVELOP_SIZE_BYTES     0x002c0000UL
+
+#else
+
+/* In the legacy profile the existing board headers remain authoritative. */
+#define P4_BOARD_PKG_LIMIT              0x003e0000UL
+#define P4_BOARD_FLASHDISK_SIZE_BYTES   0x00400000UL
+
+#endif
+
+#endif
