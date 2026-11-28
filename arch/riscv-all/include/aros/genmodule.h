@@ -1,7 +1,7 @@
 /*
     Copyright (C) 2023-2026, The AROS Development Team. All rights reserved.
 
-    Desc: genmodule.h include file for risc-v (RV32 ILP32D, RV64 LP64D) systems.
+    Desc: genmodule.h include file for risc-v (RV32 and RV64) systems.
 
     Library-call stubs jump through the library's downward-growing vector
     table: the function for LVO n lives at (libbase - n*LIB_VECTSIZE), and
@@ -26,6 +26,16 @@
 #define __AROS_GM_RV_FRAME  "((64+9*" __AROS_GM_RV_SZREG "+15)&~15)"
 /* Integer slot k (a0 = 0 ... a7 = 7, ra = 8) */
 #define __AROS_GM_RV_SLOT(k) "64+" #k "*" __AROS_GM_RV_SZREG "(sp)"
+/* Save and restore of fa<n> in its 8-byte slot, with the opcode the float
+ * ABI needs (see aros/riscv/xlen.h); nothing under a soft float ABI, where
+ * no FP argument registers exist. The frame layout is the same either way. */
+#if defined(__AROS_RV_FSX_STR)
+#define __AROS_GM_RV_FS(n)  "\t" __AROS_RV_FSX_STR "  fa" #n ", " #n "*8(sp)\n"
+#define __AROS_GM_RV_FL(n)  "\t" __AROS_RV_FLX_STR "  fa" #n ", " #n "*8(sp)\n"
+#else
+#define __AROS_GM_RV_FS(n)  ""
+#define __AROS_GM_RV_FL(n)  ""
+#endif
 
 /* Macros for generating library stub functions and aliases for stack libcalls. */
 
@@ -68,17 +78,17 @@
             #fname " :\n"                                                  \
             /* Preserve every argument-carrying register across the        \
              * helper call: a0-a7 (integer args), fa0-fa7 (FP args) and    \
-             * ra. The ILP32D and LP64D ABIs let the callee clobber all    \
-             * of them. */                                                 \
+             * ra. Every RISC-V calling convention lets the callee clobber \
+             * all of them. */                                             \
             "\taddi sp, sp, -" __AROS_GM_RV_FRAME "\n"                     \
-            "\tfsd  fa0, 0(sp)\n"                                          \
-            "\tfsd  fa1, 8(sp)\n"                                          \
-            "\tfsd  fa2, 16(sp)\n"                                         \
-            "\tfsd  fa3, 24(sp)\n"                                         \
-            "\tfsd  fa4, 32(sp)\n"                                         \
-            "\tfsd  fa5, 40(sp)\n"                                         \
-            "\tfsd  fa6, 48(sp)\n"                                         \
-            "\tfsd  fa7, 56(sp)\n"                                         \
+            __AROS_GM_RV_FS(0)                                             \
+            __AROS_GM_RV_FS(1)                                             \
+            __AROS_GM_RV_FS(2)                                             \
+            __AROS_GM_RV_FS(3)                                             \
+            __AROS_GM_RV_FS(4)                                             \
+            __AROS_GM_RV_FS(5)                                             \
+            __AROS_GM_RV_FS(6)                                             \
+            __AROS_GM_RV_FS(7)                                             \
             "\t" __AROS_GM_RV_SX "   a0, " __AROS_GM_RV_SLOT(0) "\n"       \
             "\t" __AROS_GM_RV_SX "   a1, " __AROS_GM_RV_SLOT(1) "\n"       \
             "\t" __AROS_GM_RV_SX "   a2, " __AROS_GM_RV_SLOT(2) "\n"       \
@@ -104,14 +114,14 @@
             "\t" __AROS_GM_RV_LX "   a2, " __AROS_GM_RV_SLOT(2) "\n"       \
             "\t" __AROS_GM_RV_LX "   a1, " __AROS_GM_RV_SLOT(1) "\n"       \
             "\t" __AROS_GM_RV_LX "   a0, " __AROS_GM_RV_SLOT(0) "\n"       \
-            "\tfld  fa7, 56(sp)\n"                                         \
-            "\tfld  fa6, 48(sp)\n"                                         \
-            "\tfld  fa5, 40(sp)\n"                                         \
-            "\tfld  fa4, 32(sp)\n"                                         \
-            "\tfld  fa3, 24(sp)\n"                                         \
-            "\tfld  fa2, 16(sp)\n"                                         \
-            "\tfld  fa1, 8(sp)\n"                                          \
-            "\tfld  fa0, 0(sp)\n"                                          \
+            __AROS_GM_RV_FL(7)                                             \
+            __AROS_GM_RV_FL(6)                                             \
+            __AROS_GM_RV_FL(5)                                             \
+            __AROS_GM_RV_FL(4)                                             \
+            __AROS_GM_RV_FL(3)                                             \
+            __AROS_GM_RV_FL(2)                                             \
+            __AROS_GM_RV_FL(1)                                             \
+            __AROS_GM_RV_FL(0)                                             \
             "\taddi sp, sp, " __AROS_GM_RV_FRAME "\n"                      \
             "\tbeqz t6, 2f\n"                /* base unresolved -> trap */ \
             "\tli   t0, %0\n"                /* t0 = lvo*LIB_VECTSIZE   */ \
@@ -152,17 +162,17 @@
     {                                                                      \
         asm volatile(                                                      \
             "\t" __GM_STRINGIZE(libfuncname) " :\n"                        \
-            /* Preserve a0-a7, fa0-fa7 and ra - the ILP32D and LP64D ABIs  \
-             * let the callee clobber all of them. */                      \
+            /* Preserve a0-a7, fa0-fa7 and ra - every RISC-V calling      \
+             * convention lets the callee clobber all of them. */          \
             "\taddi sp, sp, -" __AROS_GM_RV_FRAME "\n"                     \
-            "\tfsd  fa0, 0(sp)\n"                                          \
-            "\tfsd  fa1, 8(sp)\n"                                          \
-            "\tfsd  fa2, 16(sp)\n"                                         \
-            "\tfsd  fa3, 24(sp)\n"                                         \
-            "\tfsd  fa4, 32(sp)\n"                                         \
-            "\tfsd  fa5, 40(sp)\n"                                         \
-            "\tfsd  fa6, 48(sp)\n"                                         \
-            "\tfsd  fa7, 56(sp)\n"                                         \
+            __AROS_GM_RV_FS(0)                                             \
+            __AROS_GM_RV_FS(1)                                             \
+            __AROS_GM_RV_FS(2)                                             \
+            __AROS_GM_RV_FS(3)                                             \
+            __AROS_GM_RV_FS(4)                                             \
+            __AROS_GM_RV_FS(5)                                             \
+            __AROS_GM_RV_FS(6)                                             \
+            __AROS_GM_RV_FS(7)                                             \
             "\t" __AROS_GM_RV_SX "   a0, " __AROS_GM_RV_SLOT(0) "\n"       \
             "\t" __AROS_GM_RV_SX "   a1, " __AROS_GM_RV_SLOT(1) "\n"       \
             "\t" __AROS_GM_RV_SX "   a2, " __AROS_GM_RV_SLOT(2) "\n"       \
@@ -183,14 +193,14 @@
             "\t" __AROS_GM_RV_LX "   a2, " __AROS_GM_RV_SLOT(2) "\n"       \
             "\t" __AROS_GM_RV_LX "   a1, " __AROS_GM_RV_SLOT(1) "\n"       \
             "\t" __AROS_GM_RV_LX "   a0, " __AROS_GM_RV_SLOT(0) "\n"       \
-            "\tfld  fa7, 56(sp)\n"                                         \
-            "\tfld  fa6, 48(sp)\n"                                         \
-            "\tfld  fa5, 40(sp)\n"                                         \
-            "\tfld  fa4, 32(sp)\n"                                         \
-            "\tfld  fa3, 24(sp)\n"                                         \
-            "\tfld  fa2, 16(sp)\n"                                         \
-            "\tfld  fa1, 8(sp)\n"                                          \
-            "\tfld  fa0, 0(sp)\n"                                          \
+            __AROS_GM_RV_FL(7)                                             \
+            __AROS_GM_RV_FL(6)                                             \
+            __AROS_GM_RV_FL(5)                                             \
+            __AROS_GM_RV_FL(4)                                             \
+            __AROS_GM_RV_FL(3)                                             \
+            __AROS_GM_RV_FL(2)                                             \
+            __AROS_GM_RV_FL(1)                                             \
+            __AROS_GM_RV_FL(0)                                             \
             "\taddi sp, sp, " __AROS_GM_RV_FRAME "\n"                      \
             "\ttail " #fname "\n"                                          \
         );                                                                 \

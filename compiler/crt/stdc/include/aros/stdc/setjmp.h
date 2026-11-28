@@ -25,10 +25,10 @@
     /* AAPCS64 callee-saved: x19-x30, sp, NEON v8-v15, plus headroom */
 #   define _JMPLEN 31
 #elif defined(__riscv) && (__riscv_xlen == 64)
-    /* LP64D callee-saved: ra, sp, s0-s11, fs0-fs11 */
+    /* LP64 callee-saved: ra, sp, s0-s11, fs0-fs11 in 8-byte slots */
 #   define _JMPLEN 25
 #elif __riscv
-    /* ILP32D callee-saved: ra, sp, s0-s11 (13 slots + pad),
+    /* ILP32 callee-saved: ra, sp, s0-s11 (13 slots + pad),
        then fs0-fs11 as 12 8-byte pairs at an 8-aligned offset */
 #   define _JMPLEN 37
 #endif

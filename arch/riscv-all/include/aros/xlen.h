@@ -39,4 +39,28 @@
 #error "aros/riscv/xlen.h: __riscv_xlen must be 32 or 64"
 #endif
 
+/*
+    The callee-saved and argument FP registers (fs0-fs11, fa0-fa7) exist
+    under every hard float ABI, but their saved width follows the ABI, not
+    the hardware: 8 bytes under ILP32D/LP64D, 4 under ILP32F/LP64F. Code
+    that saves them keeps 8-byte slots in every case and only picks the
+    opcode, so no layout differs between the ABIs. Under a soft float ABI
+    there is nothing to save and the names stay undefined.
+*/
+#if defined(__riscv_float_abi_double)
+#define __AROS_RV_FLX_STR   "fld"
+#define __AROS_RV_FSX_STR   "fsd"
+#ifdef __ASSEMBLER__
+#define FREG_S  fsd
+#define FREG_L  fld
+#endif
+#elif defined(__riscv_float_abi_single)
+#define __AROS_RV_FLX_STR   "flw"
+#define __AROS_RV_FSX_STR   "fsw"
+#ifdef __ASSEMBLER__
+#define FREG_S  fsw
+#define FREG_L  flw
+#endif
+#endif
+
 #endif /* AROS_RISCV_XLEN_H */

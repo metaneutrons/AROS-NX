@@ -9,8 +9,8 @@
     integer register, calls the real C implementation (_Exec_20_Disable),
     then restores and returns - so Disable()/Enable()/Forbid()/Permit()
     and the semaphore fast paths stay register-transparent to their
-    callers, as on the other arches. The caller-saved integer set (ILP32D
-    and LP64D alike) is ra, t0-t6 and a0-a7 (the C impl preserves
+    callers, as on the other arches. The caller-saved integer set (the same
+    under every RISC-V ABI) is ra, t0-t6 and a0-a7 (the C impl preserves
     s0-s11/sp); each takes an SZREG slot. As on AArch64, caller-saved FP
     registers are not preserved here.
 */

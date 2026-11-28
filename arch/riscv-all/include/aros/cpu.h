@@ -7,7 +7,7 @@
 
     NOTE: This file must compile *without* any other header !
 
-    Desc: cpu.h include file for risc-v (RV32 ILP32D, RV64 LP64D) systems
+    Desc: cpu.h include file for risc-v (RV32 and RV64) systems
     Lang: english
 */
 
