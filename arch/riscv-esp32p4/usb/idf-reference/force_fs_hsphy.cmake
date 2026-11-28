@@ -164,6 +164,17 @@ function(hs_reference_force_fs_hsphy target source output)
             endif()
             string(REPLACE "${_site}" "${_site}\n  ${_hook}" _patched_contents "${_patched_contents}")
         endforeach()
+        if(HS_REFERENCE_BVALID)
+            # Diagnostic-only backport of upstream bus-powered operation.
+            # Keep this independent of the upstream FS USB_WRAP guard change.
+            set(_session_old "dwc2->gotgctl &= ~(GOTGCTL_BVALOEN | GOTGCTL_BVALOVAL | GOTGCTL_VBVALOVAL);")
+            set(_session_new "dwc2->gotgctl = (dwc2->gotgctl & ~GOTGCTL_AVALOEN) | GOTGCTL_BVALOEN | GOTGCTL_BVALOVAL;")
+            string(FIND "${_patched_contents}" "${_session_old}" _session_pos)
+            if(_session_pos EQUAL -1)
+                message(FATAL_ERROR "Pinned B-session initialization is missing")
+            endif()
+            string(REPLACE "${_session_old}" "${_session_new}" _patched_contents "${_patched_contents}")
+        endif()
     else()
         string(REPLACE "${_original_statement}" "${_replacement_statement}"
             _patched_contents "${_original_contents}")

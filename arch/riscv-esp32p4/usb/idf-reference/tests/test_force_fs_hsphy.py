@@ -61,6 +61,7 @@ class ForceFsHsphyTests(unittest.TestCase):
         output_parent_symlink_target: Path | None = None,
         output_hardlink: bool = False,
         mode: str = "",
+        bvalid: bool = False,
     ) -> tuple[subprocess.CompletedProcess[str], Path]:
         temporary = tempfile.TemporaryDirectory(prefix="force-fs-hsphy-")
         self.addCleanup(temporary.cleanup)
@@ -95,6 +96,7 @@ add_library(espressif__tinyusb STATIC
 )
 target_include_directories(espressif__tinyusb PRIVATE "${{CMAKE_CURRENT_SOURCE_DIR}}/existing-include")
 include({cmake_quote(MODULE)})
+set(HS_REFERENCE_BVALID {"ON" if bvalid else "OFF"})
 hs_reference_force_fs_hsphy(
     espressif__tinyusb
     {cmake_quote(source)}
@@ -167,6 +169,19 @@ endif()
         result, _ = self.configure(self.source, mode="UNKNOWN")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Unknown DCD diagnostic mode", result.stdout + result.stderr)
+
+    def test_bvalid_changes_only_session_initialization(self) -> None:
+        off, off_build = self.configure(self.source, mode="RX_TRACE")
+        on, on_build = self.configure(self.source, mode="RX_TRACE", bvalid=True)
+        self.assertEqual(off.returncode, 0, off.stdout + off.stderr)
+        self.assertEqual(on.returncode, 0, on.stdout + on.stderr)
+        old = "dwc2->gotgctl &= ~(GOTGCTL_BVALOEN | GOTGCTL_BVALOVAL | GOTGCTL_VBVALOVAL);"
+        new = "dwc2->gotgctl = (dwc2->gotgctl & ~GOTGCTL_AVALOEN) | GOTGCTL_BVALOEN | GOTGCTL_BVALOVAL;"
+        off_text = (off_build / "hs-fs-comparison/dcd_dwc2.c").read_text()
+        on_text = (on_build / "hs-fs-comparison/dcd_dwc2.c").read_text()
+        self.assertEqual(off_text.count(old), 1)
+        self.assertEqual(on_text.count(new), 1)
+        self.assertEqual(on_text, off_text.replace(old, new))
 
     def test_replaces_one_statement_in_an_out_of_tree_copy(self) -> None:
         original_bytes = self.source.read_bytes()
