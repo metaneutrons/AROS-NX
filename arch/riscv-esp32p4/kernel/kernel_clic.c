@@ -11,6 +11,8 @@
 */
 
 #include <inttypes.h>
+#include <exec/types.h>
+#include <kernel_irqtypes.h>
 
 #include "hardware.h"
 #include "kernel_intern.h"
@@ -104,4 +106,23 @@ int krnCLICPending(unsigned int line)
     if (line >= P4_CLIC_LINES)
         return 0;
     return (ctrl_rd(line) & P4_CLIC_INT_IP) ? 1 : 0;
+}
+
+/* kernel.resource's interrupt controller calls (kernel_arch.h) */
+struct KernelBase;
+
+void ictl_enable_irq(irqid_t irq, struct KernelBase *KernelBase)
+{
+    (void)KernelBase;
+
+    if (irq < P4_CLIC_LINES)
+        krnCLICEnable(irq, 0);
+}
+
+void ictl_disable_irq(irqid_t irq, struct KernelBase *KernelBase)
+{
+    (void)KernelBase;
+
+    if (irq < P4_CLIC_LINES)
+        krnCLICDisable(irq);
 }

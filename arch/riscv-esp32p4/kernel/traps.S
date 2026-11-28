@@ -5,30 +5,27 @@
     Desc: Machine mode trap entry for the esp32p4-riscv target.
 
     Saves the interrupted state as a struct ExceptionContext (see
-    aros/riscv/cpucontext.h) on the current stack and calls
-    krnTrapHandler(ctx, mcause, mtval). On return the context, which the
-    handler may have changed, is restored and execution resumes via mret.
+    aros/riscv/cpucontext.h) and calls krnP4TrapHandler(ctx, mcause,
+    mtval), which hands it to riscv-native's krnTrapHandler. On return the
+    context, which the handler may have changed, is restored and execution
+    resumes via mret. This follows riscv64-sbi's traps.S, in machine mode
+    and with RV32 offsets.
 
     Frame layout (16-byte aligned, 144 bytes):
       0-112:  x[29]  ra,sp,t0,t1,t2,fp,s1,a0-a7,s2-s11,t3-t6
       116:    pc     (mepc)
-      120:    sr     (mstatus - carries the per-task FS dirty state and
-                      MPIE, the pre-trap interrupt enable that mret
-                      restores into MIE)
+      120:    sr     (mstatus - carries the per-task FS state and MPIE,
+                      the pre-trap interrupt enable that mret restores)
       124:    Flags
       128:    fpuContext
       132:    vecContext
 
     gp and tp are kernel-owned and are deliberately not part of the
-    context, which is what RISCV_REGSAVE_CNT counting 29 of 32 reflects.
-
-    The f registers are not saved here. mstatus.FS travels in the context
-    and the scheduler saves the FPU only when it reads back as DIRTY; see
-    kernel_cpu.c.
-
-    Nothing here touches the trap depth counter KrnIsSuper() reports from;
-    krnTrapHandler owns it, so that it covers exactly the C handler.
+    context (matching RISCV_REGSAVE_CNT).
 */
+
+#include <aros/config.h>
+#include "tls.h"
 
 /*
  * 64-byte aligned, and not by preference. This CLIC does not take mtvec
@@ -37,37 +34,28 @@
  * 4-byte aligned gets rounded down to somewhere else entirely. The
  * symptom is an interrupt that pends and is never seen.
  */
-#include <aros/config.h>
-
 	.text
 	.balign	0x40
 	.globl	__trap_entry
 	.type	__trap_entry,%function
 __trap_entry:
-	/*
-	 * Each hart has its own interrupt stack in internal SRAM, whose top
-	 * mscratch holds while no trap is active on that hart. A trap frame
-	 * on a task's stack would still be in use while another hart already
-	 * runs the task, and while hart 1 waits out a cache-off window PSRAM
-	 * cannot be reached at all. mscratch is 0 inside a trap, so a nested
-	 * one stays on the stack it interrupted.
-	 */
-	csrrw	sp, mscratch, sp
+	/* A trap taken in task context (nesting depth 0) moves to this hart's
+	   own stack (TLS StackTop), so that the frame and the dispatch never
+	   touch the task's stack: another hart may already run the task, or
+	   free its stack, while this one is still on its way out. A nested
+	   trap stays on the stack it interrupted. */
+	csrw	mscratch, t0
+	mv	t0, sp
+	lw	sp, TLS_TRAPDEPTH_OFFSET(tp)
 	bnez	sp, 1f
-	csrrw	sp, mscratch, sp	/* nested: back, mscratch 0 again */
-	addi	sp, sp, -144
-	sw	t0, 8(sp)
-	addi	t0, sp, 144
-	sw	t0, 4(sp)		/* interrupted sp */
-	sw	zero, 136(sp)		/* nothing to put back on exit */
+	lw	sp, TLS_STACKTOP_OFFSET(tp)
 	j	2f
-1:	addi	sp, sp, -144		/* sp: this hart's interrupt stack */
+1:	mv	sp, t0
+2:	addi	sp, sp, -144
+	sw	t0, 4(sp)		/* interrupted sp */
+	csrr	t0, mscratch
+	sw	ra, 0(sp)
 	sw	t0, 8(sp)
-	addi	t0, sp, 144
-	sw	t0, 136(sp)		/* its top, to put back on exit */
-	csrrw	t0, mscratch, zero	/* interrupted sp; 0 while inside */
-	sw	t0, 4(sp)
-2:	sw	ra, 0(sp)
 	sw	t1, 12(sp)
 	sw	t2, 16(sp)
 	sw	s0, 20(sp)
@@ -94,7 +82,7 @@ __trap_entry:
 	sw	t4, 104(sp)
 	sw	t5, 108(sp)
 	sw	t6, 112(sp)
-	/* interrupted sp, pc and mstatus */
+	/* interrupted pc and mstatus */
 	csrr	t0, mepc
 	sw	t0, 116(sp)
 	csrr	t0, mstatus
@@ -107,21 +95,19 @@ __trap_entry:
 	mv	a0, sp			/* ctx    */
 	csrr	a1, mcause
 	csrr	a2, mtval
-	call	krnTrapHandler
+	call	krnP4TrapHandler
 
-	/* restore (the handler may have modified the context) */
-	lw	t0, 136(sp)
-	csrw	mscratch, t0		/* the stack top again, or 0 when nested */
+	/* Restore (the handler may have modified the context). MIE stays off
+	   for the whole restore: an interrupt taken part-way through it would
+	   be saved with an mepc inside this code and resume a half-restored
+	   context. mret restores the task's own interrupt enable from MPIE. */
+	csrci	mstatus, 8
 	lw	t0, 116(sp)
 	csrw	mepc, t0
 	lw	t0, 120(sp)
-	/* Still on the interrupt stack with mscratch armed: an interrupt now
-	   would start a fresh frame over this one. MIE comes back with mret,
-	   from MPIE. */
 	andi	t0, t0, -9
 	csrw	mstatus, t0
 	lw	ra, 0(sp)
-	lw	t1, 12(sp)
 	lw	t2, 16(sp)
 	lw	s0, 20(sp)
 	lw	s1, 24(sp)
@@ -147,10 +133,16 @@ __trap_entry:
 	lw	t4, 104(sp)
 	lw	t5, 108(sp)
 	lw	t6, 112(sp)
+	/* Release the nesting depth at the very end of the exit, as
+	   riscv-native expects: a trap taken mid-exit must still count as
+	   nested and must not enter the scheduler. */
+	lw	t1, TLS_TRAPDEPTH_OFFSET(tp)
+	addi	t1, t1, -1
+	sw	t1, TLS_TRAPDEPTH_OFFSET(tp)
+	lw	t1, 12(sp)
 	lw	t0, 8(sp)
 	/* Load sp last, directly from the context - the dispatcher may
 	   have switched the frame to a different task */
 	lw	sp, 4(sp)
 	mret
-
 	.size	__trap_entry, . - __trap_entry

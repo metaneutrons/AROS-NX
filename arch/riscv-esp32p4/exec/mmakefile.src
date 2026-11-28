@@ -1,0 +1,42 @@
+
+include $(SRCDIR)/config/aros.cfg
+include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
+
+# Only the cache maintenance is the ESP32-P4's own (cpu_init.c); the idle
+# task, SuperState() and exec's SMP support come from riscv-native.
+CFILES          := \
+        cpu_init
+
+#MM- kernel-exec-esp32p4 : kernel-exec-native-riscv
+#MM- kernel-exec-esp32p4-quick : kernel-exec-native-riscv-quick
+#MM- kernel-exec-esp32p4-linklib : kernel-exec-native-riscv-linklib
+#MM- kernel-exec-esp32p4-set-archincludes : kernel-exec-native-riscv-set-archincludes
+
+# The common Exec header aggregate selects this architecture-first endpoint.
+# Keep its kernel API prerequisite explicit, as in the other native ports.
+#MM- kernel-exec-includes-esp32p4-riscv : kernel-kernel-includes
+
+%set_archincludes mainmmake=kernel-exec maindir=rom/exec \
+  modname=exec pri=2 arch=esp32p4-riscv \
+  includes="-I$(SRCDIR)/$(CURDIR)"
+
+%get_archincludes modname=kernel \
+    includeflag=TARGET_KERNEL_INCLUDES maindir=rom/kernel
+
+%get_archincludes modname=exec \
+    includeflag=TARGET_EXEC_INCLUDES maindir=rom/exec
+
+PRIV_EXEC_INCLUDES = \
+    $(TARGET_EXEC_INCLUDES) \
+    -I$(SRCDIR)/rom/exec \
+    $(TARGET_KERNEL_INCLUDES) \
+    -I$(SRCDIR)/rom/kernel
+
+USER_INCLUDES   := $(PRIV_EXEC_INCLUDES)
+USER_CPPFLAGS   := $(P4_BOARD_CPPFLAGS)
+
+%build_archspecific \
+  mainmmake=kernel-exec maindir=rom/exec arch=esp32p4-riscv \
+  files=$(CFILES) modname=exec
+
+%common

@@ -32,7 +32,6 @@
 
 #include "hardware.h"
 #include "kernel_intern.h"
-#include "tls.h"
 
 #define CANARY_PRIORITY     100
 #define CANARY_STACK        8192

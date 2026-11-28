@@ -15,7 +15,6 @@
 
 #include "hardware.h"
 #include "kernel_intern.h"
-#include "tls.h"
 
 volatile unsigned long __esp32p4_ticks;
 
@@ -47,7 +46,7 @@ uint64_t krnTimerCount(void)
 {
     unsigned int spins = 1000;
     uint32_t hi, lo;
-    unsigned long s = p4_tls_mask();
+    unsigned long s = p4_irq_mask();
 
     while (__atomic_exchange_n(&snapshot_lock, 1, __ATOMIC_ACQUIRE))
         ;
@@ -60,7 +59,7 @@ uint64_t krnTimerCount(void)
     lo = st_rd(P4_ST_UNIT0_VALUE_LO);
 
     __atomic_store_n(&snapshot_lock, 0, __ATOMIC_RELEASE);
-    p4_tls_unmask(s);
+    p4_irq_unmask(s);
 
     return ((uint64_t)hi << 32) | lo;
 }

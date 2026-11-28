@@ -24,6 +24,7 @@
 
 #include <aros/config.h>
 #include "secondary_hw.h"
+#include "tls.h"
 
 _start:
 	/* Mask machine interrupts until there is a dispatcher for them */
@@ -95,6 +96,16 @@ _start:
 2:
 	/* Record and pass on the hart we came up on */
 	csrr	a0, mhartid
+	/* Per-hart TLS (see riscv-native/kernel/tls.h): the boot hart's is
+	   static, so tp is valid before the first C call - the trap path
+	   counts its nesting through it - and its traps are taken on
+	   riscv-native's boot trap stack, which is in internal SRAM */
+	la	tp, __riscv_boot_tls
+	sw	a0, TLS_HARTID_OFFSET(tp)
+	la	t0, __riscv_boot_trapstack
+	li	t1, RISCV_BOOT_TRAPSTACKSIZE
+	add	t0, t0, t1
+	sw	t0, TLS_STACKTOP_OFFSET(tp)
 	la	t0, __boot_hartid
 	sw	a0, 0(t0)
 

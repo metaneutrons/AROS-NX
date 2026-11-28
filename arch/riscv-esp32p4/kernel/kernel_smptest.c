@@ -27,7 +27,6 @@
 
 #include "kernel_intern.h"
 #include "etask.h"
-#include "tls.h"
 
 #if defined(P4_S4_TEST)
 

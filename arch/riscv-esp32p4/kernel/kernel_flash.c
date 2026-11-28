@@ -299,18 +299,6 @@ void *krnP4FlashMap(unsigned long paddr, unsigned long len)
         krnP4PutStr("[flash] the other hart did not park; not mapped\n");
         return NULL;
     }
-    {
-        static ULONG reported;
-
-        /* The first few windows the other hart waited out, as evidence */
-        if (__p4_parks != reported && __p4_parks <= 3)
-        {
-            reported = __p4_parks;
-            krnP4PutStr("[flash] the other hart waited out window ");
-            krnP4PutDec(reported);
-            krnP4PutStr("\n");
-        }
-    }
     flash_scratch_pages = pages;
 
     /*

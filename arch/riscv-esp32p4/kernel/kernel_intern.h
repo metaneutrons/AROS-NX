@@ -463,7 +463,7 @@ unsigned int krnP4ConsoleDrain(unsigned int budget);
 void krnP4ConsoleBlocking(void);
 
 /*
- * The second hart (SMP.md, S3). Hart n raises its peer with
+ * The second hart. Hart n raises its peer with
  * CPU_INTR_FROM_CPU_n, interrupt matrix source 79 + n; each hart's map
  * routes the source aimed at it to CLIC line 22.
  */
@@ -473,23 +473,13 @@ void krnP4ConsoleBlocking(void);
 #define P4_SMP_INTMTX_ROUTE(c, s) (0x500d6000UL + (c) * 0x800UL + (s) * 4)
 #define P4_SMP_INTMTX_SOURCES   128
 
-#define P4_IPI_PARK             (1UL << 0)  /* wait in SRAM: cache window */
-#define P4_IPI_TICK             (1UL << 1)  /* hart 0's tick, forwarded */
-#define P4_IPI_SCHEDULE         (1UL << 2)  /* look for something to run */
-#define P4_IPI_CALL_HOOK        (1UL << 3)  /* run the queued hook calls */
-#define P4_IPI_SOFTINT          (1UL << 4)  /* hart 0: soft interrupts are pending */
-
-void krnP4SMPInitPrimary(void);
-void krnP4IPIInterrupt(void);
-void krnP4IPISend(unsigned int hart, ULONG work);
-void krnP4TickOthers(void);
-int krnP4ParkOthers(void);
+/* The platform under riscv-native (kernel_native.c) */
+void krnP4PlatformHooks(void);
+int  krnP4ParkOthers(void);
 void krnP4UnparkOthers(void);
 void krnP4ParkServe(void);
 unsigned long krnP4LockTake(volatile ULONG *lock);
 void krnP4LockRelease(volatile ULONG *lock, unsigned long state);
-extern volatile ULONG __p4_parks;
-void krnP4SpinReport(const char *what, void *lock, void *caller);
 void krnP4PutC(char c);
 void krnP4PutStr(const char *s);
 void krnP4PutHex32(uint32_t val);
@@ -522,5 +512,26 @@ void krnP4PutDecS(int32_t val);
  * .sramdata*, so the two names land in the same output section regardless.
  */
 #define P4_SRAMRODATA __attribute__((section(".sramdata.ro"), used))
+
+
+/*
+ * Interrupts off on this hart, and back to how they were. Used where the
+ * two harts share state that interrupt handlers also touch.
+ */
+static inline unsigned long p4_irq_mask(void)
+{
+    unsigned long status;
+
+    asm volatile("csrrci %0, mstatus, 8" : "=r"(status) :: "memory");
+    return status;
+}
+
+static inline void p4_irq_unmask(unsigned long status)
+{
+    asm volatile("csrs mstatus, %0" :: "r"(status & 8) : "memory");
+}
+
+/* Bit n set once hart n runs in the kernel (kernel_native.c) */
+extern volatile ULONG __p4_harts_online;
 
 #endif /* KERNEL_INTERN_H_ */

@@ -31,7 +31,6 @@
 
 #include "hardware.h"
 #include "kernel_intern.h"
-#include "tls.h"
 
 /*
  * The timeout, in milliseconds, assuming the counter ticks once per

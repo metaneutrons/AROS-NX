@@ -27,7 +27,6 @@
 
 #include "hardware.h"
 #include "kernel_intern.h"
-#include "tls.h"
 #include <proto/exec.h>
 #include "console_ring.h"
 #include "console_tap.h"
@@ -573,7 +572,7 @@ void krnP4ConsoleSenderFailed(void)
  * Keep an unsent suffix across calls, including an overflow report. */
 unsigned int krnP4ConsoleDrain(unsigned int budget)
 {
-    unsigned long s = p4_tls_mask();
+    unsigned long s = p4_irq_mask();
     uint32_t free = 0;
     unsigned int sent = 0;
     struct p4_console_record record;
@@ -585,7 +584,7 @@ unsigned int krnP4ConsoleDrain(unsigned int budget)
                                      console_hart() + 1, 0,
                                      __ATOMIC_ACQUIRE, __ATOMIC_RELAXED))
     {
-        p4_tls_unmask(s);
+        p4_irq_unmask(s);
         return 0;
     }
     if (budget > 256)
@@ -640,7 +639,7 @@ unsigned int krnP4ConsoleDrain(unsigned int budget)
     usj_flush_nowait();
 #endif
     __atomic_store_n(&console_holder, 0, __ATOMIC_RELEASE);
-    p4_tls_unmask(s);
+    p4_irq_unmask(s);
     return sent;
 }
 
@@ -703,23 +702,23 @@ static void console_emit(unsigned int hart)
 /* What this hart has of an unfinished line, before it waits for input */
 static void console_flush_self(void)
 {
-    unsigned long s = p4_tls_mask();
+    unsigned long s = p4_irq_mask();
     unsigned int hart = console_hart();
 
     if (console_len[hart])
         console_emit(hart);
-    p4_tls_unmask(s);
+    p4_irq_unmask(s);
 }
 
 void krnP4PutC(char c)
 {
-    unsigned long s = p4_tls_mask();
+    unsigned long s = p4_irq_mask();
     unsigned int hart = console_hart();
 
     console_line[hart][console_len[hart]++] = c;
     if (c == '\n' || console_len[hart] == CONSOLE_LINE)
         console_emit(hart);
-    p4_tls_unmask(s);
+    p4_irq_unmask(s);
 }
 
 void krnP4PutStr(const char *s)
