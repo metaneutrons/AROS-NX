@@ -67,10 +67,12 @@ AFILES := \
 ifdef P4_S4_TEST
 P4_DEBUG_CPPFLAGS += -DP4_S4_TEST
 endif
-# P4_CPU_MHZ=360 raises the CPU clock from what the bootloader left.
-ifdef P4_CPU_MHZ
-P4_DEBUG_CPPFLAGS += -DP4_CPU_MHZ=$(P4_CPU_MHZ)
-endif
+# The CPU clock, raised from what the bootloader left, and the PSRAM bus
+# clock, which above 80 MHz needs the read-sampling calibration
+# (psram_tuning.c). 360 and 200 are what the boards are qualified at.
+P4_CPU_MHZ ?= 360
+P4_PSRAM_MHZ ?= 200
+P4_DEBUG_CPPFLAGS += -DP4_CPU_MHZ=$(P4_CPU_MHZ) -DP4_PSRAM_MHZ=$(P4_PSRAM_MHZ)
 
 USER_INCLUDES := $(PRIV_KERNEL_INCLUDES) -I$(GENINCDIR)
 # startup.S, traps.S and secondary_smp.S read aros/config.h and the TLS

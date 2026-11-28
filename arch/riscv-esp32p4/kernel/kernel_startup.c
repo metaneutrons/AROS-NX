@@ -341,6 +341,9 @@ static void krnStartExec(void)
         }
     }
 
+    /* From here on tasks print, and the console must not block them */
+    krnP4ConsoleRuntime();
+
     InitCode(RTF_SINGLETASK, 0);
     InitCode(RTF_COLDSTART, 0);
 }
@@ -475,7 +478,6 @@ void kernel_cstart(unsigned long hartid, void *fdt)
             (void)krnP4PublishPSRAM(P4_PSRAM_WINDOW_BASE);
     }
 
-    krnP4ConsoleRuntime();
     krnStartExec();
 
     /* Not reached in a complete boot: exec's cold start does not return */
