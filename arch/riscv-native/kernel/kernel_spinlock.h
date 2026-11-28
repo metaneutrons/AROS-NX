@@ -38,6 +38,16 @@ static inline BOOL krnRVSpinTryWrite(spinlock_t *lock)
     return (old == 0);
 }
 
+/*
+ * The lock word is 32 bits wide. RV64 adds to it with addiw, which keeps the
+ * result a sign-extended 32-bit value; RV32 has no W forms and needs none.
+ */
+#if __riscv_xlen == 64
+#define RV_ADDIW    "addiw"
+#else
+#define RV_ADDIW    "addi "
+#endif
+
 /* One attempt at a read lock; TRUE if it was taken */
 static inline BOOL krnRVSpinTryRead(spinlock_t *lock)
 {
@@ -47,7 +57,7 @@ static inline BOOL krnRVSpinTryRead(spinlock_t *lock)
         "1:     lr.w.aq     %0, (%3)        \n"
         "       and         %2, %0, %4      \n"
         "       bnez        %2, 2f          \n"     /* write-held - give up */
-        "       addiw       %2, %0, 1       \n"
+        "       " RV_ADDIW "     %2, %0, 1       \n"
         "       sc.w        %1, %2, (%3)    \n"
         "       bnez        %1, 1b          \n"
         "2:                                 \n"
@@ -74,7 +84,7 @@ static inline void krnRVSpinReleaseRead(spinlock_t *lock)
         "       li          %2, 0xffffff    \n"
         "       and         %2, %0, %2      \n"
         "       beqz        %2, 2f          \n"     /* no readers: leave it */
-        "       addiw       %2, %0, -1      \n"
+        "       " RV_ADDIW "     %2, %0, -1      \n"
         "       sc.w.rl     %1, %2, (%3)    \n"
         "       bnez        %1, 1b          \n"
         "2:                                 \n"
