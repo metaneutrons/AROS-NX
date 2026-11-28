@@ -1,0 +1,39 @@
+#
+#   The board-support package for the esp32p4-riscv target.
+#
+#   The standard AROS PKG v1 container: complete relocatable module files,
+#   which the platform's ELF loader (kernel/kernel_elf.c) places and
+#   relocates in PSRAM at boot, before exec scans for residents. The
+#   kickstart carries only kernel.resource, exec.library, task.resource,
+#   debug.library and timer.device; everything else the cold start needs
+#   comes from here.
+#
+#   This is the headless base: no display, storage or input drivers yet, so
+#   there is no boot volume and DOS is not part of it.
+#
+
+include $(SRCDIR)/config/aros.cfg
+include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
+
+PKG_LIBS      := aros utility oop
+PKG_LIBS_ARCH := expansion
+
+#MM kernel-package-esp32p4-riscv : \
+#MM     kernel-aros \
+#MM     kernel-utility \
+#MM     kernel-oop \
+#MM     kernel-expansion
+
+%make_package mmake=kernel-package-esp32p4-riscv \
+    file=$(AROSARCHDIR)/aros-bsp.pkg \
+    libs="$(PKG_LIBS)" arch_libs="$(PKG_LIBS_ARCH)"
+
+# The package and the flash development volume share the arosbsp
+# partition; a package over the board's limit would have the loader read
+# volume bytes as members.
+#MM
+kernel-package-esp32p4-riscv-checksize : kernel-package-esp32p4-riscv
+	@$(PYTHON) $(SRCDIR)/arch/riscv-esp32p4/tools/check-artifact-size.py \
+	    "$(AROSARCHDIR)/aros-bsp.pkg" $(P4_BOARD_PKG_LIMIT) --label Package
+
+%common
