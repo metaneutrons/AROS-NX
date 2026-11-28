@@ -121,6 +121,9 @@ typedef void (*irqhandler_t)(void *data, void *data2);
 #define KATTR_FrameBufferPitch  (KATTR_CPULoad_END + 7) /* [.G] (IPTR)    - Framebuffer bytes per line                                  */
 #define KATTR_PlatformTimer     (KATTR_CPULoad_END + 8) /* [.G] (APTR)    - Kernel tick timer shared with timer.device (platform specific) */
 #define KATTR_CPUHardwareID     (KATTR_CPULoad_END + 9) /* [.G] (IPTR)    - Hardware id of a CPU (e.g. RISC-V hart id), per CPU via KrnGetCPUAttr() */
+#define KATTR_FrameBufferOps    (KATTR_CPULoad_END + 10) /* [.G] (APTR)   - Optional platform framebuffer operation table (aros/framebuffer.h) */
+#define KATTR_BacklightOps      (KATTR_CPULoad_END + 11) /* [.G] (APTR)   - Optional platform backlight operation table (aros/backlight.h) */
+#define KATTR_CacheOps          (KATTR_CPULoad_END + 12) /* [.G] (APTR)   - Optional platform cache maintenance operation table (aros/cacheops.h) */
 
 /* Tag IDs for KrnStatMemory() */
 #define KMS_Free		(TAG_USER + 0x04000000)

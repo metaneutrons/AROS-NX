@@ -211,12 +211,16 @@ AROS_LD                       := $(TARGET_LD)
 # Optional -T linker script for the kernel-module partial link (AROS_LD -Ur), used
 # to order each module's sections so its Resident romtag lands at the module head
 # (see arch/m68k-amiga/boot/kobj-romtag.ld). Empty for every target except
-# amiga-m68k, so all other builds pass the identical -Ur command as before.
+# amiga-m68k and esp32p4-riscv, so all other builds pass the identical -Ur
+# command as before.
 KERNEL_KOBJ_LDSCRIPT          :=
 ifeq ($(AROS_TARGET_ARCH),amiga)
 ifeq ($(AROS_TARGET_CPU),m68k)
 KERNEL_KOBJ_LDSCRIPT          := -T $(SRCDIR)/arch/m68k-amiga/boot/kobj-romtag.ld
 endif
+endif
+ifeq ($(AROS_TARGET_ARCH),esp32p4)
+KERNEL_KOBJ_LDSCRIPT          := -T $(SRCDIR)/arch/riscv-esp32p4/boot/kobj-romtag.ld
 endif
 
 STRIP                         := $(TARGET_STRIP)

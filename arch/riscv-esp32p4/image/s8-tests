@@ -1,0 +1,13 @@
+# S8: upstream's SMP tests as in s5-tests, then the migration test
+# (developer/debug/test/smp/smpmigrate.c), last because a hang ends the list.
+SMP-Proc
+SMP-Affinity
+SMP-Preempt
+SMP-Sched
+SMP-Sem
+SMP-Trace
+SMP-DoIO
+SMP-Stress QUICK
+SMP-Lists
+SMP-SigRace
+SMP-Migrate

@@ -1,0 +1,13 @@
+# Upstream's SMP tests (developer/debug/test/smp), run in this order by a
+# core built with P4_S5_RUNNER=1. One program per line, then its arguments.
+# Those whose failure is a hang or an alert come last, as it ends the list.
+SMP-Proc
+SMP-Affinity
+SMP-Preempt
+SMP-Sched
+SMP-Sem
+SMP-Trace
+SMP-DoIO
+SMP-Stress QUICK
+SMP-Lists
+SMP-SigRace

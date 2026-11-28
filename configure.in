@@ -1228,6 +1228,7 @@ target_bootloader="none"
 PLATFORM_EXECSMP=
 ENABLE_EXECSMP=
 PLATFORM_EXECWXSEG=
+PLATFORM_RISCVMMODE=
 
 #-----------------------------------------------------------------------------
 # Classic variant is possible for Amiga target.
@@ -2242,6 +2243,60 @@ case "$target_os" in
                 ;;
             *)
                 AC_MSG_ERROR("Unsupported CPU '$target_cpu' for SBI")
+                ;;
+        esac
+        ;;
+
+    esp32p4)
+        aros_flavour="standalone"
+        aros_target_arch="esp32p4"
+        aros_isa_flags="$""(ISA_RISCV_FLAGS)"
+        aros_shared_default="no"
+        llvm_target_cpu="RISCV"
+        aros_kernel_toolchain=$aros_toolchain
+        kernel_toolchain_c_compiler=$toolchain_c_compiler
+        kernel_toolchain_cxx_compiler=$toolchain_cxx_compiler
+        if test "$aros_kernel_toolchain" = "llvm"; then
+            aros_kernel_llvmwrapper=yes
+        fi
+        dnl The HP cores are RV32IMAFC: single precision floats only, so
+        dnl the ilp32d default from the cpu switch above does not hold,
+        dnl and atomics arrive as the split zaamo/zalrsc extensions
+        dnl rather than as a whole A. Overridden here rather than guarded
+        dnl there because the cpu switch runs first.
+        gcc_default_cpu="rv32imafc_zicsr_zifencei_zaamo_zalrsc"
+        gcc_default_mode="ilp32f"
+        dnl No paging hardware. There is a PMP and a cache address
+        dnl remapper, but nothing that translates, so kernel_mm and its
+        dnl allocator have nothing to drive.
+        aros_enable_mmu=no
+        dnl There is no supervisor mode and no SBI below it: the ROM
+        dnl loader starts the image in machine mode and it stays there.
+        PLATFORM_RISCVMMODE="#define __AROSPLATFORM_RISCV_MMODE__"
+        dnl Two HP cores, and the smp variant is the only build: without
+        dnl --enable-target-variant it is selected here, any other
+        dnl variant is refused.
+        case "$aros_target_variant" in
+            ""|smp)
+                aros_target_variant="smp"
+                aros_target_suffix="-smp"
+            ;;
+            *)
+                AC_MSG_ERROR("The ESP32-P4 builds only the smp variant")
+            ;;
+        esac
+        PLATFORM_EXECSMP="#define __AROSPLATFORM_SMP__"
+        ENABLE_EXECSMP="#define __AROSEXEC_SMP__"
+        case "$target_cpu" in
+            *riscv64*)
+                AC_MSG_ERROR("The ESP32-P4 HP cores are 32bit - use --target=esp32p4-riscv")
+                ;;
+            *riscv*)
+                aros_target_cpu="riscv"
+                aros_object_format="riscvelf_aros"
+                ;;
+            *)
+                AC_MSG_ERROR("Unsupported CPU '$target_cpu' for ESP32-P4")
                 ;;
         esac
         ;;
@@ -4510,6 +4565,7 @@ AC_SUBST(aros_serial_debug)
 AC_SUBST(PLATFORM_EXECSMP)
 AC_SUBST(ENABLE_EXECSMP)
 AC_SUBST(PLATFORM_EXECWXSEG)
+AC_SUBST(PLATFORM_RISCVMMODE)
 
 # MMU related
 AC_SUBST(aros_enable_mmu)

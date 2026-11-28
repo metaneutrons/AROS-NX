@@ -1,0 +1,14 @@
+# Opt-in user-space production qualification; never part of the core/BSP.
+include $(SRCDIR)/config/aros.cfg
+
+QUALDIR := $(AROSARCHDIR)/qualification
+
+#MM- kernel-production-qualify-esp32p4-riscv : includes linklibs
+%build_prog mmake=kernel-production-qualify-esp32p4-riscv \
+    files=production-qualify progname=ProductionQualify targetdir=$(QUALDIR)
+
+#MM- kernel-smoke-qualify-esp32p4-riscv : includes linklibs
+%build_prog mmake=kernel-smoke-qualify-esp32p4-riscv \
+    files=smoke-qualify progname=SmokeQualify targetdir=$(QUALDIR)
+
+%common

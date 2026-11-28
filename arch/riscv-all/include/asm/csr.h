@@ -90,7 +90,10 @@ extern "C" {
 /* FPU and vector state fields, the same in both modes */
 #define RV_STATUS_VS            SSTATUS_VS
 #define RV_STATUS_VS_INITIAL    SSTATUS_VS_INITIAL
+#define RV_STATUS_FS            SSTATUS_FS
 #define RV_STATUS_FS_INITIAL    SSTATUS_FS_INITIAL
+#define RV_STATUS_FS_CLEAN      SSTATUS_FS_CLEAN
+#define RV_STATUS_FS_DIRTY      SSTATUS_FS_DIRTY
 
 /*
  * Vector extension CSR numbers. Numeric so they assemble without V in

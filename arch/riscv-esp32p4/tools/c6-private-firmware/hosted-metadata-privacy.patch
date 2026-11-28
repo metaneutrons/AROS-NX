@@ -1,0 +1,77 @@
+--- a/slave/main/slave_control.c
++++ b/slave/main/slave_control.c
+@@ -226,11 +226,9 @@
+ 
+ 	RPC_RET_FAIL_IF(esp_wifi_get_mac(req->req_get_mac_address->mode, mac));
+ 
+-	ESP_LOGI(TAG,"mac [" MACSTR "]", MAC2STR(mac));
+ 
+ 	RPC_RESP_COPY_BYTES_SRC_UNCHECKED(resp_payload->mac, mac, BSSID_BYTES_SIZE);
+ 
+-	ESP_LOGD(TAG, "resp mac [" MACSTR "]", MAC2STR(resp_payload->mac.data));
+ 
+ 	return ESP_OK;
+ }
+@@ -285,7 +283,6 @@
+ 	}
+ 
+ 	mac = req_payload->mac.data;
+-	ESP_LOGD(TAG, "mac: " MACSTR, MAC2STR(mac));
+ 
+ 	RPC_RET_FAIL_IF(esp_wifi_set_mac(req_payload->mode, mac));
+ err:
+@@ -651,16 +648,9 @@
+ {
+ 	if (event_base == WIFI_EVENT) {
+ 		if (event_id == WIFI_EVENT_AP_STACONNECTED) {
+-			wifi_event_ap_staconnected_t *event = (wifi_event_ap_staconnected_t *) event_data;
+-			ESP_LOGI(TAG, "station "MACSTR" join, AID=%d",
+-					MAC2STR(event->mac), event->aid);
+ 			send_event_data_to_host(RPC_ID__Event_AP_StaConnected,
+ 					event_data, sizeof(wifi_event_ap_staconnected_t));
+ 		} else if (event_id == WIFI_EVENT_AP_STADISCONNECTED) {
+-			wifi_event_ap_stadisconnected_t *event =
+-				(wifi_event_ap_stadisconnected_t *) event_data;
+-			ESP_LOGI(TAG, "station "MACSTR" leave, AID=%d",
+-					MAC2STR(event->mac), event->aid);
+ 			send_event_data_to_host(RPC_ID__Event_AP_StaDisconnected,
+ 					event_data, sizeof(wifi_event_ap_stadisconnected_t));
+ 		} else if (event_id == WIFI_EVENT_SCAN_DONE) {
+@@ -1321,9 +1311,6 @@
+ 	p_c_country->max_tx_power = p_a_country->max_tx_power;
+ 	p_c_country->policy = p_a_country->policy;
+ 
+-	printf("Country: cc:%c%c schan: %u nchan: %u max_tx_pow: %d policy: %u\n",
+-			p_a_country->cc[0], p_a_country->cc[1], p_a_country->schan, p_a_country->nchan,
+-			p_a_country->max_tx_power,p_a_country->policy);
+ 
+ 	/* he_ap */
+ 	RPC_ALLOC_ELEMENT(WifiHeApInfo, resp_payload->ap_records->he_ap, wifi_he_ap_info__init);
+@@ -1341,8 +1328,6 @@
+ 
+ 	p_c_he_ap->bssid_index = p_a_he_ap->bssid_index;
+ 
+-	printf("HE_AP: bss_color %d, partial_bss_color %d, bss_color_disabled %d\n",
+-		p_a_he_ap->bss_color, p_a_he_ap->bss_color_disabled, p_a_he_ap->bss_color_disabled);
+ 	/* increment num of records in rpc msg */
+ 
+ err:
+@@ -1554,7 +1539,6 @@
+ 	uint16_t aid;
+ 
+ 	RPC_REQ_COPY_BYTES(mac, req_payload->mac, sizeof(mac));
+-	ESP_LOGI(TAG, "mac: " MACSTR, MAC2STR(mac));
+ 	RPC_RET_FAIL_IF(esp_wifi_ap_get_sta_aid(mac, &aid));
+ 
+ 	resp_payload->aid = aid;
+--- a/slave/main/slave_bt.c
++++ b/slave/main/slave_bt.c
+@@ -495,8 +495,6 @@
+ 	esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
+ 
+ 	ESP_ERROR_CHECK(esp_read_mac(mac, ESP_MAC_BT));
+-	ESP_LOGI(TAG, "ESP Bluetooth MAC addr: %02x:%02x:%02x:%02x:%02x:%02x",
+-			mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+ 
+ #ifdef BLUETOOTH_UART
+   #if BT_OVER_C3_S3

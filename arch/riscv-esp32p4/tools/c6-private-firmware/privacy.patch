@@ -1,0 +1,152 @@
+--- a/slave/main/slave_control.c
++++ b/slave/main/slave_control.c
+@@ -157,7 +157,7 @@
+       resp_payload->resp = FAILURE;                                             \
+       return ESP_OK;                                                            \
+     }                                                                           \
+-	dest.len = min(max_len,strlen((char*)src)+1);                               \
++	dest.len = min(max_len,strnlen((char*)src, max_len)+1);                     \
+   }
+ 
+ #define RPC_RESP_COPY_BYTES_SRC_UNCHECKED(dest, src, num)                      \
+@@ -812,11 +812,9 @@
+ 		WifiStaConfig * p_c_sta = req_payload->cfg->sta;
+ 		RPC_RET_FAIL_IF(!req_payload->cfg->sta);
+ 		RPC_REQ_COPY_STR(p_a_sta->ssid, p_c_sta->ssid, SSID_LENGTH);
+-		if (strlen((char*)p_a_sta->ssid))
+-			ESP_LOGI(TAG, "STA set config: SSID:%s", p_a_sta->ssid);
+ 		RPC_REQ_COPY_STR(p_a_sta->password, p_c_sta->password, PASSWORD_LENGTH);
+-		if (strlen((char*)p_a_sta->password))
+-			ESP_LOGD(TAG, "STA: password:%s", p_a_sta->password);
++		/* Fixed-width SSID/password may fill their arrays. Never inspect them
++		 * as C strings for diagnostics or disclose credentials on UART. */
+ 		p_a_sta->scan_method = p_c_sta->scan_method;
+ 		p_a_sta->bssid_set = p_c_sta->bssid_set;
+ 
+@@ -1138,7 +1136,6 @@
+ 		p_c_ap_record = resp_payload->ap_records[i];
+ 		p_c_country = p_c_ap_record->country;
+ 		p_a_country = &p_a_ap_list[i].country;
+-		ESP_LOGD(TAG, "Ssid: %s, Bssid: " MACSTR, p_a_ap_list[i].ssid, MAC2STR(p_a_ap_list[i].bssid));
+ 		ESP_LOGD(TAG, "Primary: %u Second: %u Rssi: %d Authmode: %u",
+ 			p_a_ap_list[i].primary, p_a_ap_list[i].second,
+ 			p_a_ap_list[i].rssi, p_a_ap_list[i].authmode
+@@ -1278,15 +1275,7 @@
+ 	p_c_country = p_c_ap_record->country;
+ 	p_a_country = &p_a_ap_info.country;
+ 
+-	printf("Ssid: %s, Bssid: " MACSTR "\n", p_a_ap_info.ssid, MAC2STR(p_a_ap_info.bssid));
+-	printf("Primary: %u\nSecond: %u\nRssi: %d\nAuthmode: %u\nPairwiseCipher: %u\nGroupcipher: %u\nAnt: %u\nBitmask: 11b:%u g:%u n:%u lr:%u wps:%u ftm_resp:%u ftm_ini:%u res: %u\n",
+-			p_a_ap_info.primary, p_a_ap_info.second,
+-			p_a_ap_info.rssi, p_a_ap_info.authmode,
+-			p_a_ap_info.pairwise_cipher, p_a_ap_info.group_cipher,
+-			p_a_ap_info.ant, p_a_ap_info.phy_11b, p_a_ap_info.phy_11g,
+-			p_a_ap_info.phy_11n, p_a_ap_info.phy_lr,
+-			p_a_ap_info.wps, p_a_ap_info.ftm_responder,
+-			p_a_ap_info.ftm_initiator, p_a_ap_info.reserved);
++	/* AP metadata belongs in the correlated RPC response, not UART. */
+ 
+ 	RPC_RESP_COPY_STR(p_c_ap_record->ssid, p_a_ap_info.ssid, SSID_LENGTH);
+ 	RPC_RESP_COPY_BYTES(p_c_ap_record->bssid, p_a_ap_info.bssid, BSSID_BYTES_SIZE);
+--- a/slave/main/app_main.c
++++ b/slave/main/app_main.c
+@@ -178,7 +178,6 @@
+ 		}
+ 		return ESP_OK;
+ 	}
+-	ESP_HEXLOGV("AP_Get", buffer, len);
+ 
+ #if 0
+ 	/* Only enable this is you want to avoid multi and bradcast
+@@ -220,7 +219,6 @@
+ 		}
+ 		return ESP_OK;
+ 	}
+-	ESP_HEXLOGV("STA_Get", buffer, len);
+ 
+ 	buf_handle.if_type = ESP_STA_IF;
+ 	buf_handle.if_num = 0;
+@@ -322,7 +320,6 @@
+ 	payload = buf + le16toh(header->offset);
+ 	rem_buff_size = sizeof(r.data) - r.len;
+ 
+-	ESP_HEXLOGV("serial_rx", payload, payload_len);
+ 
+ 	while (r.valid)
+ 	{
+@@ -458,7 +455,6 @@
+ 	if (event->event_type == ESP_PRIV_EVENT_INIT) {
+ 
+ 		ESP_LOGI(TAG, "Slave init_config received from host");
+-		ESP_HEXLOGD("init_config", event->event_data, event->event_len);
+ 
+ 		ret = host_to_slave_reconfig(event->event_data, event->event_len);
+ 		if (ret) {
+@@ -481,7 +477,6 @@
+ 	payload = buf_handle->payload + le16toh(header->offset);
+ 	payload_len = le16toh(header->len);
+ 
+-	ESP_HEXLOGD("rx_new", buf_handle->payload, min(32,buf_handle->payload_len));
+ 
+ 	if (buf_handle->if_type == ESP_STA_IF && station_connected) {
+ 		/* Forward data to wlan driver */
+@@ -498,7 +493,6 @@
+ 			retry_wifi_tx--;
+ 		} while (ret && retry_wifi_tx);
+ 
+-		ESP_HEXLOGV("STA_Put", payload, payload_len);
+ 		if (ESP_OK == ret) {
+ #if ESP_PKT_STATS
+ 			pkt_stats.hs_bus_sta_out++;
+@@ -511,7 +505,6 @@
+ 	} else if (buf_handle->if_type == ESP_AP_IF && softap_started) {
+ 		/* Forward data to wlan driver */
+ 		esp_wifi_internal_tx(ESP_IF_WIFI_AP, payload, payload_len);
+-		ESP_HEXLOGV("AP_Put", payload, payload_len);
+ 	} else if (buf_handle->if_type == ESP_SERIAL_IF) {
+ #if ESP_PKT_STATS
+ 			pkt_stats.serial_rx++;
+@@ -640,7 +633,6 @@
+ 			return ESP_FAIL;
+ 		}
+ 
+-		ESP_HEXLOGV("serial_tx_create", data, frag_len);
+ 
+ 		left_len -= frag_len;
+ 		pos += frag_len;
+--- a/slave/main/sdio_slave_api.c
++++ b/slave/main/sdio_slave_api.c
+@@ -249,7 +249,6 @@
+ 	header->checksum = htole16(compute_checksum(buf_handle.payload, buf_handle.payload_len));
+ #endif
+ 
+-	ESP_HEXLOGD("sdio_tx_init", buf_handle.payload, buf_handle.payload_len);
+ 
+ #if !SIMPLIFIED_SDIO_SLAVE
+ 	ret = sdio_slave_send_queue(buf_handle.payload, buf_handle.payload_len,
+@@ -445,7 +444,6 @@
+ 				offset+buf_handle->payload_len));
+ #endif
+ 
+-	ESP_HEXLOGD("sdio_tx", sendbuf, min(32,total_len));
+ 
+ #if !SIMPLIFIED_SDIO_SLAVE
+ 	ret = sdio_slave_send_queue(sendbuf, total_len, sendbuf, portMAX_DELAY);
+--- a/slave/main/slave_bt.c
++++ b/slave/main/slave_bt.c
+@@ -79,7 +79,6 @@
+ 	buf_handle.wlan_buf_handle = buf;
+ 	buf_handle.free_buf_handle = free;
+ 
+-	ESP_HEXLOGV("bt_tx new", data, len);
+ 
+ 	if (send_to_host_queue(&buf_handle, PRIO_Q_BT)) {
+ 		free(buf);
+@@ -97,7 +96,6 @@
+ void process_hci_rx_pkt(uint8_t *payload, uint16_t payload_len) {
+ 	/* VHCI needs one extra byte at the start of payload */
+ 	/* that is accomodated in esp_payload_header */
+-	ESP_HEXLOGV("bt_rx", payload, payload_len);
+ 
+ 	payload--;
+ 	payload_len++;

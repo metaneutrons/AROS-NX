@@ -1,0 +1,18 @@
+# S8 stage 2: the lists of s8-tests (upstream's SMP tests, then SMP-Migrate),
+# then the Affinity command: a test started through it must have the CPUs
+# it was given, and its children must inherit them and use them.
+SMP-Proc
+SMP-Affinity
+SMP-Preempt
+SMP-Sched
+SMP-Sem
+SMP-Trace
+SMP-DoIO
+SMP-Stress QUICK
+SMP-Lists
+SMP-SigRace
+SMP-Migrate
+SMP-AffCheck 0
+Affinity ANY FLASHDISK0P0:S5/SMP-AffCheck ANY
+Affinity 1 FLASHDISK0P0:S5/SMP-AffCheck 1
+Affinity 0,1 FLASHDISK0P0:S5/SMP-AffCheck 0,1

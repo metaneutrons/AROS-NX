@@ -1,0 +1,27 @@
+--- a/components/esp_wifi/esp32c6/esp_adapter.c
++++ b/components/esp_wifi/esp32c6/esp_adapter.c
+@@ -344,15 +344,19 @@
+ 
+ static void esp_log_writev_wrapper(unsigned int level, const char *tag, const char *format, va_list args)
+ {
+-    return esp_log_writev((esp_log_level_t)level, tag, format, args);
++    /* Private C6 image: vendor diagnostics may contain SSID/BSSID or keys.
++     * Do not format arguments or forward them to any diagnostic sink. */
++    (void)level;
++    (void)tag;
++    (void)format;
++    (void)args;
+ }
+ 
+ static void esp_log_write_wrapper(unsigned int level, const char *tag, const char *format, ...)
+ {
+-    va_list list;
+-    va_start(list, format);
+-    esp_log_writev((esp_log_level_t)level, tag, format, list);
+-    va_end(list);
++    (void)level;
++    (void)tag;
++    (void)format;
+ }
+ 
+ static esp_err_t esp_read_mac_wrapper(uint8_t *mac, unsigned int type)

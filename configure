@@ -675,6 +675,7 @@ host_has_libelf
 host_has_lzma
 target_grub2_version
 aros_enable_mmu
+PLATFORM_RISCVMMODE
 PLATFORM_EXECWXSEG
 ENABLE_EXECSMP
 PLATFORM_EXECSMP
@@ -10236,6 +10237,7 @@ target_bootloader="none"
 PLATFORM_EXECSMP=
 ENABLE_EXECSMP=
 PLATFORM_EXECWXSEG=
+PLATFORM_RISCVMMODE=
 
 #-----------------------------------------------------------------------------
 # Classic variant is possible for Amiga target.
@@ -11406,6 +11408,47 @@ printf '%s\n' "$darwin_sdk_path" >&6; }
                 ;;
             *)
                 as_fn_error $? "\"Unsupported CPU '$target_cpu' for SBI\"" "$LINENO" 5
+                ;;
+        esac
+        ;;
+
+    esp32p4)
+        aros_flavour="standalone"
+        aros_target_arch="esp32p4"
+        aros_isa_flags="$""(ISA_RISCV_FLAGS)"
+        aros_shared_default="no"
+        llvm_target_cpu="RISCV"
+        aros_kernel_toolchain=$aros_toolchain
+        kernel_toolchain_c_compiler=$toolchain_c_compiler
+        kernel_toolchain_cxx_compiler=$toolchain_cxx_compiler
+        if test "$aros_kernel_toolchain" = "llvm"; then
+            aros_kernel_llvmwrapper=yes
+        fi
+                                                gcc_default_cpu="rv32imafc_zicsr_zifencei_zaamo_zalrsc"
+        gcc_default_mode="ilp32f"
+                                aros_enable_mmu=no
+                        PLATFORM_RISCVMMODE="#define __AROSPLATFORM_RISCV_MMODE__"
+                                case "$aros_target_variant" in
+            ""|smp)
+                aros_target_variant="smp"
+                aros_target_suffix="-smp"
+            ;;
+            *)
+                as_fn_error $? "\"The ESP32-P4 builds only the smp variant\"" "$LINENO" 5
+            ;;
+        esac
+        PLATFORM_EXECSMP="#define __AROSPLATFORM_SMP__"
+        ENABLE_EXECSMP="#define __AROSEXEC_SMP__"
+        case "$target_cpu" in
+            *riscv64*)
+                as_fn_error $? "\"The ESP32-P4 HP cores are 32bit - use --target=esp32p4-riscv\"" "$LINENO" 5
+                ;;
+            *riscv*)
+                aros_target_cpu="riscv"
+                aros_object_format="riscvelf_aros"
+                ;;
+            *)
+                as_fn_error $? "\"Unsupported CPU '$target_cpu' for ESP32-P4\"" "$LINENO" 5
                 ;;
         esac
         ;;
@@ -20157,6 +20200,7 @@ fi
 
 
 # Native version related
+
 
 
 
