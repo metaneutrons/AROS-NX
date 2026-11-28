@@ -35,6 +35,10 @@
    kernel.resource instead of from the general memory pool.          */
 @PLATFORM_EXECWXSEG@
 
+/* Defined when a RISC-V kernel runs in machine mode, with no supervisor
+   mode below an SBI: it then uses the m* CSRs (see asm/riscv/csr.h).  */
+@PLATFORM_RISCVMMODE@
+
 /* DEBUG options                                                        */
 
 // use atomic's to lock access when outputting debug

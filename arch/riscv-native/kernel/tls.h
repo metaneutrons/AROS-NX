@@ -18,10 +18,17 @@
 
 /* traps.S and startup.S reach these without a C compiler; kept in step
    with the structure by static assertions in kernel_riscv.c */
+#if __riscv_xlen == 64
 #define TLS_THISTASK_OFFSET     16
 #define TLS_TRAPDEPTH_OFFSET    40
 #define TLS_HARTID_OFFSET       48
 #define TLS_STACKTOP_OFFSET     56
+#else
+#define TLS_THISTASK_OFFSET     8
+#define TLS_TRAPDEPTH_OFFSET    28
+#define TLS_HARTID_OFFSET       32      /* UQUAD, 8-aligned under ILP32 too */
+#define TLS_STACKTOP_OFFSET     40
+#endif
 
 /* The boot hart's trap stack (secondaries trap on their start-up stack) */
 #define RISCV_BOOT_TRAPSTACKSIZE    65536
