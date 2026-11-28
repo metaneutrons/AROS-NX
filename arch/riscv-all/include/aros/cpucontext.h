@@ -59,7 +59,8 @@ struct ExceptionContext
     APTR  vecContext;               /* Vector register state, if saved */
 };
 
-/* FPU register state (FLEN=64, D extension) */
+/* FPU register state: 8-byte slots under every hard float ABI (fsd with
+   D, fsw with F only - see aros/riscv/xlen.h) */
 struct FpuContext
 {
     UQUAD f[32];                    /* f0-f31                         */

@@ -14,6 +14,7 @@
 #include <proto/exec.h>
 
 #include <aros/riscv/cpucontext.h>
+#include <aros/riscv/xlen.h>
 #include <asm/cpu.h>
 
 #include <hardware/intbits.h>
@@ -47,22 +48,35 @@ static void copyContext(struct ExceptionContext *dst,
     dst->sr = src->sr;
 }
 
+/*
+ * The FP registers are saved in 8-byte slots under every hard float ABI;
+ * the opcode follows the ABI (fsd/fld with D, fsw/flw with F only, see
+ * aros/riscv/xlen.h), so struct FpuContext keeps one layout.
+ */
+#define FSX     __AROS_RV_FSX_STR " "
+#define FLX     __AROS_RV_FLX_STR " "
+#if defined(__riscv_float_abi_double)
+#define FZERO   "fcvt.d.w "
+#else
+#define FZERO   "fcvt.s.w "
+#endif
+
 static void krnSaveFPU(struct FpuContext *fpu)
 {
     unsigned long fcsr;
 
     asm volatile(
-        "fsd f0,  0(%1)  \n fsd f1,  8(%1)  \n fsd f2,  16(%1) \n"
-        "fsd f3,  24(%1) \n fsd f4,  32(%1) \n fsd f5,  40(%1) \n"
-        "fsd f6,  48(%1) \n fsd f7,  56(%1) \n fsd f8,  64(%1) \n"
-        "fsd f9,  72(%1) \n fsd f10, 80(%1) \n fsd f11, 88(%1) \n"
-        "fsd f12, 96(%1) \n fsd f13, 104(%1)\n fsd f14, 112(%1)\n"
-        "fsd f15, 120(%1)\n fsd f16, 128(%1)\n fsd f17, 136(%1)\n"
-        "fsd f18, 144(%1)\n fsd f19, 152(%1)\n fsd f20, 160(%1)\n"
-        "fsd f21, 168(%1)\n fsd f22, 176(%1)\n fsd f23, 184(%1)\n"
-        "fsd f24, 192(%1)\n fsd f25, 200(%1)\n fsd f26, 208(%1)\n"
-        "fsd f27, 216(%1)\n fsd f28, 224(%1)\n fsd f29, 232(%1)\n"
-        "fsd f30, 240(%1)\n fsd f31, 248(%1)\n"
+        FSX "f0,  0(%1)  \n " FSX "f1,  8(%1)  \n " FSX "f2,  16(%1) \n"
+        FSX "f3,  24(%1) \n " FSX "f4,  32(%1) \n " FSX "f5,  40(%1) \n"
+        FSX "f6,  48(%1) \n " FSX "f7,  56(%1) \n " FSX "f8,  64(%1) \n"
+        FSX "f9,  72(%1) \n " FSX "f10, 80(%1) \n " FSX "f11, 88(%1) \n"
+        FSX "f12, 96(%1) \n " FSX "f13, 104(%1)\n " FSX "f14, 112(%1)\n"
+        FSX "f15, 120(%1)\n " FSX "f16, 128(%1)\n " FSX "f17, 136(%1)\n"
+        FSX "f18, 144(%1)\n " FSX "f19, 152(%1)\n " FSX "f20, 160(%1)\n"
+        FSX "f21, 168(%1)\n " FSX "f22, 176(%1)\n " FSX "f23, 184(%1)\n"
+        FSX "f24, 192(%1)\n " FSX "f25, 200(%1)\n " FSX "f26, 208(%1)\n"
+        FSX "f27, 216(%1)\n " FSX "f28, 224(%1)\n " FSX "f29, 232(%1)\n"
+        FSX "f30, 240(%1)\n " FSX "f31, 248(%1)\n"
         "csrr %0, fcsr\n"
         : "=r"(fcsr) : "r"(fpu->f) : "memory");
 
@@ -73,38 +87,39 @@ static void krnRestoreFPU(struct FpuContext *fpu)
 {
     asm volatile(
         "csrw fcsr, %1\n"
-        "fld f0,  0(%0)  \n fld f1,  8(%0)  \n fld f2,  16(%0) \n"
-        "fld f3,  24(%0) \n fld f4,  32(%0) \n fld f5,  40(%0) \n"
-        "fld f6,  48(%0) \n fld f7,  56(%0) \n fld f8,  64(%0) \n"
-        "fld f9,  72(%0) \n fld f10, 80(%0) \n fld f11, 88(%0) \n"
-        "fld f12, 96(%0) \n fld f13, 104(%0)\n fld f14, 112(%0)\n"
-        "fld f15, 120(%0)\n fld f16, 128(%0)\n fld f17, 136(%0)\n"
-        "fld f18, 144(%0)\n fld f19, 152(%0)\n fld f20, 160(%0)\n"
-        "fld f21, 168(%0)\n fld f22, 176(%0)\n fld f23, 184(%0)\n"
-        "fld f24, 192(%0)\n fld f25, 200(%0)\n fld f26, 208(%0)\n"
-        "fld f27, 216(%0)\n fld f28, 224(%0)\n fld f29, 232(%0)\n"
-        "fld f30, 240(%0)\n fld f31, 248(%0)\n"
+        FLX "f0,  0(%0)  \n " FLX "f1,  8(%0)  \n " FLX "f2,  16(%0) \n"
+        FLX "f3,  24(%0) \n " FLX "f4,  32(%0) \n " FLX "f5,  40(%0) \n"
+        FLX "f6,  48(%0) \n " FLX "f7,  56(%0) \n " FLX "f8,  64(%0) \n"
+        FLX "f9,  72(%0) \n " FLX "f10, 80(%0) \n " FLX "f11, 88(%0) \n"
+        FLX "f12, 96(%0) \n " FLX "f13, 104(%0)\n " FLX "f14, 112(%0)\n"
+        FLX "f15, 120(%0)\n " FLX "f16, 128(%0)\n " FLX "f17, 136(%0)\n"
+        FLX "f18, 144(%0)\n " FLX "f19, 152(%0)\n " FLX "f20, 160(%0)\n"
+        FLX "f21, 168(%0)\n " FLX "f22, 176(%0)\n " FLX "f23, 184(%0)\n"
+        FLX "f24, 192(%0)\n " FLX "f25, 200(%0)\n " FLX "f26, 208(%0)\n"
+        FLX "f27, 216(%0)\n " FLX "f28, 224(%0)\n " FLX "f29, 232(%0)\n"
+        FLX "f30, 240(%0)\n " FLX "f31, 248(%0)\n"
         : : "r"(fpu->f), "r"((unsigned long)fpu->fcsr) : "memory");
 }
 
 /* Load the canonical clean FPU state for a task that never used FP -
    the previous owner's registers must not leak through. fcvt.d.w from
-   zero gives +0.0 on rv32 and rv64 alike (fmv.d.x is rv64 only) */
+   zero gives +0.0 on rv32 and rv64 alike (fmv.d.x is rv64 only); a core
+   with F but no D uses fcvt.s.w, which gives the single precision +0.0 */
 static void krnInitFPU(void)
 {
     asm volatile(
         "csrw fcsr, zero\n"
-        "fcvt.d.w f0,  zero\n fcvt.d.w f1,  zero\n fcvt.d.w f2,  zero\n"
-        "fcvt.d.w f3,  zero\n fcvt.d.w f4,  zero\n fcvt.d.w f5,  zero\n"
-        "fcvt.d.w f6,  zero\n fcvt.d.w f7,  zero\n fcvt.d.w f8,  zero\n"
-        "fcvt.d.w f9,  zero\n fcvt.d.w f10, zero\n fcvt.d.w f11, zero\n"
-        "fcvt.d.w f12, zero\n fcvt.d.w f13, zero\n fcvt.d.w f14, zero\n"
-        "fcvt.d.w f15, zero\n fcvt.d.w f16, zero\n fcvt.d.w f17, zero\n"
-        "fcvt.d.w f18, zero\n fcvt.d.w f19, zero\n fcvt.d.w f20, zero\n"
-        "fcvt.d.w f21, zero\n fcvt.d.w f22, zero\n fcvt.d.w f23, zero\n"
-        "fcvt.d.w f24, zero\n fcvt.d.w f25, zero\n fcvt.d.w f26, zero\n"
-        "fcvt.d.w f27, zero\n fcvt.d.w f28, zero\n fcvt.d.w f29, zero\n"
-        "fcvt.d.w f30, zero\n fcvt.d.w f31, zero\n");
+        FZERO "f0,  zero\n " FZERO "f1,  zero\n " FZERO "f2,  zero\n"
+        FZERO "f3,  zero\n " FZERO "f4,  zero\n " FZERO "f5,  zero\n"
+        FZERO "f6,  zero\n " FZERO "f7,  zero\n " FZERO "f8,  zero\n"
+        FZERO "f9,  zero\n " FZERO "f10, zero\n " FZERO "f11, zero\n"
+        FZERO "f12, zero\n " FZERO "f13, zero\n " FZERO "f14, zero\n"
+        FZERO "f15, zero\n " FZERO "f16, zero\n " FZERO "f17, zero\n"
+        FZERO "f18, zero\n " FZERO "f19, zero\n " FZERO "f20, zero\n"
+        FZERO "f21, zero\n " FZERO "f22, zero\n " FZERO "f23, zero\n"
+        FZERO "f24, zero\n " FZERO "f25, zero\n " FZERO "f26, zero\n"
+        FZERO "f27, zero\n " FZERO "f28, zero\n " FZERO "f29, zero\n"
+        FZERO "f30, zero\n " FZERO "f31, zero\n");
 }
 
 void cpu_Switch(regs_t *regs)
