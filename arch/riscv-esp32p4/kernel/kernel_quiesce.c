@@ -20,6 +20,7 @@
 #include <inttypes.h>
 
 #include "hardware.h"
+#include "psram.h"
 #include "kernel_intern.h"
 
 static inline void brg_wr(unsigned long off, unsigned long v)

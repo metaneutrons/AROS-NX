@@ -136,8 +136,11 @@ ELF2IMAGE = $(ESPTOOL) --chip esp32p4 elf2image --flash-mode dio \
 kernel-esp32p4-riscv: $(OSGENDIR)/boot/aros-esp32p4.bin
 	$(Q)$(NOP)
 
-# Everything in internal SRAM, which both boot paths can load.
-P4_LDSCRIPT := ldscript.lds
+# Code and read-only data stay in flash, mapped by the second stage
+# bootloader through the cache (the kickstart does not fit the internal
+# SRAM). What has to run while the cache is off is P4_SRAMCODE, which
+# check-sramtext.sh holds to that.
+P4_LDSCRIPT := ldscript-xip.lds
 
 $(OSGENDIR)/boot/core.elf: $(BSP_KOBJS) $(SRCDIR)/$(CURDIR)/$(P4_LDSCRIPT) \
                           $(SRCDIR)/$(CURDIR)/check-sramtext.sh
@@ -148,9 +151,8 @@ $(OSGENDIR)/boot/core.elf: $(BSP_KOBJS) $(SRCDIR)/$(CURDIR)/$(P4_LDSCRIPT) \
 	@$(ECHO) "Checking   $@ SRAM residency"
 	@$(SHELL) $(SRCDIR)/$(CURDIR)/check-sramtext.sh "$(TARGET_OBJDUMP)" "$@"
 
-# One image for both boot paths: 0x2000, where the first stage ROM loader
-# picks it up directly, and the ota_0 app partition at 0x20000, loaded by
-# the second stage bootloader the device already carries.
+# The ota_0 app partition at 0x20000, loaded and mapped by the second
+# stage bootloader the device carries.
 $(OSGENDIR)/boot/aros-esp32p4.bin: $(OSGENDIR)/boot/core.elf \
     $(SRCDIR)/arch/riscv-esp32p4/tools/check-artifact-size.py
 	@$(ECHO) "Creating   $@"

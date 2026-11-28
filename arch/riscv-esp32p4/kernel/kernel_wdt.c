@@ -57,17 +57,17 @@ static inline void wdt_wr(uint32_t off, uint32_t val)
 }
 
 /* Each hart's count of its own ticks, written by that hart only */
-static volatile uint32_t beat[P4_TLS_HARTS];
+static volatile uint32_t beat[P4_HARTS];
 /* What hart 0 saw of them at the last check, and for how many checks no change */
-static uint32_t seen[P4_TLS_HARTS];
-static uint32_t silent[P4_TLS_HARTS];
+static uint32_t seen[P4_HARTS];
+static uint32_t silent[P4_HARTS];
 
 /* The canary tasks' counts, written by the task, and the same bookkeeping.
    A canary counts only once it has woken for the first time. */
-static volatile uint32_t canary_beat[P4_TLS_HARTS];
-static volatile uint32_t canary_live[P4_TLS_HARTS];
-static uint32_t canary_seen[P4_TLS_HARTS];
-static uint32_t canary_silent[P4_TLS_HARTS];
+static volatile uint32_t canary_beat[P4_HARTS];
+static volatile uint32_t canary_live[P4_HARTS];
+static uint32_t canary_seen[P4_HARTS];
+static uint32_t canary_silent[P4_HARTS];
 
 static uint32_t armed;
 /* Set by krnWdtStuck(): something will never come free, stop feeding */
@@ -148,7 +148,7 @@ void krnWdtTick(void)
     until_check = P4_WDT_CHECK_TICKS;
 
     online = __atomic_load_n(&__p4_harts_online, __ATOMIC_ACQUIRE);
-    for (hart = 0; hart < P4_TLS_HARTS; hart++)
+    for (hart = 0; hart < P4_HARTS; hart++)
     {
         uint32_t b;
 

@@ -56,18 +56,6 @@ extern struct MemHeader *__esp32p4_mh_low;
 extern struct MemHeader *__esp32p4_mh_high;
 
 /* The periodic tick and the only clock there is (kernel_timer.c) */
-/* The kernel's single I2C controller (i2c_hw.c over ../i2c/p4i2c_hw.c);
-   results are P4_I2C_*. */
-#include "../i2c/p4i2c_hw.h"
-
-int krnP4I2CInit(unsigned int port, unsigned int sda_gpio,
-                 unsigned int scl_gpio, unsigned long bus_hz);
-int krnP4I2CTransfer(unsigned int address,
-                     const unsigned char *wbuf, unsigned int wlen,
-                     unsigned char *rbuf, unsigned int rlen);
-int krnP4I2CProbe(unsigned int address);
-void krnP4I2CLastStatus(unsigned long *raw, unsigned long *sr);
-#define P4_I2C_MISMATCH     (-8)    /* the device kept something else */
 
 struct KrnBacklightOps;
 struct KrnBacklightOps *krnP4BacklightOps(void);
@@ -314,7 +302,6 @@ void krnP4DsiReferenceTransitionTrace(const char *stage);
 
 void krnP4DsiPhyDown(void);
 UWORD krnP4PanelStrayBits(void);
-const char *krnP4I2CResultName(int result);
 
 /* The SoC clock-tree root dividers, as read back from the registers. */
 unsigned char krnP4SupplyLevel(void);
@@ -530,6 +517,9 @@ static inline void p4_irq_unmask(unsigned long status)
 {
     asm volatile("csrs mstatus, %0" :: "r"(status & 8) : "memory");
 }
+
+/* The high performance harts */
+#define P4_HARTS                2
 
 /* Bit n set once hart n runs in the kernel (kernel_native.c) */
 extern volatile ULONG __p4_harts_online;

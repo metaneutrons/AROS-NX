@@ -256,8 +256,8 @@ int krnP4GetC(void)
 #define CONSOLE_LINE        128
 #define CONSOLE_LOCK_SPINS  20000000
 
-static char console_line[P4_TLS_HARTS][CONSOLE_LINE];
-static unsigned int console_len[P4_TLS_HARTS];
+static char console_line[P4_HARTS][CONSOLE_LINE];
+static unsigned int console_len[P4_HARTS];
 static volatile uint32_t console_holder;    /* hart + 1, or 0 */
 static struct p4_console_ring console_queue;
 static struct p4_console_ring console_tap_queue;
@@ -648,7 +648,7 @@ static inline unsigned int console_hart(void)
     unsigned long hart;
 
     asm volatile("csrr %0, mhartid" : "=r"(hart));
-    return (unsigned int)hart & (P4_TLS_HARTS - 1);
+    return (unsigned int)hart & (P4_HARTS - 1);
 }
 
 /* Interrupts are masked by the caller */

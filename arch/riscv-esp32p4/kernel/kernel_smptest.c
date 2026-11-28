@@ -26,6 +26,7 @@
 #include <proto/kernel.h>
 
 #include "kernel_intern.h"
+#include "kernel_riscv.h"
 #include "etask.h"
 
 #if defined(P4_S4_TEST)
@@ -424,16 +425,20 @@ AROS_UFH3(static APTR, s4test_init,
                 put(" seen=", t.seen[w]);
                 krnP4PutStr("\n");
             }
-            for (h = 0; h < P4_TLS_HARTS; h++)
+            for (h = 0; h < P4_HARTS; h++)
             {
-                struct Task *r = __p4_tls[h].ThisTask;
+                tls_t *tl = __riscv_tls[h];
+                struct Task *r = tl ? tl->ThisTask : NULL;
+
+                if (!tl)
+                    continue;
 
                 put("[smp-s4] hart ", h);
                 krnP4PutStr(" runs ");
                 krnP4PutStr(r && r->tc_Node.ln_Name ? r->tc_Node.ln_Name : "-");
-                put(" idnest=", (ULONG)(LONG)__p4_tls[h].IDNestCnt);
-                put(" tdnest=", (ULONG)(LONG)__p4_tls[h].TDNestCnt);
-                put(" flags=", __p4_tls[h].ScheduleFlags);
+                put(" idnest=", (ULONG)(LONG)tl->IDNestCnt);
+                put(" tdnest=", (ULONG)(LONG)tl->TDNestCnt);
+                put(" flags=", tl->ScheduleFlags);
                 krnP4PutStr("\n");
             }
             put("[smp-s4] finished=", t.finished);

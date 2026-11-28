@@ -1089,7 +1089,9 @@
 #define   P4_DSI_COLOR_16BIT_C1 0
 #define   P4_DSI_COLOR_16BIT_C2 1
 #define   P4_DSI_COLOR_16BIT_C3 2
+#ifndef P4_DSI_565_CFG
 #define P4_DSI_565_CFG          1
+#endif
 #define   P4_DSI_COLOR_24BIT    5
 #define P4_DSI_DPI_CFG_POL      0x014
 #define P4_DSI_DPI_LP_CMD_TIM   0x018
@@ -1185,7 +1187,9 @@
  * the transmit side derives from P4_TX_V_RES so framebuffer, bridge and host
  * line counts cannot drift apart.
  */
+#ifndef P4_PANEL_VMUL
 #define P4_PANEL_VMUL           1
+#endif
 #define P4_TX_V_RES             (P4_PANEL_V_RES * P4_PANEL_VMUL)
 
 /*
@@ -1223,9 +1227,13 @@
  * bridge draws 213 MB/s against the 210 the timing calls for, so it does pause
  * for vertical blanking and that whole line of reasoning was an artefact.
  */
+#ifndef P4_PANEL_VFP
 #define P4_PANEL_VFP            P4_BOARD_PANEL_VFP
+#endif
 /* D1001: 40 MHz, from the working firmware's D1001_LCD_DPI_CLOCK_MHZ. */
+#ifndef P4_PANEL_DPI_MHZ
 #define P4_PANEL_DPI_MHZ        P4_BOARD_PANEL_DPI_MHZ
+#endif
 /*
  * Two panel profiles, because the evidence for them is split.
  *
@@ -1245,7 +1253,11 @@
  * the honest state: an unexplained difference between this port and a working
  * firmware on identical hardware is a finding, not a detail to smooth over.
  */
+#ifdef P4_PANEL_24BIT
+#define P4_PANEL_BPP            24
+#else
 #define P4_PANEL_BPP            16
+#endif
 
 /*
  * The DPI clock: PLL_F240M divided by six is exactly 40 MHz, and the source
@@ -1259,7 +1271,9 @@
  * not running.  240 divides exactly by 80, 60, 48 and 40.
  */
 #define P4_DSI_DPICLK_DIV       (240 / P4_PANEL_DPI_MHZ)
+#if (240 % P4_PANEL_DPI_MHZ) != 0
 #error "P4_PANEL_DPI_MHZ must divide the 240 MHz PLL tap exactly"
+#endif
 
 #define P4_DSI_INT_ST0          0x0BC
 #define P4_DSI_INT_ST1          0x0C0
@@ -1302,10 +1316,12 @@
  * The range selector is a lookup in the PHY's table rather than a formula, so
  * it is written per rate and the build fails for a rate with no entry.
  */
+#ifndef P4_DSI_PLLREF_MHZ
 #ifdef P4_BOARD_DSI_PLLREF_MHZ
 #define P4_DSI_PLLREF_MHZ       P4_BOARD_DSI_PLLREF_MHZ
 #else
 #define P4_DSI_PLLREF_MHZ       40
+#endif
 #endif
 /*
  * 2026-10-03, JC1060P470C: the 40 MHz conclusion above does not survive a
@@ -1317,7 +1333,9 @@
  * therefore sets 20; the D1001 keeps 40 until its own display is re-measured
  * (ROADMAP D2 evidence, open point).
  */
+#if P4_DSI_PLLREF_MHZ != 40 && P4_DSI_PLLREF_MHZ != 20
 #error "P4_DSI_PLLREF_MHZ: PLL dividers are tabulated for 20 and 40 MHz only"
+#endif
 
 /* From the board profile; the rate is the one thing to change. */
 #define P4_DSI_LANES            P4_BOARD_PANEL_LANES
@@ -1352,9 +1370,42 @@
  * runs 1000 with 40, which this port cannot get the panel to accept, and why
  * remains unexplained.
  */
+#ifndef P4_DSI_LANE_MBPS
 #define P4_DSI_LANE_MBPS        P4_BOARD_PANEL_LANE_MBPS
+#endif
 
+#if P4_DSI_LANE_MBPS == 1500
+/*
+ * The vendor bus configuration for this panel is 1500 Mbit/s over two lanes.
+ * N and M follow from ESP-IDF's own search - the first even M whose
+ * ref * M / N lands on the target, walking N from 1 - which for a 40 MHz
+ * reference gives N 4 and M 150 exactly.  The range code is the table entry
+ * [1450,1500] in soc_mipi_dsi_phy_pll_ranges.
+ */
+#define P4_DSI_PLL_N            (P4_DSI_PLLREF_MHZ == 40 ? 4 : 2)
+#define P4_DSI_PLL_M            150
+#define P4_DSI_HS_FREQ_SEL      0x3C
+#elif P4_DSI_LANE_MBPS == 1000
+#define P4_DSI_PLL_N            (P4_DSI_PLLREF_MHZ == 40 ? 2 : 1)  /* ref * 50 / N */
+#define P4_DSI_PLL_M            50
+#define P4_DSI_HS_FREQ_SEL      0x2A    /* the [1000,1050) row */
+#elif P4_DSI_LANE_MBPS == 750
+/*
+ * The JC1060P470C vendor rate.  ESP-IDF's search walks N from 1: N 1, 3 and
+ * 6 give even M but miss 750 by 30 or 3.3 MHz, N 8 gives M 150 exactly
+ * (f_ref/N = 5 MHz, the lowest the PHY allows).  Range code: the [750,800)
+ * row of soc_mipi_dsi_phy_pll_ranges.
+ */
+#define P4_DSI_PLL_N            (P4_DSI_PLLREF_MHZ == 40 ? 8 : 4)  /* 20 MHz: N 4 */
+#define P4_DSI_PLL_M            150
+#define P4_DSI_HS_FREQ_SEL      0x19
+#elif P4_DSI_LANE_MBPS == 500
+#define P4_DSI_PLL_N            (P4_DSI_PLLREF_MHZ == 40 ? 4 : 2)  /* ref * 50 / N */
+#define P4_DSI_PLL_M            50
+#define P4_DSI_HS_FREQ_SEL      0x07    /* the [500,550) row */
+#else
 #error "no PHY frequency range recorded for this lane rate"
+#endif
 
 /*
  * Pixels to lane byte clocks.  The host counts horizontal time in byte clocks
@@ -1376,10 +1427,12 @@
  * P4_BOARD_PANEL_DPI_NOMINAL_MHZ to get the same registers as the vendor
  * firmware; otherwise nominal and real are the same and nothing changes.
  */
+#ifndef P4_PANEL_DPI_NOMINAL_MHZ
 #ifdef P4_BOARD_PANEL_DPI_NOMINAL_MHZ
 #define P4_PANEL_DPI_NOMINAL_MHZ P4_BOARD_PANEL_DPI_NOMINAL_MHZ
 #else
 #define P4_PANEL_DPI_NOMINAL_MHZ P4_PANEL_DPI_MHZ
+#endif
 #endif
 #define P4_PANEL_HTOTAL         (P4_PANEL_H_RES + P4_PANEL_HSYNC \
                                  + P4_PANEL_HBP + P4_PANEL_HFP)

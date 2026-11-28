@@ -31,6 +31,7 @@
 
 #include <kernel_base.h>
 #include <kernel_debug.h>
+#include <kernel_globals.h>
 #include <kernel_interrupts.h>
 #include <kernel_intr.h>
 #include <exec_platform.h>
@@ -45,7 +46,6 @@ extern void krnTrapHandler(struct ExceptionContext *ctx, unsigned long cause,
 extern void __attribute__((noreturn)) cpu_Register(void);
 extern char __p4_smp_entry[], __p4_smp_entry_end[];
 
-#define P4_HARTS                2
 #define P4_SMP_PARK_CYCLES      360000000UL     /* 1 s at 360 MHz */
 
 /* Work for a hart, raised with its inter-hart interrupt, besides
@@ -83,11 +83,6 @@ P4_ALWAYS_INLINE unsigned long cycles(void)
 
     asm volatile("csrr %0, mcycle" : "=r"(n));
     return n;
-}
-
-P4_ALWAYS_INLINE void fence(void)
-{
-    asm volatile("fence iorw, iorw" ::: "memory");
 }
 
 P4_ALWAYS_INLINE unsigned int p4_hart(void)
