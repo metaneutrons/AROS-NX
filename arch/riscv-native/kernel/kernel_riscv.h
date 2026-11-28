@@ -55,8 +55,11 @@ struct RISCV_Implementation
     void    (*RVI_RemoteSFence)(const ULONG *mask, IPTR va, IPTR size);
     /* Take the calling hart out of service for good (does not return) */
     void    (*RVI_StopCPU)(void);
-    /* rdtime ticks per second */
+    /* Time counter ticks per second */
     UQUAD   RVI_TimebaseFreq;
+    /* Read the time counter, for a platform without the time CSR (NULL:
+       rdtime). Must be callable on any hart with interrupts off. */
+    UQUAD   (*RVI_ReadTime)(void);
     /* The scheduler tick: from the trap dispatch (kernel_traps.c) on a
        timer interrupt, and from the dispatcher (kernel_cpu.c) when it
        finds the timer pending while it waits for a task (NULL context) */
@@ -80,30 +83,35 @@ void krnRVResetCPUs(void);
 extern struct RISCV_Implementation __riscv_arosintern;
 
 /*
- * The time counter, RVI_TimebaseFreq ticks per second. rdtime fills one
- * register, so rv32 reads the two halves separately and retries if the
- * high half moved in between.
+ * The time counter, RVI_TimebaseFreq ticks per second: the platform's
+ * RVI_ReadTime where it has no time CSR, rdtime otherwise. rdtime fills
+ * one register, so rv32 reads the two halves separately and retries if
+ * the high half moved in between.
  */
 static inline UQUAD krnRVReadTime(void)
 {
-#if __riscv_xlen == 32
-    ULONG hi, lo, hi2;
-
-    do
+    if (__riscv_arosintern.RVI_ReadTime)
+        return __riscv_arosintern.RVI_ReadTime();
     {
-        asm volatile("rdtimeh %0" : "=r"(hi));
-        asm volatile("rdtime %0" : "=r"(lo));
-        asm volatile("rdtimeh %0" : "=r"(hi2));
-    } while (hi != hi2);
-    return ((UQUAD)hi << 32) | lo;
-#elif __riscv_xlen == 64
-    UQUAD v;
+#if __riscv_xlen == 32
+        ULONG hi, lo, hi2;
 
-    asm volatile("rdtime %0" : "=r"(v));
-    return v;
+        do
+        {
+            asm volatile("rdtimeh %0" : "=r"(hi));
+            asm volatile("rdtime %0" : "=r"(lo));
+            asm volatile("rdtimeh %0" : "=r"(hi2));
+        } while (hi != hi2);
+        return ((UQUAD)hi << 32) | lo;
+#elif __riscv_xlen == 64
+        UQUAD v;
+
+        asm volatile("rdtime %0" : "=r"(v));
+        return v;
 #else
 #error "kernel_riscv.h: __riscv_xlen must be 32 or 64"
 #endif
+    }
 }
 
 /*
